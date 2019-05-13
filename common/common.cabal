@@ -1,0 +1,35 @@
+name: common
+version: 0.1
+cabal-version: >= 1.2
+build-type: Simple
+
+library
+  hs-source-dirs: src
+  build-depends:
+      aeson
+    , base
+    , beam-core
+    , beam-migrate
+    , bytestring
+    , data-default
+    , lens
+    , obelisk-executable-config
+    , obelisk-route
+    , mtl
+    , readable
+    , scrub
+    , text
+    , time
+  default-extensions:
+    TypeFamilies
+    PolyKinds
+  exposed-modules:
+    Common.Api
+    Common.Route
+    Common.Types.ConnectedAccount
+    Common.Types.BuildJob
+    Common.Types.BuildMsg
+    Common.Types.Builder
+    Common.Types.Repo
+    Common.Types.RepoBuildInfo
+    Humanizable

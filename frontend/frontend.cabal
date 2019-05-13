@@ -1,0 +1,49 @@
+name: frontend
+version: 0.1
+cabal-version: >= 1.8
+build-type: Simple
+
+library
+  hs-source-dirs: src
+  build-depends:
+      aeson
+    , base
+    , common
+    , containers
+    , data-default
+    , lens
+    , lens-aeson
+    , mtl
+    , obelisk-frontend
+    , obelisk-generated-static
+    , obelisk-route
+    , readable
+    , reflex
+    , reflex-dom
+    , reflex-dom-contrib
+    , semantic-reflex
+    , text
+    , transformers
+  exposed-modules:
+    Frontend
+    Frontend.Common
+    Frontend.App
+    Frontend.AppState
+    Frontend.Widgets.Common
+    Frontend.Widgets.Form
+  ghc-options: -Wall
+
+executable frontend
+  main-is: main.hs
+  hs-source-dirs: src-bin
+  build-depends: base
+               , common
+               , obelisk-frontend
+               , obelisk-route
+               , reflex-dom
+               , obelisk-generated-static
+               , frontend
+  --TODO: Make these ghc-options optional
+  ghc-options: -threaded
+  if os(darwin)
+     ghc-options: -dynamic
