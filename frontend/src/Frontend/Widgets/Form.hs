@@ -29,7 +29,7 @@ class Formable t m a where
 
 instance Formable t m (Maybe AccountProvider) where
   aForm iv sv = do
-    v <- SemUI.dropdown def (Just GitHub) never $ TaggedStatic $ M.fromList $
+    v <- SemUI.dropdown def iv sv $ TaggedStatic $ M.fromList $
            map (\a -> (a, text $ tshow a)) [GitHub, GitLab]
     return $ value v
 

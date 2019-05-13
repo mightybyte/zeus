@@ -20,7 +20,6 @@ module Common.Types.ConnectedAccount where
 
 ------------------------------------------------------------------------------
 import           Data.Aeson
-import           Data.Barbie
 import           Data.Default
 import           Data.Text (Text)
 import qualified Data.Text as T
@@ -29,8 +28,6 @@ import           Database.Beam.Backend.SQL
 import           Database.Beam.Backend.Types
 import           Database.Beam.Migrate.Generics
 import           Database.Beam.Migrate.SQL
-import           Database.Beam.Schema.Tables
-import           Humanizable
 import           Scrub
 ------------------------------------------------------------------------------
 
@@ -108,8 +105,6 @@ deriving instance Show (PrimaryKey ConnectedAccountT Identity)
 deriving instance Show ConnectedAccount
 deriving instance Show (ConnectedAccountT Maybe)
 deriving instance Default (ConnectedAccountT Maybe)
-deriving anyclass instance Semigroup (ConnectedAccountT f)
-deriving anyclass instance Monoid (ConnectedAccountT f)
 
 instance ToJSON (ConnectedAccountT Identity) where
     toEncoding = genericToEncoding defaultOptions

@@ -29,6 +29,7 @@ library
     Frontend.Common
     Frontend.App
     Frontend.AppState
+    Frontend.Widgets.Accounts
     Frontend.Widgets.Common
     Frontend.Widgets.Form
   ghc-options: -Wall

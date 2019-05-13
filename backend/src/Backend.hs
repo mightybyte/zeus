@@ -14,8 +14,6 @@ import           Control.Monad
 import           Control.Monad.Trans
 import           Data.Aeson
 import qualified Data.Aeson as A
-import           Data.Barbie
-import qualified Data.ByteString.Lazy as B
 import           Data.Dependent.Sum (DSum ((:=>)))
 import           Data.RNG
 import           Data.String.Conv
@@ -107,9 +105,6 @@ wsHandler env = do
           bs <- receiveDataMessage conn >>= \case
             Text bs _ -> return bs
             Binary bs -> return bs
-          putStrLn "=================================="
-          B.putStrLn bs
-          putStrLn "=================================="
           case eitherDecodeStrict (toS bs) of
             Left e -> do
               putStrLn $ "************************************************"
@@ -127,13 +122,13 @@ connectAccount
   -> WS.Connection
   -> ConnectedAccountT Maybe
   -> IO ()
-connectAccount env wsConn (ConnectedAccount i n a p) = do
+connectAccount env wsConn (ConnectedAccount _ n a pr) = do
   beamQuery env $ do
-    runInsertReturningList $ insert (_ciDb_connectedAccounts ciDb) $ insertExpressions
+    runInsert $ insert (_ciDb_connectedAccounts ciDb) $ insertExpressions
            $ maybeToList $ ConnectedAccount default_
               <$> (val_ <$> n)
               <*> (val_ <$> a)
-              <*> (val_ <$> p)
+              <*> (val_ <$> pr)
   as <- beamQuery env $ do
     runSelectReturningList $ select $ all_ (_ciDb_connectedAccounts ciDb)
   wsSendJson wsConn $ Down_ConnectedAccounts $ map (getScrubbed . scrub . caToMaybe) as

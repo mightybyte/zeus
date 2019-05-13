@@ -5,12 +5,10 @@ module Frontend.Widgets.Common where
 
 ------------------------------------------------------------------------------
 import           Control.Monad.Fix
-import           Control.Monad.Trans
 import           Data.Map (Map)
 import           Data.Text (Text)
 import           Reflex
 import           Reflex.Dom
-import           Reflex.Network
 ------------------------------------------------------------------------------
 import           Humanizable
 ------------------------------------------------------------------------------
@@ -53,7 +51,6 @@ genericRemovableTable rows cols = do
     let doRow k v = el "tr" $ do
            mapM_ (\(_,field) -> field k v) cols
            del <- elClass "td" "right aligned collapsing" deleteButton
-           performEvent_ (liftIO (putStrLn "YO YO YO") <$ del)
            return $ traceEvent "row click" del
     el "tbody" $ --networkView $ mapM doRow <$> rows
       listViewWithKey rows doRow

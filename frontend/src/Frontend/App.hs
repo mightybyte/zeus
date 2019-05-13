@@ -9,14 +9,9 @@ module Frontend.App where
 
 ------------------------------------------------------------------------------
 import           Control.Monad.Reader
-import           Data.Default
-import           Data.Text (Text)
-import qualified Data.Text as T
 import           Reflex
 import           Reflex.Dom
-import           Reflex.Network
 ------------------------------------------------------------------------------
-import           Humanizable
 import           Frontend.AppState
 ------------------------------------------------------------------------------
 
