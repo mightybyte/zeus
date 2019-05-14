@@ -30,7 +30,9 @@ import           Reflex.Dom
 ------------------------------------------------------------------------------
 import           Common.Api
 import           Common.Route
+import           Common.Types.BuildJob
 import           Common.Types.ConnectedAccount
+import           Common.Types.Repo
 import           Frontend.Common ()
 ------------------------------------------------------------------------------
 
@@ -38,16 +40,19 @@ data AppTriggers = AppTriggers
     { _trigger_getAccounts :: Batch ()
     , _trigger_connectAccount :: Batch (ConnectedAccountT Maybe)
     , _trigger_delAccounts :: Batch Int
+    , _trigger_cancelJobs :: Batch Int
     } deriving Generic
 
 instance Semigroup AppTriggers where
-  (AppTriggers ga1 ca1 da1) <> (AppTriggers ga2 ca2 da2) = AppTriggers
+  (AppTriggers ga1 ca1 da1 cj1) <> (AppTriggers ga2 ca2 da2 cj2) = AppTriggers
     (ga1 <> ga2)
     (ca1 <> ca2)
     (da1 <> da2)
+    (cj1 <> cj2)
 
 instance Monoid AppTriggers where
     mempty = AppTriggers
+      mempty
       mempty
       mempty
       mempty
@@ -71,6 +76,7 @@ triggerBatch l e = tellEvent $ (\as -> set l as mempty) <$> e
 
 data AppState t = AppState
     { _as_accounts :: Dynamic t [ConnectedAccountT Maybe]
+    , _as_jobs :: Dynamic t [BuildJob]
     } deriving Generic
 
 stateManager
@@ -89,8 +95,9 @@ stateManager ft = do
     let downEvent = _webSocket_recv ws
     accounts <- holdDyn mempty $
                   fmapMaybe (preview (_Down_ConnectedAccounts)) downEvent
+    jobs <- holdDyn mempty $ fmapMaybe (preview (_Down_Jobs)) downEvent
 
-    return $ AppState accounts
+    return $ AppState accounts jobs
 
 startWebsocket
   :: MonadWidget t m

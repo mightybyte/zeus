@@ -45,6 +45,7 @@ project ./. ({ pkgs, ... }: {
         rev = "de802b0ed5055bd45cfed733524b4086c7e71660";
         sha256 = "0gqvw9jp6pxg4pixrmlg7vlcicmhkw2cb39bb8lfw401yaq6ad4a";
     }) {});
+    lens-aeson = dontCheck super.lens-aeson;
     reflex-dom-contrib = dontCheck (self.callCabal2nix "reflex-dom-contrib" (pkgs.fetchFromGitHub {
         owner = "reflex-frp";
         repo = "reflex-dom-contrib";

@@ -8,19 +8,30 @@
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TupleSections #-}
 {-# LANGUAGE TypeApplications #-}
+{-# LANGUAGE UndecidableInstances #-}
 module Frontend where
 
 ------------------------------------------------------------------------------
+import           Control.Lens
+import           Control.Monad.Reader
+import           Data.Map (Map)
 import           Data.Text (Text)
 import           Obelisk.Frontend
 import           Obelisk.Generated.Static
 import           Obelisk.Route
 import           Reflex.Dom.Core
+import           Reflex.Dom.SemanticUI
+import           Reflex.Dom.Contrib.CssClass
+import           Reflex.Dom.Contrib.Vanishing
+import           Reflex.Dom.Contrib.Widgets.DynTabs
 ------------------------------------------------------------------------------
 import           Common.Route
+import           Humanizable
 import           Frontend.App
 import           Frontend.AppState
+import           Frontend.Common
 import           Frontend.Widgets.Accounts
+import           Frontend.Widgets.Jobs
 ------------------------------------------------------------------------------
 
 
@@ -51,24 +62,43 @@ script code = elAttr "script" ("type" =: "text/javascript") $ text code
 
 appBody :: MonadApp t m => m ()
 appBody = mdo
+  as <- ask
   pb <- getPostBuild
   trigger trigger_getAccounts pb
-  zeusNav
-  divClass "ui main container" appWidget
+  tabs <- divClass "ui fixed menu" $ do
+    elAttr "div" ("class" =: "inverted header item") $ text "Zeus"
+    tabBar def
+  let staticAttrs = "class" =: "ui tab"
+  divClass "ui main container" $ do
+    myTabPane staticAttrs (_tabBar_curTab tabs) JobsTab $ jobsWidget
+    myTabPane staticAttrs (_tabBar_curTab tabs) BuildersTab $ text "Builders"
+    myTabPane staticAttrs (_tabBar_curTab tabs) AccountsTab $ accountsWidget
   return ()
 
-zeusNav :: MonadApp t m => m ()
-zeusNav = do
-    divClass "ui fixed inverted menu" $ do
-      elAttr "a" ("class" =: "header item") $ text "Zeus"
-      elAttr "a" ("class" =: "item") $ text "Jobs"
-      elAttr "a" ("class" =: "item") $ text "Accounts"
-      --divClass "right menu" $
-      --  elAttr "a" ("href" =: "/logout" <> "class" =: "item") $ text "Logout"
+data MainTabs = JobsTab | BuildersTab | AccountsTab
+  deriving (Eq,Ord,Show,Read,Enum,Bounded)
 
-appWidget :: MonadApp t m => m ()
-appWidget = do
-  accountsWidget
+instance Humanizable MainTabs where
+  humanize JobsTab = "Jobs"
+  humanize BuildersTab = "Builders"
+  humanize AccountsTab = "Accounts"
+
+instance MonadApp t m => Tab t m MainTabs where
+  tabIndicator tab activeDyn = do
+    let attrs = addClassWhen "active" activeDyn (singleClass "item")
+    (e,_) <- elDynKlass' "div" attrs $ text $ humanize tab
+    return $ domEvent Click e
+
+myTabPane
+    :: (MonadApp t m, Eq tab)
+    => Map Text Text
+    -> Dynamic t tab
+    -> tab
+    -> m a
+    -> m a
+myTabPane staticAttrs currentTab t child = do
+    let attrs = addActiveClass ((==t) <$> currentTab) (constDyn staticAttrs)
+    elDynAttr "div" attrs child
 
 --modal isActive m = do
 --  let dclass = addClassWhen (singleClass "active") isActive (manyClasses ["ui", "modal"])

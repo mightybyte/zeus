@@ -17,6 +17,7 @@
 module Common.Types.RepoBuildInfo where
 
 ------------------------------------------------------------------------------
+import           Data.Aeson
 import           Data.Text (Text)
 import qualified Data.Text as T
 import           Database.Beam
@@ -27,7 +28,7 @@ import           Database.Beam.Migrate.SQL
 ------------------------------------------------------------------------------
 
 data RepoEvent = RepoPush | RepoPullRequest
-  deriving (Eq,Ord,Show,Read,Enum,Bounded)
+  deriving (Eq,Ord,Show,Read,Enum,Bounded,Generic)
 
 instance HasSqlValueSyntax be String => HasSqlValueSyntax be RepoEvent where
   sqlValueSyntax = autoSqlValueSyntax
@@ -37,6 +38,11 @@ instance (BeamBackend be, FromBackendRow be Text) => FromBackendRow be RepoEvent
 
 instance BeamMigrateSqlBackend be => HasDefaultSqlDataType be RepoEvent where
   defaultSqlDataType _ _ _ = varCharType Nothing Nothing
+
+instance ToJSON RepoEvent where
+    toEncoding = genericToEncoding defaultOptions
+
+instance FromJSON RepoEvent
 
 data RepoBuildInfoT f = RepoBuildInfo
   { _rbi_repoName :: C f Text
@@ -62,6 +68,11 @@ type RepoBuildInfo = RepoBuildInfoT Identity
 
 deriving instance Eq RepoBuildInfo
 deriving instance Show RepoBuildInfo
+
+instance ToJSON (RepoBuildInfoT Identity) where
+    toEncoding = genericToEncoding defaultOptions
+
+instance FromJSON (RepoBuildInfoT Identity)
 
 instance Beamable RepoBuildInfoT
 

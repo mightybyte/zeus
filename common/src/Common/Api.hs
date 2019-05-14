@@ -8,6 +8,7 @@ import           Control.Lens
 import           Data.Aeson
 import           Database.Beam
 ------------------------------------------------------------------------------
+import           Common.Types.BuildJob
 import           Common.Types.ConnectedAccount
 ------------------------------------------------------------------------------
 
@@ -23,10 +24,12 @@ data Up
   = Up_ListAccounts
   | Up_ConnectAccount (Batch (ConnectedAccountT Maybe))
   | Up_DelAccounts (Batch Int)
+  | Up_GetJobs
   deriving (Generic)
 
 data Down
   = Down_ConnectedAccounts [ConnectedAccountT Maybe]
+  | Down_Jobs [BuildJob]
   deriving (Generic)
 
 instance ToJSON Up where

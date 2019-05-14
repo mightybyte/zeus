@@ -7,9 +7,8 @@
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TupleSections #-}
 {-# LANGUAGE TypeApplications #-}
-{-# LANGUAGE TypeFamilies #-}
 
-module Frontend.Widgets.Accounts where
+module Frontend.Widgets.Repos where
 
 ------------------------------------------------------------------------------
 import           Control.Monad
@@ -22,7 +21,7 @@ import           Reflex.Dom.Core
 import           Reflex.Dom.SemanticUI
 import qualified Reflex.Dom.SemanticUI as SemUI
 ------------------------------------------------------------------------------
-import           Common.Types.ConnectedAccount
+import           Common.Types.Repo
 import           Frontend.App
 import           Frontend.AppState
 import           Frontend.Common
@@ -30,22 +29,22 @@ import           Frontend.Widgets.Common
 import           Frontend.Widgets.Form
 ------------------------------------------------------------------------------
 
-accountsWidget :: MonadApp t m => m ()
-accountsWidget = mdo
+reposWidget :: MonadApp t m => m ()
+reposWidget = mdo
   as <- ask
   let listToState = bool ListTable EmptyPlaceholder . null
   listState <- holdDyn EmptyPlaceholder $ leftmost
     [ listToState <$> leftmost
-        [ updated (_as_accounts as)
-        , tag (current $ _as_accounts as) cancel]
+        [ updated (_as_repos as)
+        , tag (current $ _as_repos as) cancel]
     , AddForm <$ showForm
     ]
   let mkPair ca = (fromJust $ _connectedAccount_id ca, ca)
-  let accountMap = M.fromList . map mkPair <$> _as_accounts as
+  let accountMap = M.fromList . map mkPair <$> _as_repos as
   let widget s = case s of
         EmptyPlaceholder -> accountPlaceholder
         AddForm -> addAccount
-        ListTable -> accountsList accountMap --(_as_accounts as)
+        ListTable -> reposList accountMap
   ee <- dyn (widget <$> listState)
   showForm <- switch <$> hold never (tableAction_showAddForm <$> ee)
   cancel <- switch <$> hold never (tableAction_cancelAdd <$> ee)
@@ -63,13 +62,13 @@ addAccount = do
       trigger trigger_connectAccount $ fmapMaybe id $ tag (current da) (domEvent Click e1)
       return $ TableAction never (domEvent Click e2)
 
-accountsList
+reposList
   :: MonadApp t m
   => Dynamic t (Map Int (ConnectedAccountT Maybe))
   -> m (TableAction t (ConnectedAccountT Maybe))
-accountsList as = do
+reposList as = do
   divClass "ui segment" $ do
-    elClass "h1" "ui header" $ text "Accounts"
+    elClass "h1" "ui header" $ text "Repos"
     add <- SemUI.button def $ text "Add Account"
     let mkField f _ v = el "td" $ dynText (f <$> v) >> return ()
     del <- genericRemovableTable as
@@ -78,7 +77,7 @@ accountsList as = do
       , ("Provider", mkField $ maybe "" tshow . _connectedAccount_provider)
       --, ("", (\_ _ -> elClass "td" "right aligned collapsing" deleteButton))
       ]
-    triggerBatch trigger_delAccounts $ M.keys <$> del
+    triggerBatch trigger_delRepos $ M.keys <$> del
     return $ TableAction add never
 
 accountPlaceholder :: MonadApp t m => m (TableAction t (ConnectedAccountT Maybe))
@@ -86,7 +85,7 @@ accountPlaceholder = mdo
   divClass "ui placeholder segment" $ do
     divClass "ui icon header" $ do
       elClass "i" "dont icon" blank
-      text "You haven't connected any accounts yet"
+      text "You haven't connected any repos yet"
     (e,_) <- elAttr' "div" ("class" =: "ui primary button") $ text "Connect Account"
     return $ TableAction (domEvent Click e) never
 

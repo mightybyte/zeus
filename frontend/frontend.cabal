@@ -23,6 +23,7 @@ library
     , reflex-dom-contrib
     , semantic-reflex
     , text
+    , time
     , transformers
   exposed-modules:
     Frontend
@@ -31,6 +32,7 @@ library
     Frontend.AppState
     Frontend.Widgets.Accounts
     Frontend.Widgets.Common
+    Frontend.Widgets.Jobs
     Frontend.Widgets.Form
   ghc-options: -Wall
 

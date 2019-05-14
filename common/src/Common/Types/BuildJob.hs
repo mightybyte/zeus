@@ -19,6 +19,7 @@ module Common.Types.BuildJob where
 
 ------------------------------------------------------------------------------
 import           Control.Lens
+import           Data.Aeson
 import           Data.Text (Text)
 import qualified Data.Text as T
 import           Data.Time
@@ -40,7 +41,7 @@ data JobStatus
   | JobCanceled
   | JobFailed
   | JobSucceeded
-  deriving (Eq,Ord,Show,Read,Enum,Bounded)
+  deriving (Eq,Ord,Show,Read,Enum,Bounded,Generic)
 
 
 instance HasSqlValueSyntax be String => HasSqlValueSyntax be JobStatus where
@@ -51,6 +52,11 @@ instance (BeamBackend be, FromBackendRow be Text) => FromBackendRow be JobStatus
 
 instance BeamMigrateSqlBackend be => HasDefaultSqlDataType be JobStatus where
   defaultSqlDataType _ _ _ = varCharType Nothing Nothing
+
+instance ToJSON JobStatus where
+    toEncoding = genericToEncoding defaultOptions
+
+instance FromJSON JobStatus
 
 instance BeamMigrateSqlBackend be => HasDefaultSqlDataType be UTCTime where
   defaultSqlDataType _ _ _ = timestampType Nothing True
@@ -75,6 +81,11 @@ deriving instance Eq (PrimaryKey BuildJobT Identity)
 deriving instance Eq BuildJob
 deriving instance Show (PrimaryKey BuildJobT Identity)
 deriving instance Show BuildJob
+
+instance ToJSON (BuildJobT Identity) where
+    toEncoding = genericToEncoding defaultOptions
+
+instance FromJSON (BuildJobT Identity)
 
 instance Beamable BuildJobT
 

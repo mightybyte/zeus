@@ -22,6 +22,8 @@ import           System.Process
 import           Text.Printf
 ------------------------------------------------------------------------------
 import           Backend.Db
+import           Backend.Types.ConnRepo
+import           Backend.WsCmds
 import           Common.Types.ConnectedAccount
 import           Common.Types.BuildJob
 import           Common.Types.BuildMsg
@@ -29,8 +31,8 @@ import           Common.Types.Repo
 import           Common.Types.RepoBuildInfo
 ------------------------------------------------------------------------------
 
-buildThread :: Connection -> TQueue BuildMsg -> IO ()
-buildThread conn buildQueue = do
+buildThread :: Connection -> ConnRepo -> TQueue BuildMsg -> IO ()
+buildThread dbConn connRepo buildQueue = do
   rng <- mkRNG
   forever $ do
     msg <- atomically $ readTQueue buildQueue
@@ -44,7 +46,7 @@ buildThread conn buildQueue = do
                (_rbi_repoFullName rbi)
         printf "Pushed commit %s to %s\n"
                (_rbi_commitHash rbi) (_rbi_gitRef rbi)
-        repos <- runBeamSqlite conn $
+        repos <- runBeamSqlite dbConn $
           runSelectReturningList $ select $ do
             account <- all_ (_ciDb_connectedAccounts ciDb)
             repo <- all_ (_ciDb_repos ciDb)
@@ -53,19 +55,20 @@ buildThread conn buildQueue = do
             return repo
         case repos of
           [] -> putStrLn "Warning: Got a webhook for a repo that is not in our DB.  Is the DB corrupted?"
-          [r] -> runBuild conn rng r msg
+          [r] -> runBuild dbConn connRepo rng r msg
           _ -> printf "Warning: Got more repos than expected.  Why isn't %s unique?\n" (_rbi_repoFullName rbi)
 
 runBuild
   :: Connection
+  -> ConnRepo
   -> RNG
   -> Repo
   -> BuildMsg
   -> IO ()
-runBuild conn rng r msg = do
+runBuild dbConn connRepo rng r msg = do
   let rbi = _buildMsg_repoBuildInfo msg
   start <- getCurrentTime
-  runBeamSqliteDebug putStrLn conn $ do
+  runBeamSqliteDebug putStrLn dbConn $ do
     runUpdate $
       update (_ciDb_buildJobs ciDb)
              (\job -> mconcat
@@ -74,6 +77,7 @@ runBuild conn rng r msg = do
              (\job -> _buildJob_id job ==. val_ (_buildMsg_jobId msg))
 
     return ()
+  broadcastJobs dbConn connRepo
   tok <- randomToken 8 rng
   let url = case _repo_cloneMethod r of
               SshClone -> _rbi_cloneUrlSsh rbi
@@ -99,7 +103,7 @@ runBuild conn rng r msg = do
     end <- getCurrentTime
     let finishMsg = printf "Build finished in %.3f seconds" (realToFrac (diffUTCTime end start) :: Double)
     logWithTimestamp lh (finishMsg ++ "\n")
-    runBeamSqliteDebug putStrLn conn $ do
+    runBeamSqliteDebug putStrLn dbConn $ do
       runUpdate $
         update (_ciDb_buildJobs ciDb)
                (\job -> mconcat
@@ -108,6 +112,7 @@ runBuild conn rng r msg = do
                (\job -> _buildJob_id job ==. val_ (_buildMsg_jobId msg))
 
     putStrLn finishMsg
+    broadcastJobs dbConn connRepo
   return ()
 
 exitCodeToStatus :: ExitCode -> JobStatus

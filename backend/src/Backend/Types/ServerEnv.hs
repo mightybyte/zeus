@@ -1,10 +1,14 @@
+{-# LANGUAGE GeneralizedNewtypeDeriving #-}
+
 module Backend.Types.ServerEnv where
 
 ------------------------------------------------------------------------------
 import           Control.Concurrent.STM.TQueue
 import           Data.Text (Text)
+import           Database.Beam.Sqlite
 import           Database.SQLite.Simple
 ------------------------------------------------------------------------------
+import           Backend.Types.ConnRepo
 import           Common.Types.BuildMsg
 ------------------------------------------------------------------------------
 
@@ -16,4 +20,11 @@ data ServerEnv = ServerEnv
   -- incoming requests
   , _serverEnv_db :: Connection
   , _serverEnv_buildQueue :: TQueue BuildMsg
+  , _serverEnv_connRepo :: ConnRepo
   }
+
+beamQuery :: ServerEnv -> SqliteM a -> IO a
+beamQuery env = beamQueryConn (_serverEnv_db env)
+
+beamQueryConn :: Connection -> SqliteM a -> IO a
+beamQueryConn conn f = runBeamSqliteDebug putStrLn conn f

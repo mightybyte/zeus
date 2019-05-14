@@ -51,7 +51,10 @@ library
     Backend.Build
     Backend.Db
     Backend.Github
+    Backend.Types.ConnRepo
     Backend.Types.ServerEnv
+    Backend.WsCmds
+    Backend.WsUtils
   ghc-options: -Wall
 
 executable backend

@@ -3,6 +3,7 @@
 {-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE RankNTypes #-}
+{-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TypeFamilies #-}
 module Backend where
 
@@ -10,11 +11,15 @@ module Backend where
 import           Control.Concurrent
 import           Control.Concurrent.STM
 import           Control.Error
+import qualified Control.Exception as E
 import           Control.Monad
 import           Control.Monad.Trans
 import           Data.Aeson
 import qualified Data.Aeson as A
+import qualified Data.ByteString.Lazy as BSL
 import           Data.Dependent.Sum (DSum ((:=>)))
+import           Data.Map (Map)
+import qualified Data.Map as M
 import           Data.RNG
 import           Data.String.Conv
 import           Data.Text (Text)
@@ -25,9 +30,8 @@ import           Database.Beam.Sqlite
 import           Database.Beam.Sqlite.Migrate
 import           Database.Beam.Migrate.Simple
 import           Database.SQLite.Simple
-import           Network.WebSockets
 import qualified Network.WebSockets as WS
-import           Network.WebSockets.Snap
+import qualified Network.WebSockets.Snap as WS
 import           Obelisk.Backend
 import           Obelisk.Route
 import           Scrub
@@ -37,7 +41,10 @@ import           System.Directory
 import           Backend.Build
 import           Backend.Db
 import           Backend.Github
+import           Backend.Types.ConnRepo
 import           Backend.Types.ServerEnv
+import           Backend.WsCmds
+import           Backend.WsUtils
 import           Common.Api
 import           Common.Route
 import           Common.Types.ConnectedAccount
@@ -64,14 +71,15 @@ backend = Backend
       -- TODO Probably switch to a connection pool a some point, but we don't
       -- expect a large volume of requests for awhile so this is probably a
       -- very low priority.
-      conn <- open dbConnectInfo
-      runBeamSqlite conn $ autoMigrate migrationBackend ciDbChecked
+      dbConn <- open dbConnectInfo
+      runBeamSqlite dbConn $ autoMigrate migrationBackend ciDbChecked
       appRoute <- getAppRoute
       secretToken <- getSecretToken
       buildQueue <- atomically newTQueue
-      _ <- forkIO (buildThread conn buildQueue)
+      connRepo <- newConnRepo
+      _ <- forkIO (buildThread dbConn connRepo buildQueue)
 
-      let env = ServerEnv appRoute secretToken conn buildQueue
+      let env = ServerEnv appRoute secretToken dbConn buildQueue connRepo
       serve $ serveBackendRoute env
   , _backend_routeEncoder = backendRouteEncoder
   }
@@ -81,41 +89,34 @@ serveBackendRoute :: ServerEnv -> R BackendRoute -> Snap ()
 serveBackendRoute env = \case
   BackendRoute_GithubHook :=> _ -> hookHandler env
   BackendRoute_Ping :=> _ -> writeText "PONG\nPONG\nPONG\n"
-  BackendRoute_Websocket :=> _ -> wsHandler env
+  BackendRoute_Websocket :=> _ -> wsHandler $ \conn -> do
+      cid <- addConnection conn (_serverEnv_connRepo env)
+      talkClient env cid conn
   BackendRoute_Missing :=> _ -> do
     liftIO $ putStrLn "Unknown backend route"
     writeText "Unknown backend route"
 
-beamQuery :: ServerEnv -> SqliteM a -> IO a
-beamQuery env f = do
-    runBeamSqliteDebug putStrLn (_serverEnv_db env) f
-
-wsSendJson :: ToJSON a => WS.Connection -> a -> IO ()
-wsSendJson conn a =
-    sendDataMessage conn $ Text bs (Just $ toS bs)
+talkClient :: ServerEnv -> ConnId -> WS.Connection -> IO ()
+talkClient env cid conn = do
+    E.handle cleanup $ forever $ do
+      clientCmd <- wsReceive conn
+      case clientCmd of
+        Left e -> do
+          putStrLn $ "************************************************"
+          putStrLn $ "ERROR: websocketHandler couldn't decode message:"
+          putStrLn e
+        Right Up_ListAccounts -> listAccounts env conn
+        Right (Up_ConnectAccount cas) -> mapM_ (connectAccount env conn) cas
+        Right (Up_DelAccounts cas) -> delAccounts env conn cas
+        Right Up_GetJobs -> do
+          let dbConn = _serverEnv_db env
+          jobs <- getJobsFromDb dbConn
+          sendJobs jobs conn
   where
-    bs = A.encode a
-
-wsHandler :: ServerEnv -> Snap ()
-wsHandler env = do
-    res <- runExceptT $ do
-      runWebSocketsSnap $ \pc -> do
-        conn <- acceptRequest pc
-        forever $ do
-          bs <- receiveDataMessage conn >>= \case
-            Text bs _ -> return bs
-            Binary bs -> return bs
-          case eitherDecodeStrict (toS bs) of
-            Left e -> do
-              putStrLn $ "************************************************"
-              putStrLn $ "ERROR: websocketHandler couldn't decode message:"
-              putStrLn e
-            Right Up_ListAccounts -> listAccounts env conn
-            Right (Up_ConnectAccount cas) -> mapM_ (connectAccount env conn) cas
-            Right (Up_DelAccounts cas) -> delAccounts env conn cas
-    case res of
-      Left e -> liftIO $ T.putStrLn $ "User hasn't linked their acccount: " <> e
-      Right _ -> return ()
+    cRepo = _serverEnv_connRepo env
+    cleanup :: E.SomeException -> IO ()
+    cleanup _ = do
+      removeConnection cid cRepo
 
 connectAccount
   :: ServerEnv
@@ -131,7 +132,7 @@ connectAccount env wsConn (ConnectedAccount _ n a pr) = do
               <*> (val_ <$> pr)
   as <- beamQuery env $ do
     runSelectReturningList $ select $ all_ (_ciDb_connectedAccounts ciDb)
-  wsSendJson wsConn $ Down_ConnectedAccounts $ map (getScrubbed . scrub . caToMaybe) as
+  wsSend wsConn $ Down_ConnectedAccounts $ map (getScrubbed . scrub . caToMaybe) as
 
 listAccounts :: ServerEnv -> WS.Connection -> IO ()
 listAccounts env wsConn = do
@@ -141,7 +142,7 @@ listAccounts env wsConn = do
   putStrLn "--------------"
   putStrLn "Sending list of accounts:"
   print accounts
-  wsSendJson wsConn $ Down_ConnectedAccounts $ map (getScrubbed . scrub) $ caToMaybe <$> accounts
+  wsSend wsConn $ Down_ConnectedAccounts $ map (getScrubbed . scrub) $ caToMaybe <$> accounts
 
 delAccounts :: ServerEnv -> WS.Connection -> [Int] -> IO ()
 delAccounts env wsConn cas = do
