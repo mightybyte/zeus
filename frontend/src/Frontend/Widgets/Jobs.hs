@@ -1,5 +1,6 @@
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE FlexibleInstances #-}
+{-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE RankNTypes #-}
@@ -21,6 +22,7 @@ import           Data.Text (Text)
 import           Data.Time
 import           Reflex.Dom.Core
 import           Reflex.Dom.SemanticUI
+import qualified Reflex.Dom.SemanticUI as SemUI
 import           Reflex.Time
 ------------------------------------------------------------------------------
 import           Common.Types.BuildJob
@@ -55,8 +57,8 @@ jobsList as = do
     let mkField f _ v = el "td" $ dynText (f <$> v) >> return ()
     now <- liftIO getCurrentTime
     del <- genericRemovableTable as
-      [ ("Status", mkField $ tshow . _buildJob_status)
-      , ("ID", mkField $ tshow . _buildJob_id)
+      [ ("Status", (\_ -> void . el "td" . dynStatusWidget . fmap _buildJob_status))
+      --, ("ID", mkField $ tshow . _buildJob_id)
       , ("Repo", mkField $ _rbi_repoFullName . _buildJob_repoBuildInfo)
       , ("Git Ref", mkField $ _rbi_gitRef . _buildJob_repoBuildInfo)
       , ("Commit Hash", mkField $ _rbi_commitHash . _buildJob_repoBuildInfo)
@@ -111,3 +113,43 @@ jobsPlaceholder = do
     divClass "ui icon header" $ do
       elClass "i" "dont icon" blank
       text "Job history empty"
+
+statusWidget :: MonadApp t m => JobStatus -> m (Event t ())
+statusWidget status = do
+    let cfg = def & buttonConfig_color .~ Static (Just $ statusColor status)
+                  & buttonConfig_basic .~ Static True
+    SemUI.button cfg $ do
+      icon (Static $ statusIcon status) def
+      text $ statusMessage status
+
+dynStatusWidget :: MonadApp t m => Dynamic t JobStatus -> m (Event t ())
+dynStatusWidget status = do
+    let cfg = def & buttonConfig_color .~ Dyn (Just . statusColor <$> status)
+                  & buttonConfig_basic .~ Static True
+    SemUI.button cfg $ do
+      icon (Dyn $ statusIcon <$> status) def
+      dynText $ statusMessage <$> status
+
+statusColor :: JobStatus -> Color
+statusColor = \case
+  JobSucceeded -> Green
+  JobFailed -> Red
+  JobInProgress -> Blue
+  JobCanceled -> Grey
+  JobPending -> Black
+
+statusIcon :: JobStatus -> Text
+statusIcon = \case
+  JobSucceeded -> "check"
+  JobFailed -> "ban"
+  JobInProgress -> "hourglass half"
+  JobCanceled -> "x"
+  JobPending -> "clock outline"
+
+statusMessage :: JobStatus -> Text
+statusMessage = \case
+  JobSucceeded -> "passed"
+  JobFailed -> "failed"
+  JobInProgress -> "running"
+  JobCanceled -> "canceled"
+  JobPending -> "pending"

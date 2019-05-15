@@ -65,6 +65,7 @@ appBody = mdo
   as <- ask
   pb <- getPostBuild
   trigger trigger_getAccounts pb
+  trigger trigger_getJobs pb
   tabs <- divClass "ui fixed menu" $ do
     elAttr "div" ("class" =: "inverted header item") $ text "Zeus"
     tabBar def

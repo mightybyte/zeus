@@ -32,4 +32,4 @@ sendJobs jobs wsConn = do
 
 broadcastJobs conn connRepo = do
   jobs <- getJobsFromDb conn
-  broadcast connRepo jobs
+  broadcast connRepo $ Down_Jobs jobs

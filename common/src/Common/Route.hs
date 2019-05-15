@@ -27,6 +27,8 @@ import           Obelisk.Route
 import           Obelisk.Route.TH
 ------------------------------------------------------------------------------
 
+-- This needs to match the BackendRoute_GithubHook line below. Will figure out
+-- how to make it DRY later.
 githubHookPath :: Text
 githubHookPath = "hook/github"
 
@@ -47,7 +49,7 @@ backendRouteEncoder = handleEncoder (const (InL BackendRoute_Missing :/ ())) $
   pathComponentEncoder $ \case
     InL backendRoute -> case backendRoute of
       BackendRoute_Missing -> PathSegment "missing" $ unitEncoder mempty
-      BackendRoute_GithubHook -> PathSegment githubHookPath $ unitEncoder mempty
+      BackendRoute_GithubHook -> PathSegment "hook" $ unitEncoder (["github"], mempty)
       BackendRoute_Ping -> PathSegment "ping" $ unitEncoder mempty
       BackendRoute_Websocket -> PathSegment "ws" $ unitEncoder mempty
     InR obeliskRoute -> obeliskRouteSegment obeliskRoute $ \case

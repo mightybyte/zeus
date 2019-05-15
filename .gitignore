@@ -9,3 +9,4 @@ config/backend
 zeus-access-token
 zeus.db
 .ghc.environment*
+log

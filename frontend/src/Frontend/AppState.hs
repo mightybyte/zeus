@@ -40,18 +40,21 @@ data AppTriggers = AppTriggers
     { _trigger_getAccounts :: Batch ()
     , _trigger_connectAccount :: Batch (ConnectedAccountT Maybe)
     , _trigger_delAccounts :: Batch Int
+    , _trigger_getJobs :: Batch ()
     , _trigger_cancelJobs :: Batch Int
     } deriving Generic
 
 instance Semigroup AppTriggers where
-  (AppTriggers ga1 ca1 da1 cj1) <> (AppTriggers ga2 ca2 da2 cj2) = AppTriggers
+  (AppTriggers ga1 ca1 da1 gj1 cj1) <> (AppTriggers ga2 ca2 da2 gj2 cj2) = AppTriggers
     (ga1 <> ga2)
     (ca1 <> ca2)
     (da1 <> da2)
+    (gj1 <> gj2)
     (cj1 <> cj2)
 
 instance Monoid AppTriggers where
     mempty = AppTriggers
+      mempty
       mempty
       mempty
       mempty
@@ -88,6 +91,7 @@ stateManager ft = do
           [ Up_ListAccounts <$ fmapMaybe (listToMaybe . _trigger_getAccounts) ft
           , Up_ConnectAccount . _trigger_connectAccount <$> ft
           , Up_DelAccounts . _trigger_delAccounts <$> ft
+          , Up_GetJobs <$ fmapMaybe (listToMaybe . _trigger_getJobs) ft
           ]
     let cfg = WebSocketConfig upEvent never True []
     route <- liftIO getAppRoute

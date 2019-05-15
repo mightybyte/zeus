@@ -17,6 +17,7 @@ import           Data.Map (Map)
 import qualified Data.Map as M
 import qualified Network.WebSockets as WS
 ------------------------------------------------------------------------------
+import           Common.Api
 import           Backend.WsUtils
 ------------------------------------------------------------------------------
 
@@ -42,7 +43,7 @@ removeConnection cid (ConnRepo ref) = atomicModifyIORef ref f
   where
     f (next, m) = ((next, M.delete cid m), ())
 
-broadcast :: ToJSON a => ConnRepo -> a -> IO ()
+broadcast :: ConnRepo -> Down -> IO ()
 broadcast (ConnRepo cRef) cmd = do
   (_,conns) <- readIORef cRef
   forM_ (M.elems conns) $ \(conn) -> do
