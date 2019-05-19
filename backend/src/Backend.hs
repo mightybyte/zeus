@@ -216,7 +216,7 @@ addRepo env wsConn (Repo _ (Just fn) (ConnectedAccountId (Just o)) (Just n) (Jus
     Just ca -> do
       putStrLn $ "Setting up new webhook for " <> show ca
       erw <- setupWebhook
-        "http://mightybyte.net:8000" --(toS $ _serverEnv_publicUrl env)
+        (toS $ _serverEnv_publicUrl env)
         (OAuth $ toS $ _connectedAccount_accessToken ca)
         (_connectedAccount_name ca) n (_serverEnv_secretToken env) AllowInsecure
       case erw of
