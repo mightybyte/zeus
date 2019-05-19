@@ -26,7 +26,7 @@ data ListState = EmptyPlaceholder | AddForm | ListTable
 
 data TableAction t a = TableAction
   { tableAction_showAddForm :: Event t ()
-  , tableAction_cancelAdd :: Event t ()
+  , tableAction_showList :: Event t ()
   }
 
 instance Reflex t => Default (TableAction t a) where

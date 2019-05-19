@@ -39,7 +39,7 @@ reposWidget = mdo
   listState <- holdDyn EmptyPlaceholder $ leftmost
     [ listToState <$> leftmost
         [ updated (_as_accounts as)
-        , tag (current $ _as_accounts as) cancel]
+        , tag (current $ _as_accounts as) showList]
     , AddForm <$ showForm
     ]
   let repoMap = _as_repos as
@@ -49,7 +49,7 @@ reposWidget = mdo
         ListTable -> reposList repoMap
   ee <- dyn (widget <$> listState)
   showForm <- switch <$> hold never (tableAction_showAddForm <$> ee)
-  cancel <- switch <$> hold never (tableAction_cancelAdd <$> ee)
+  showList <- switch <$> hold never (tableAction_showList <$> ee)
   return ()
 
 textDynColumn
@@ -93,10 +93,10 @@ addRepo = do
       (e1,_) <- elDynKlass' "button" as $ text "Add Repo"
       (e2,_) <- elAttr' "button" ("class" =: "ui button") $ text "Cancel"
       trigger trigger_addRepo $ tag (current dr) (domEvent Click e1)
-      return $ TableAction never (domEvent Click e2)
+      return $ TableAction never (leftmost [domEvent Click e1, domEvent Click e2])
 
 unfilledRepo :: RepoT Maybe
-unfilledRepo = Repo Nothing Nothing (ConnectedAccountId Nothing) Nothing Nothing Nothing Nothing
+unfilledRepo = Repo Nothing Nothing (ConnectedAccountId Nothing) Nothing Nothing Nothing Nothing Nothing
 
 newRepoForm
   :: MonadApp t m
@@ -136,7 +136,7 @@ newRepoForm iv sv = do
                 maid = ConnectedAccountId $ Just aid
                 ownerName = _connectedAccount_name a
                 fn = mkFullName (_connectedAccount_provider a) ownerName n
-             in Repo Nothing (Just fn) maid (Just n) (Just cm) (Just bc) t
+             in Repo Nothing (Just fn) maid (Just n) (Just cm) (Just bc) t Nothing
   where
     showAccount a =
       (fromJust $ _connectedAccount_id a, accountText a)
@@ -149,5 +149,5 @@ mkFullName GitHub owner name = owner <> "/" <> name
 mkFullName GitLab owner name = owner <> "/" <> name
 
 isValidRepo :: RepoT Maybe -> Bool
-isValidRepo (Repo _ (Just _) (ConnectedAccountId (Just _)) (Just _) (Just _) (Just _) (Just _)) = True
+isValidRepo (Repo _ (Just _) (ConnectedAccountId (Just _)) (Just _) (Just _) (Just _) (Just _) _) = True
 isValidRepo _ = False

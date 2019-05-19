@@ -34,7 +34,6 @@ project ./. ({ pkgs, ... }: {
     beam-migrate = dontCheck (self.callCabal2nix "beam-migrate" "${beam-src}/beam-migrate" {});
     beam-sqlite = dontCheck (self.callCabal2nix "beam-sqlite" "${beam-src}/beam-sqlite" {});
 
-    # github = dontHaddock (doJailbreak (dontCheck (self.callCabal2nix "github" "/Users/doug/code/public/github" {})));
     github = dontHaddock (doJailbreak (dontCheck (self.callCabal2nix "github" (pkgs.fetchFromGitHub {
         owner = "mightybyte";
         repo = "github";

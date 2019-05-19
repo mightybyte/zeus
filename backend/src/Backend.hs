@@ -29,12 +29,19 @@ import           Database.Beam.Sqlite.Migrate
 import           Database.Beam.Migrate.Simple
 import           Database.SQLite.Simple
 import           GitHub.Auth
+import qualified GitHub.Data as GH
+import           GitHub.Data.Name
+import           GitHub.Data.Id
+import           GitHub.Data.Webhooks
+import           GitHub.Endpoints.Repos.Webhooks
 import qualified Network.WebSockets as WS
 import           Obelisk.Backend
+import qualified Obelisk.ExecutableConfig as ObConfig
 import           Obelisk.Route
 import           Scrub
 import           Snap.Core
 import           System.Directory
+import           System.Environment
 import           System.Mem.Weak
 import           Text.Printf
 ------------------------------------------------------------------------------
@@ -82,7 +89,15 @@ backend = Backend
       buildQueue <- atomically newTQueue
       connRepo <- newConnRepo
       buildThreads <- newIORef mempty
-      let env = ServerEnv appRoute secretToken dbConn buildQueue connRepo buildThreads
+      hookBaseUrl <- ObConfig.get "webhook-baseurl" >>= \case
+        Nothing -> do
+          putStrLn "No webhook-baseurl override file found"
+          return appRoute
+        Just hbu -> do
+          putStrLn "Found override for webhook-baseurl"
+          return $ T.strip hbu
+      putStrLn $ "hookBaseUrl set to " <> show hookBaseUrl
+      let env = ServerEnv appRoute hookBaseUrl secretToken dbConn buildQueue connRepo buildThreads
       _ <- forkIO $ buildManagerThread env
       serve $ serveBackendRoute env
   , _backend_routeEncoder = backendRouteEncoder
@@ -210,7 +225,9 @@ addRepo
   -> WS.Connection
   -> RepoT Maybe
   -> IO ()
-addRepo env wsConn (Repo _ (Just fn) (ConnectedAccountId (Just o)) (Just n) (Just c) (Just b) (Just t)) = do
+addRepo env wsConn repo = do
+  let Repo _ (Just fn) (ConnectedAccountId (Just o)) (Just n) (Just c)
+           (Just b) (Just t) _ = repo
   mca <- beamQuery env $ do
     runSelectReturningOne $ select $ do
       account <- all_ (ciDb ^. ciDb_connectedAccounts)
@@ -221,12 +238,13 @@ addRepo env wsConn (Repo _ (Just fn) (ConnectedAccountId (Just o)) (Just n) (Jus
     Just ca -> do
       putStrLn $ "Setting up new webhook for " <> show ca
       erw <- setupWebhook
-        (toS $ _serverEnv_publicUrl env)
+        (toS $ _serverEnv_webhookBaseUrl env)
         (OAuth $ toS $ _connectedAccount_accessToken ca)
         (_connectedAccount_name ca) n (_serverEnv_secretToken env) AllowInsecure
       case erw of
         Left e -> wsSend wsConn $ Down_Alert $ "Error setting up webhook: " <> (T.pack $ show e)
-        Right _ -> do
+        Right rw -> do
+          let Id hid = repoWebhookId rw
           putStrLn "Repository hook setup successful"
           beamQuery env $ do
             runInsert $ insert (_ciDb_repos ciDb) $ insertExpressions
@@ -237,6 +255,7 @@ addRepo env wsConn (Repo _ (Just fn) (ConnectedAccountId (Just o)) (Just n) (Jus
                     (val_ c)
                     (val_ b)
                     (val_ t)
+                    (val_ hid)
               ]
           as <- beamQuery env $ do
             runSelectReturningList $ select $ all_ (_ciDb_repos ciDb)
@@ -244,15 +263,33 @@ addRepo env wsConn (Repo _ (Just fn) (ConnectedAccountId (Just o)) (Just n) (Jus
 addRepo _ _ _ = putStrLn "AddRepo got bad argument"
 
 deleteRepo :: ServerEnv -> WS.Connection -> RepoId -> IO ()
-deleteRepo env wsConn rs = do
-  beamQuery env $
-    runDelete $ delete (_ciDb_repos ciDb) $
-        (\r -> r ^. repo_id ==. val_ (repoKeyToInt rs))
+deleteRepo env wsConn rid = do
+  mrepo <- beamQuery env $
+    runSelectReturningOne $ select $ do
+      repo <- all_ (_ciDb_repos ciDb)
+      owner <- all_ (_ciDb_connectedAccounts ciDb)
+      guard_ (repo ^. repo_id ==. (val_ $ repoKeyToInt rid))
+      guard_ (_repo_owner repo `references_` owner)
+      return (repo, owner)
 
-  as <- beamQuery env $
-    runSelectReturningList $ select $
-      all_ (_ciDb_repos ciDb)
-  broadcast (_serverEnv_connRepo env) $ Down_Repos as
+  case mrepo of
+    Nothing -> return ()
+    Just (r,o) -> do
+      deleteRepoWebhook'
+        (OAuth $ toS $ _connectedAccount_accessToken o)
+        (N $ _connectedAccount_name o)
+        (N $ _repo_name r)
+        (Id $ _repo_hookId r)
+
+      beamQuery env $
+        runDelete $ delete (_ciDb_repos ciDb) $
+            (\r -> r ^. repo_id ==. val_ (repoKeyToInt rid))
+
+      as <- beamQuery env $
+        runSelectReturningList $ select $
+          all_ (_ciDb_repos ciDb)
+      broadcast (_serverEnv_connRepo env) $ Down_Repos as
+      return ()
 
 delAccounts :: ServerEnv -> WS.Connection -> [ConnectedAccountId] -> IO ()
 delAccounts env wsConn cas = do

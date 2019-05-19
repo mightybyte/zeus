@@ -37,7 +37,7 @@ accountsWidget = mdo
   listState <- holdDyn EmptyPlaceholder $ leftmost
     [ listToState <$> leftmost
         [ updated (_as_accounts as)
-        , tag (current $ _as_accounts as) cancel]
+        , tag (current $ _as_accounts as) showList]
     , AddForm <$ showForm
     ]
   let widget s = case s of
@@ -46,7 +46,7 @@ accountsWidget = mdo
         ListTable -> accountsList (_as_accounts as)
   ee <- dyn (widget <$> listState)
   showForm <- switch <$> hold never (tableAction_showAddForm <$> ee)
-  cancel <- switch <$> hold never (tableAction_cancelAdd <$> ee)
+  showList <- switch <$> hold never (tableAction_showList <$> ee)
   return ()
 
 addAccount

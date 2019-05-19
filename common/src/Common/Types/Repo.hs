@@ -56,16 +56,18 @@ data RepoT f = Repo
   , _repo_buildCmd :: C f Text
   , _repo_timeout :: C f Int
   -- ^ Build timeout in seconds
+  , _repo_hookId :: C f Int
+  -- ^ Allows us to delete the webhook
   } deriving Generic
 
 repoToMaybe :: RepoT Identity -> RepoT Maybe
-repoToMaybe (Repo i f (ConnectedAccountId o) n c b t) = Repo (Just i) (Just f)
-    (ConnectedAccountId $ Just o) (Just n) (Just c) (Just b) (Just t)
+repoToMaybe (Repo i f (ConnectedAccountId o) n c b t h) = Repo (Just i) (Just f)
+    (ConnectedAccountId $ Just o) (Just n) (Just c) (Just b) (Just t) (Just h)
 
 Repo (LensFor repo_id) (LensFor repo_fullName)
      (ConnectedAccountId (LensFor repo_owner))
      (LensFor repo_name) (LensFor rep_cloneMethod) (LensFor repo_buildCmd)
-     (LensFor repo_timeout) =
+     (LensFor repo_timeout) (LensFor repo_hookId) =
      tableLenses
 
 type Repo = RepoT Identity
