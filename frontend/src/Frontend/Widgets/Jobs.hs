@@ -58,16 +58,15 @@ jobsList
   -> m ()
 jobsList as = do
   let mkField f _ v = el "td" $ do
-        dynText (f <$> v)
+        f v
         return never
-      mkField' f _ v = el "td" $ f v >> return never
-  cancel <- genericTable (M.mapKeys Down <$> as)
+  cancel <- genericTableG def (M.mapKeys Down <$> as)
     [ ("Status", (\_ v -> el "td" $ dynStatusWidget (_buildJob_status <$> v)))
-    , ("ID", mkField $ tshow . _buildJob_id)
+    , ("ID", mkField $ dynText . fmap (tshow . _buildJob_id))
     , ("Repository", \_ v -> el "td" (repoColumnWidget v) >> return never)
-    , ("Git Ref", mkField $ _rbi_gitRef . _buildJob_repoBuildInfo)
+    , ("Git Ref", mkField $ dynText . fmap (_rbi_gitRef . _buildJob_repoBuildInfo))
     , ("Commit Hash", \_ v -> el "td" (commitWidget v) >> return never)
-    , ("Time", mkField' dynJobTimeWidget)
+    , ("Time", mkField dynJobTimeWidget)
     , ("", (\(Down k) v -> elClass "td" "right aligned collapsing" $ cancelOrRerun k (_buildJob_status <$> v)))
     ]
   triggerBatch trigger_cancelJobs $ fmap (\(Down a) -> a) . M.keys <$> cancel
