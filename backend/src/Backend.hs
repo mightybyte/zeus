@@ -23,13 +23,13 @@ import           Data.String.Conv
 import           Data.Text (Text)
 import qualified Data.Text as T
 import qualified Data.Text.IO as T
+import           Data.Time
 import           Database.Beam
 import           Database.Beam.Sqlite
 import           Database.Beam.Sqlite.Migrate
 import           Database.Beam.Migrate.Simple
 import           Database.SQLite.Simple
 import           GitHub.Auth
-import qualified GitHub.Data as GH
 import           GitHub.Data.Name
 import           GitHub.Data.Id
 import           GitHub.Data.Webhooks
@@ -41,7 +41,6 @@ import           Obelisk.Route
 import           Scrub
 import           Snap.Core
 import           System.Directory
-import           System.Environment
 import           System.Mem.Weak
 import           Text.Printf
 ------------------------------------------------------------------------------
@@ -125,11 +124,11 @@ talkClient env cid conn = do
           putStrLn $ "ERROR: websocketHandler couldn't decode message:"
           putStrLn e
         Right Up_ListAccounts -> listAccounts env conn
-        Right (Up_ConnectAccount cas) -> mapM_ (connectAccount env conn) cas
+        Right (Up_ConnectAccount cas) -> mapM_ (connectAccount env) cas
         Right (Up_DelAccounts cas) -> delAccounts env conn cas
         Right Up_ListRepos -> listRepos env conn
         Right (Up_AddRepo rs) -> mapM_ (addRepo env conn) rs
-        Right (Up_DelRepos rs) -> mapM_ (deleteRepo env conn) rs
+        Right (Up_DelRepos rs) -> mapM_ (deleteRepo env) rs
         Right Up_GetJobs -> do
           let dbConn = _serverEnv_db env
           jobs <- getJobsFromDb dbConn
@@ -156,6 +155,17 @@ rerunJob env (BuildJobId jid) = do
       Nothing -> printf "Job ID %d does not exist\n" jid
       Just job -> do
         printf "Re-running job %d\n" jid
+        t <- getCurrentTime
+        runBeamSqliteDebug putStrLn dbConn $ do
+          runUpdate $
+            update (_ciDb_buildJobs ciDb)
+                   (\j -> mconcat
+                            [ j ^. buildJob_receivedAt <-. val_ t
+                            , j ^. buildJob_startedAt <-. val_ Nothing
+                            , j ^. buildJob_endedAt <-. val_ Nothing
+                            , j ^. buildJob_status <-. val_ JobPending ])
+                   (\j -> _buildJob_id j ==. val_ jid)
+          return ()
         void $ atomically $ writeTQueue (_serverEnv_buildQueue env) $
           BuildMsg (_buildJob_id job) (_buildJob_repoBuildInfo job)
 
@@ -188,10 +198,9 @@ updateJobStatus env jid status =
 
 connectAccount
   :: ServerEnv
-  -> WS.Connection
   -> ConnectedAccountT Maybe
   -> IO ()
-connectAccount env wsConn (ConnectedAccount _ n a pr) = do
+connectAccount env (ConnectedAccount _ n a pr) = do
   beamQuery env $ do
     runInsert $ insert (_ciDb_connectedAccounts ciDb) $ insertExpressions
            $ maybeToList $ ConnectedAccount default_
@@ -210,6 +219,7 @@ listAccounts env wsConn = do
   wsSend wsConn $ Down_ConnectedAccounts $ map (getScrubbed . scrub) accounts
 
 
+queryAllRepos :: ServerEnv -> IO [Repo]
 queryAllRepos env =
   beamQuery env $
     runSelectReturningList $ select $ do
@@ -225,9 +235,9 @@ addRepo
   -> WS.Connection
   -> RepoT Maybe
   -> IO ()
-addRepo env wsConn repo = do
-  let Repo _ (Just fn) (ConnectedAccountId (Just o)) (Just n) (Just c)
-           (Just b) (Just t) _ = repo
+addRepo env wsConn
+        (Repo _ (Just fn) (ConnectedAccountId (Just o)) (Just n)
+              (Just c) (Just b) (Just t) _) = do
   mca <- beamQuery env $ do
     runSelectReturningOne $ select $ do
       account <- all_ (ciDb ^. ciDb_connectedAccounts)
@@ -262,8 +272,8 @@ addRepo env wsConn repo = do
           broadcast (_serverEnv_connRepo env) $ Down_Repos as
 addRepo _ _ _ = putStrLn "AddRepo got bad argument"
 
-deleteRepo :: ServerEnv -> WS.Connection -> RepoId -> IO ()
-deleteRepo env wsConn rid = do
+deleteRepo :: ServerEnv -> RepoId -> IO ()
+deleteRepo env rid = do
   mrepo <- beamQuery env $
     runSelectReturningOne $ select $ do
       repo <- all_ (_ciDb_repos ciDb)
@@ -274,12 +284,12 @@ deleteRepo env wsConn rid = do
 
   case mrepo of
     Nothing -> return ()
-    Just (r,o) -> do
-      deleteRepoWebhook'
-        (OAuth $ toS $ _connectedAccount_accessToken o)
-        (N $ _connectedAccount_name o)
-        (N $ _repo_name r)
-        (Id $ _repo_hookId r)
+    Just (repo,owner) -> do
+      _ <- deleteRepoWebhook'
+        (OAuth $ toS $ _connectedAccount_accessToken owner)
+        (N $ _connectedAccount_name owner)
+        (N $ _repo_name repo)
+        (Id $ _repo_hookId repo)
 
       beamQuery env $
         runDelete $ delete (_ciDb_repos ciDb) $

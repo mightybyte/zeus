@@ -138,8 +138,8 @@ newRepoForm iv sv = do
                 fn = mkFullName (_connectedAccount_provider a) ownerName n
              in Repo Nothing (Just fn) maid (Just n) (Just cm) (Just bc) t Nothing
   where
-    showAccount a =
-      (fromJust $ _connectedAccount_id a, accountText a)
+    --showAccount a =
+    --  (fromJust $ _connectedAccount_id a, accountText a)
     accountText a =
        providerUrl (_connectedAccount_provider a) <> "/" <>
               (_connectedAccount_name a)

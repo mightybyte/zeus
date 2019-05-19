@@ -18,6 +18,7 @@ import Control.Category
 -}
 
 ------------------------------------------------------------------------------
+import           Control.Monad.Except
 import           Data.Text (Text)
 import qualified Data.Text as T
 import           Data.Functor.Identity
@@ -41,10 +42,16 @@ data BackendRoute :: * -> * where
 
 data FrontendRoute :: * -> * where
   FrontendRoute_Main :: FrontendRoute ()
+  FrontendRoute_Jobs :: FrontendRoute ()
+  FrontendRoute_Repos :: FrontendRoute ()
+  --FrontendRoute_Repos :: FrontendRoute (R CrudRoute)
+  FrontendRoute_Accounts :: FrontendRoute ()
   -- This type is used to define frontend routes, i.e. ones for which the backend will serve the frontend.
 
+type FullRoute = Sum BackendRoute (ObeliskRoute FrontendRoute)
+
 backendRouteEncoder
-  :: Encoder (Either Text) Identity (R (Sum BackendRoute (ObeliskRoute FrontendRoute))) PageName
+  :: Encoder (Either Text) Identity (R FullRoute) PageName
 backendRouteEncoder = handleEncoder (const (InL BackendRoute_Missing :/ ())) $
   pathComponentEncoder $ \case
     InL backendRoute -> case backendRoute of
@@ -56,7 +63,17 @@ backendRouteEncoder = handleEncoder (const (InL BackendRoute_Missing :/ ())) $
       -- The encoder given to PathEnd determines how to parse query parameters,
       -- in this example, we have none, so we insist on it.
       FrontendRoute_Main -> PathEnd $ unitEncoder mempty
+      FrontendRoute_Jobs -> PathSegment "jobs" $ unitEncoder mempty
+      FrontendRoute_Repos -> PathSegment "repos" $ unitEncoder mempty
+      FrontendRoute_Accounts -> PathSegment "accounts" $ unitEncoder mempty
 
+-- | Stolen from Obelisk as it is not exported. (Probably for a reason, but it
+-- seems to do what we want right now.
+pathOnlyEncoderIgnoringQuery :: (Applicative check, MonadError Text parse) => Encoder check parse [Text] PageName
+pathOnlyEncoderIgnoringQuery = unsafeMkEncoder $ EncoderImpl
+  { _encoderImpl_decode = \(path, _query) -> pure path
+  , _encoderImpl_encode = \path -> (path, mempty)
+  }
 
 concat <$> mapM deriveRouteComponent
   [ ''BackendRoute

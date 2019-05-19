@@ -76,7 +76,7 @@ instance MonadWidget t m => Default (TableConfig k v t m a) where
     , _tableConfig_headWrapper = el "thead" . el "tr"
     , _tableConfig_headRowWrapper = el "th" . text . fst
     , _tableConfig_bodyWrapper = el "tbody"
-    , _tableConfig_rowFunc = (\k v -> el "tr")
+    , _tableConfig_rowFunc = (\_ _ -> el "tr")
     , _tableConfig_cellFunc = (\k v (_,f) -> f k v)
     }
 

@@ -58,7 +58,7 @@ jobsList
   -> m ()
 jobsList as = do
   let mkField f _ v = el "td" $ do
-        f v
+        _ <- f v
         return never
   cancel <- genericTableG def (M.mapKeys Down <$> as)
     [ ("Status", (\_ v -> el "td" $ dynStatusWidget (_buildJob_status <$> v)))
