@@ -45,24 +45,27 @@ data AppTriggers = AppTriggers
     , _trigger_delAccounts :: Batch ConnectedAccountId
     , _trigger_getRepos :: Batch ()
     , _trigger_addRepo :: Batch (RepoT Maybe)
+    , _trigger_delRepos :: Batch RepoId
     , _trigger_getJobs :: Batch ()
     , _trigger_cancelJobs :: Batch (PrimaryKey BuildJobT Identity)
     , _trigger_rerunJobs :: Batch (PrimaryKey BuildJobT Identity)
     } deriving Generic
 
 instance Semigroup AppTriggers where
-  (AppTriggers ga1 ca1 da1 gr1 ar1 gj1 cj1 rj1) <> (AppTriggers ga2 ca2 da2 gr2 ar2 gj2 cj2 rj2) = AppTriggers
+  (AppTriggers ga1 ca1 da1 gr1 ar1 dr1 gj1 cj1 rj1) <> (AppTriggers ga2 ca2 da2 gr2 ar2 dr2 gj2 cj2 rj2) = AppTriggers
     (ga1 <> ga2)
     (ca1 <> ca2)
     (da1 <> da2)
     (gr1 <> gr2)
     (ar1 <> ar2)
+    (dr1 <> dr2)
     (gj1 <> gj2)
     (cj1 <> cj2)
     (rj1 <> rj2)
 
 instance Monoid AppTriggers where
     mempty = AppTriggers
+      mempty
       mempty
       mempty
       mempty
@@ -109,6 +112,7 @@ stateManager ft = do
           , Up_DelAccounts . _trigger_delAccounts <$> ft
           , Up_ListRepos <$ fmapMaybe (listToMaybe . _trigger_getRepos) ft
           , Up_AddRepo . _trigger_addRepo <$> ft
+          , Up_DelRepos . _trigger_delRepos <$> ft
           , Up_GetJobs <$ fmapMaybe (listToMaybe . _trigger_getJobs) ft
           , Up_CancelJobs . _trigger_cancelJobs <$> ft
           , Up_RerunJobs . _trigger_rerunJobs <$> ft

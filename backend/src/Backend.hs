@@ -114,6 +114,7 @@ talkClient env cid conn = do
         Right (Up_DelAccounts cas) -> delAccounts env conn cas
         Right Up_ListRepos -> listRepos env conn
         Right (Up_AddRepo rs) -> mapM_ (addRepo env conn) rs
+        Right (Up_DelRepos rs) -> mapM_ (deleteRepo env conn) rs
         Right Up_GetJobs -> do
           let dbConn = _serverEnv_db env
           jobs <- getJobsFromDb dbConn
@@ -184,7 +185,7 @@ connectAccount env wsConn (ConnectedAccount _ n a pr) = do
               <*> (val_ <$> pr)
   as <- beamQuery env $ do
     runSelectReturningList $ select $ all_ (_ciDb_connectedAccounts ciDb)
-  wsSend wsConn $ Down_ConnectedAccounts $ map (getScrubbed . scrub) as
+  broadcast (_serverEnv_connRepo env) $ Down_ConnectedAccounts $ map (getScrubbed . scrub) as
 
 listAccounts :: ServerEnv -> WS.Connection -> IO ()
 listAccounts env wsConn = do
@@ -193,12 +194,16 @@ listAccounts env wsConn = do
       all_ (_ciDb_connectedAccounts ciDb)
   wsSend wsConn $ Down_ConnectedAccounts $ map (getScrubbed . scrub) accounts
 
-listRepos :: ServerEnv -> WS.Connection -> IO ()
-listRepos env wsConn = do
-  accounts <- beamQuery env $
+
+queryAllRepos env =
+  beamQuery env $
     runSelectReturningList $ select $ do
       all_ (_ciDb_repos ciDb)
-  wsSend wsConn $ Down_Repos accounts
+
+listRepos :: ServerEnv -> WS.Connection -> IO ()
+listRepos env wsConn = do
+  repos <- queryAllRepos env
+  wsSend wsConn $ Down_Repos repos
 
 addRepo
   :: ServerEnv
@@ -235,8 +240,19 @@ addRepo env wsConn (Repo _ (Just fn) (ConnectedAccountId (Just o)) (Just n) (Jus
               ]
           as <- beamQuery env $ do
             runSelectReturningList $ select $ all_ (_ciDb_repos ciDb)
-          wsSend wsConn $ Down_Repos as
+          broadcast (_serverEnv_connRepo env) $ Down_Repos as
 addRepo _ _ _ = putStrLn "AddRepo got bad argument"
+
+deleteRepo :: ServerEnv -> WS.Connection -> RepoId -> IO ()
+deleteRepo env wsConn rs = do
+  beamQuery env $
+    runDelete $ delete (_ciDb_repos ciDb) $
+        (\r -> r ^. repo_id ==. val_ (repoKeyToInt rs))
+
+  as <- beamQuery env $
+    runSelectReturningList $ select $
+      all_ (_ciDb_repos ciDb)
+  broadcast (_serverEnv_connRepo env) $ Down_Repos as
 
 delAccounts :: ServerEnv -> WS.Connection -> [ConnectedAccountId] -> IO ()
 delAccounts env wsConn cas = do

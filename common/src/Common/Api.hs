@@ -28,6 +28,7 @@ data Up
   | Up_DelAccounts (Batch ConnectedAccountId)
   | Up_ListRepos
   | Up_AddRepo (Batch (RepoT Maybe))
+  | Up_DelRepos (Batch RepoId)
   | Up_GetJobs
   | Up_CancelJobs (Batch BuildJobId)
   | Up_RerunJobs (Batch BuildJobId)

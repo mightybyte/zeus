@@ -57,10 +57,10 @@ textDynColumn
   => (a f -> Text)
   -> PrimaryKey a f
   -> Dynamic t (a f)
-  -> m (Event t ())
+  -> m ()
 textDynColumn f _ v = el "td" $ do
   dynText (f <$> v)
-  return never
+  return ()
 
 reposList
   :: MonadApp t m
@@ -68,7 +68,7 @@ reposList
   -> m (TableAction t (RepoT Maybe))
 reposList as = do
   add <- SemUI.button def $ text "Add Repository"
-  _ <- genericTable as
+  del <- genericRemovableTable as
     [ ("ID", textDynColumn (tshow . _repo_id))
     --, ("Owner", textDynColumn _repo_owner)
     , ("Full Name", textDynColumn $ _repo_fullName)
@@ -78,7 +78,7 @@ reposList as = do
     --, ("Build Command", \_ v -> el "td" (commitWidget v) >> return never)
     --, ("", (\k v -> elClass "td" "right aligned collapsing" $ cancelButton k v))
     ]
-  --triggerBatch trigger_delAccounts $ M.keys <$> del
+  triggerBatch trigger_delRepos $ M.keys <$> del
   return $ TableAction add never
 
 addRepo

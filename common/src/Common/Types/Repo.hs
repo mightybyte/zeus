@@ -106,3 +106,6 @@ instance Table RepoT where
   data PrimaryKey RepoT f = RepoId (Columnar f Int)
     deriving (Generic, Beamable)
   primaryKey = RepoId . _repo_id
+
+repoKeyToInt :: PrimaryKey RepoT Identity -> Int
+repoKeyToInt (RepoId k) = k
