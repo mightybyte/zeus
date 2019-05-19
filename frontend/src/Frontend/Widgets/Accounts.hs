@@ -66,8 +66,6 @@ accountsList
   => Dynamic t (BeamMap Identity ConnectedAccountT)
   -> m (TableAction t (ConnectedAccountT Maybe))
 accountsList as = do
-  divClass "ui segment" $ do
-    elClass "h1" "ui header" $ text "Accounts"
     add <- SemUI.button def $ text "Add Account"
     let mkField f _ v = el "td" $ dynText (f <$> v) >> return ()
     del <- genericRemovableTable as

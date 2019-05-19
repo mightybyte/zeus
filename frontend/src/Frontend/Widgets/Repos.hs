@@ -67,7 +67,6 @@ reposList
   => Dynamic t (BeamMap Identity RepoT)
   -> m (TableAction t (RepoT Maybe))
 reposList as = do
-  elClass "h1" "ui header" $ text "Repositories"
   add <- SemUI.button def $ text "Add Repository"
   _ <- genericTable as
     [ ("ID", textDynColumn (tshow . _repo_id))

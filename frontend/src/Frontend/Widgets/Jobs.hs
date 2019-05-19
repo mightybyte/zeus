@@ -57,7 +57,6 @@ jobsList
   => Dynamic t (BeamMap Identity BuildJobT)
   -> m ()
 jobsList as = do
-  elClass "h1" "ui header" $ text "Jobs"
   let mkField f _ v = el "td" $ do
         dynText (f <$> v)
         return never
@@ -117,9 +116,21 @@ dynJobTimeWidget
   => Dynamic t BuildJob
   -> m ()
 dynJobTimeWidget dj = do
+  t <- liftIO getCurrentTime
   el "div" $ do
+    dti <- clockLossy 0.5 t
+    let showElapsed ti j =
+              case jobDuration j of
+                Just d -> formatDiffTime d
+                Nothing -> do
+                  if _buildJob_status j /= JobInProgress
+                    then "--:--"
+                    else
+                      maybe "--:--" formatDiffTime $ do
+                        s <- _buildJob_startedAt j
+                        return $ diffUTCTime (_tickInfo_lastUTC ti) s
     icon (Static "clock") def
-    dynText $ maybe "--:--" formatDiffTime . jobDuration <$> dj
+    dynText $ showElapsed <$> dti <*> dj
   let mkAttrs j = ("data-tooltip" =: maybe "" tshow (view buildJob_startedAt j) <>
                    "data-position" =: "bottom left")
   elDynAttr "div" (mkAttrs <$> dj) $ do
