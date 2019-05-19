@@ -5,34 +5,42 @@
 module Backend.Build where
 
 ------------------------------------------------------------------------------
+import           Control.Concurrent
 import           Control.Concurrent.STM
+import qualified Control.Exception as C
 import           Control.Lens
 import           Control.Monad
+import           Data.IORef
+import           Data.Map (Map)
+import qualified Data.Map as M
 import           Data.RNG
 import           Data.String.Conv
 import           Data.Time
 import           Database.Beam
 import           Database.Beam.Sqlite
-import           Database.SQLite.Simple
 import           System.Directory
 import           System.Exit
 import           System.FilePath
 import           System.IO
+import           System.Mem.Weak
 import           System.Process
 import           Text.Printf
 ------------------------------------------------------------------------------
 import           Backend.Db
-import           Backend.Types.ConnRepo
+import           Backend.Types.ServerEnv
 import           Backend.WsCmds
 import           Common.Types.ConnectedAccount
 import           Common.Types.BuildJob
 import           Common.Types.BuildMsg
+import           Common.Types.JobStatus
 import           Common.Types.Repo
 import           Common.Types.RepoBuildInfo
 ------------------------------------------------------------------------------
 
-buildThread :: Connection -> ConnRepo -> TQueue BuildMsg -> IO ()
-buildThread dbConn connRepo buildQueue = do
+buildManagerThread :: ServerEnv -> IO ()
+buildManagerThread se = do
+  let dbConn = _serverEnv_db se
+      buildQueue = _serverEnv_buildQueue se
   rng <- mkRNG
   forever $ do
     msg <- atomically $ readTQueue buildQueue
@@ -55,18 +63,18 @@ buildThread dbConn connRepo buildQueue = do
             return repo
         case repos of
           [] -> putStrLn "Warning: Got a webhook for a repo that is not in our DB.  Is the DB corrupted?"
-          [r] -> runBuild dbConn connRepo rng r msg
+          [r] -> runBuild se rng r msg
           _ -> printf "Warning: Got more repos than expected.  Why isn't %s unique?\n" (_rbi_repoFullName rbi)
 
 runBuild
-  :: Connection
-  -> ConnRepo
+  :: ServerEnv
   -> RNG
   -> Repo
   -> BuildMsg
   -> IO ()
-runBuild dbConn connRepo rng r msg = do
-  let rbi = _buildMsg_repoBuildInfo msg
+runBuild se rng repo msg = do
+  let dbConn = _serverEnv_db se
+      connRepo = _serverEnv_connRepo se
   start <- getCurrentTime
   runBeamSqliteDebug putStrLn dbConn $ do
     runUpdate $
@@ -75,11 +83,74 @@ runBuild dbConn connRepo rng r msg = do
                         [ job ^. buildJob_startedAt <-. val_ (Just start)
                         , job ^. buildJob_status <-. val_ JobInProgress ])
              (\job -> _buildJob_id job ==. val_ (_buildMsg_jobId msg))
-
     return ()
   broadcastJobs dbConn connRepo
+
+  ecMVar <- newEmptyMVar
+  wtid <- mkWeakThreadId =<< forkIO (buildThread ecMVar rng repo msg)
+  let jobId = fromIntegral $ _buildMsg_jobId msg
+  atomicModifyIORef (_serverEnv_buildThreads se) $ \m ->
+    (M.insert jobId wtid m, ())
+  jobStatus <- threadWatcher
+    (_serverEnv_buildThreads se)
+    start
+    (fromIntegral $ _repo_timeout repo)
+    ecMVar wtid jobId
+
+  end <- getCurrentTime
+  runBeamSqliteDebug putStrLn dbConn $ do
+    runUpdate $
+      update (_ciDb_buildJobs ciDb)
+             (\job -> mconcat
+                        [ job ^. buildJob_endedAt <-. val_ (Just end)
+                        , job ^. buildJob_status <-. val_ jobStatus ])
+             (\job -> _buildJob_id job ==. val_ (_buildMsg_jobId msg))
+
+  broadcastJobs dbConn connRepo
+  return ()
+
+threadWatcher
+  :: IORef (Map Int (Weak ThreadId))
+  -> UTCTime
+  -> NominalDiffTime
+  -- ^ The build timeout in seconds
+  -> MVar ExitCode
+  -> Weak ThreadId
+  -> Int
+  -> IO JobStatus
+threadWatcher buildThreads start timeout ecMVar wtid jobId = go
+  where
+    go = do
+      mec <- tryReadMVar ecMVar
+      case mec of
+        Nothing -> do
+          now <- getCurrentTime
+          if diffUTCTime now start > timeout
+            then do
+              mtid <- deRefWeak wtid
+              case mtid of
+                Nothing -> return JobVanished
+                Just tid -> do
+                  atomicModifyIORef buildThreads $ \m ->
+                    (M.delete jobId m, ())
+                  killThread tid
+                  return JobTimedOut
+            else do
+
+              threadDelay 5000000 >> go
+        Just ec -> return $ exitCodeToStatus ec
+
+buildThread
+  :: MVar ExitCode
+  -> RNG
+  -> Repo
+  -> BuildMsg
+  -> IO ()
+buildThread ecMVar rng repo msg = do
+  start <- getCurrentTime
+  let rbi = _buildMsg_repoBuildInfo msg
   tok <- randomToken 8 rng
-  let url = case _repo_cloneMethod r of
+  let url = case _repo_cloneMethod repo of
               SshClone -> _rbi_cloneUrlSsh rbi
               HttpClone -> _rbi_cloneUrlHttp rbi
   let timeStr = formatTime defaultTimeLocale "%Y%m%d%H%M%S" start
@@ -94,26 +165,17 @@ runBuild dbConn connRepo rng r msg = do
     let cloneCmd = printf "git clone %s" url
     logWithTimestamp lh cloneCmd
 
-    logWithTimestamp lh $ printf "Cloning %s to %s" (_repo_fullName r) cloneDir
+    logWithTimestamp lh $ printf "Cloning %s to %s" (_repo_fullName repo) cloneDir
     _ <- runInDirWithEnv lh cloneCmd cloneDir Nothing
-    let repoDir = cloneDir </> toS (_repo_name r)
+    let repoDir = cloneDir </> toS (_repo_name repo)
     let checkout = printf "git checkout %s" (_rbi_commitHash rbi)
     _ <- runInDirWithEnv lh checkout repoDir Nothing
-    exitCode <- runInDirWithEnv lh (toS $ _repo_buildCmd r) repoDir Nothing
+    exitCode <- runInDirWithEnv lh (toS $ _repo_buildCmd repo) repoDir Nothing
     end <- getCurrentTime
-    let finishMsg = printf "Build finished in %.3f seconds" (realToFrac (diffUTCTime end start) :: Double)
+    let finishMsg = printf "Build finished in %.3f seconds with exit code %s" (realToFrac (diffUTCTime end start) :: Double) (show exitCode)
     logWithTimestamp lh (finishMsg ++ "\n")
-    runBeamSqliteDebug putStrLn dbConn $ do
-      runUpdate $
-        update (_ciDb_buildJobs ciDb)
-               (\job -> mconcat
-                          [ job ^. buildJob_endedAt <-. val_ (Just end)
-                          , job ^. buildJob_status <-. val_ (exitCodeToStatus exitCode) ])
-               (\job -> _buildJob_id job ==. val_ (_buildMsg_jobId msg))
-
     putStrLn finishMsg
-    broadcastJobs dbConn connRepo
-  return ()
+    putMVar ecMVar exitCode
 
 exitCodeToStatus :: ExitCode -> JobStatus
 exitCodeToStatus ExitSuccess = JobSucceeded
@@ -129,6 +191,18 @@ logWithTimestamp lh msg = do
   !t <- getCurrentTime
   hPutStrLn lh $! "TIMESTAMP " <> show t <> ", " <> msg
 
+withCreateProcess_
+  :: String
+  -> CreateProcess
+  -> (Maybe Handle -> Maybe Handle -> Maybe Handle -> ProcessHandle -> IO a)
+  -> IO a
+withCreateProcess_ fun c action =
+    C.bracket (createProcess_ fun c) cleanup
+              (\(m_in, m_out, m_err, ph) -> action m_in m_out m_err ph)
+  where
+    cleanup (_, _, _, ph) = terminateProcess ph
+
+
 runInDirWithEnv :: Handle -> String -> FilePath -> Maybe [(String, String)] -> IO ExitCode
 runInDirWithEnv lh cmd dir e = do
   let cp = (shell cmd)
@@ -139,10 +213,12 @@ runInDirWithEnv lh cmd dir e = do
         }
   hPutStrLn lh $ printf "Executing command from %s:" (show $ cwd cp)
   logWithTimestamp lh $ getCommand cp
-  -- TODO Properly handle stdout and stderr
-  (_, _, _, ph) <- createProcess_ cmd cp
-  -- TODO Terminate process if it runs too long
-  exitCode <- waitForProcess ph
+  exitCode <- withCreateProcess_ "runInDirWithEnv" cp $ \_ _ _ ph -> do
+    -- TODO Properly handle stdout and stderr
+    ec <- waitForProcess ph
+    -- TODO Terminate process if it runs too long
+    return ec
+
   hPutStrLn lh $ "Exited with: " ++ show exitCode
   return exitCode
 

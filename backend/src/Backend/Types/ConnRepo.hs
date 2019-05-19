@@ -11,7 +11,6 @@ module Backend.Types.ConnRepo
 
 ------------------------------------------------------------------------------
 import           Control.Monad
-import           Data.Aeson
 import           Data.IORef
 import           Data.Map (Map)
 import qualified Data.Map as M

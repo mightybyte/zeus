@@ -16,8 +16,8 @@ import           Control.Monad
 import           Control.Monad.Reader
 import           Data.Bool
 import qualified Data.Map as M
-import           Data.Map (Map)
 import           Data.Maybe
+import           Database.Beam
 import           Reflex.Dom.Core
 import           Reflex.Dom.SemanticUI
 import qualified Reflex.Dom.SemanticUI as SemUI
@@ -40,12 +40,10 @@ accountsWidget = mdo
         , tag (current $ _as_accounts as) cancel]
     , AddForm <$ showForm
     ]
-  let mkPair ca = (fromJust $ _connectedAccount_id ca, ca)
-  let accountMap = M.fromList . map mkPair <$> _as_accounts as
   let widget s = case s of
         EmptyPlaceholder -> accountPlaceholder
         AddForm -> addAccount
-        ListTable -> accountsList accountMap --(_as_accounts as)
+        ListTable -> accountsList (_as_accounts as)
   ee <- dyn (widget <$> listState)
   showForm <- switch <$> hold never (tableAction_showAddForm <$> ee)
   cancel <- switch <$> hold never (tableAction_cancelAdd <$> ee)
@@ -65,7 +63,7 @@ addAccount = do
 
 accountsList
   :: MonadApp t m
-  => Dynamic t (Map Int (ConnectedAccountT Maybe))
+  => Dynamic t (BeamMap Identity ConnectedAccountT)
   -> m (TableAction t (ConnectedAccountT Maybe))
 accountsList as = do
   divClass "ui segment" $ do
@@ -73,9 +71,9 @@ accountsList as = do
     add <- SemUI.button def $ text "Add Account"
     let mkField f _ v = el "td" $ dynText (f <$> v) >> return ()
     del <- genericRemovableTable as
-      [ ("ID", mkField $ maybe "" tshow . _connectedAccount_id)
-      , ("Name", mkField $ fromMaybe "" . _connectedAccount_name)
-      , ("Provider", mkField $ maybe "" tshow . _connectedAccount_provider)
+      [ ("ID", mkField $ tshow . _connectedAccount_id)
+      , ("Name", mkField $ _connectedAccount_name)
+      , ("Provider", mkField $ tshow . _connectedAccount_provider)
       --, ("", (\_ _ -> elClass "td" "right aligned collapsing" deleteButton))
       ]
     triggerBatch trigger_delAccounts $ M.keys <$> del
@@ -103,14 +101,11 @@ newAccountForm iv sv = do
   dat <- labelledAs "Access Token" $ textField
     (fromMaybe "" $ _connectedAccount_accessToken =<< iv)
     (fromMaybe "" . (_connectedAccount_accessToken =<<) <$> sv)
-  dmp <- labelledAs "Provider" $ aForm
-    (_connectedAccount_provider =<< iv)
-    (fmap join $ _connectedAccount_provider <$$> sv)
+  dp <- labelledAs "Provider" $ filledDropdown
+    (fromMaybe GitHub $ _connectedAccount_provider =<< iv)
+    (fmapMaybe id $ fmap join $ _connectedAccount_provider <$$> sv)
   return $ do
-    mp <- dmp
-    case mp of
-      Nothing -> pure Nothing
-      Just _ -> do
-        n <- dn
-        a <- dat
-        pure $ Just $ ConnectedAccount Nothing (Just n) (Just a) mp
+    n <- dn
+    a <- dat
+    p <- dp
+    pure $ Just $ ConnectedAccount Nothing (Just n) (Just a) (Just p)

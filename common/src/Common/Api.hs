@@ -6,10 +6,12 @@ module Common.Api where
 ------------------------------------------------------------------------------
 import           Control.Lens
 import           Data.Aeson
+import           Data.Text (Text)
 import           Database.Beam
 ------------------------------------------------------------------------------
 import           Common.Types.BuildJob
 import           Common.Types.ConnectedAccount
+import           Common.Types.Repo
 ------------------------------------------------------------------------------
 
 type Batch a = [a]
@@ -23,12 +25,18 @@ batchOne a = [a]
 data Up
   = Up_ListAccounts
   | Up_ConnectAccount (Batch (ConnectedAccountT Maybe))
-  | Up_DelAccounts (Batch Int)
+  | Up_DelAccounts (Batch ConnectedAccountId)
+  | Up_ListRepos
+  | Up_AddRepo (Batch (RepoT Maybe))
   | Up_GetJobs
+  | Up_CancelJobs (Batch BuildJobId)
+  | Up_RerunJobs (Batch BuildJobId)
   deriving (Generic)
 
 data Down
-  = Down_ConnectedAccounts [ConnectedAccountT Maybe]
+  = Down_Alert Text
+  | Down_ConnectedAccounts [ConnectedAccount]
+  | Down_Repos [Repo]
   | Down_Jobs [BuildJob]
   deriving (Generic)
 

@@ -8,6 +8,7 @@ library
   build-depends:
       aeson
     , base
+    , beam-core
     , common
     , containers
     , data-default
@@ -34,6 +35,7 @@ library
     Frontend.Widgets.Common
     Frontend.Widgets.Jobs
     Frontend.Widgets.Form
+    Frontend.Widgets.Repos
   ghc-options: -Wall
 
 executable frontend

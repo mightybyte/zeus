@@ -3,10 +3,14 @@
 module Backend.Types.ServerEnv where
 
 ------------------------------------------------------------------------------
+import           Control.Concurrent
 import           Control.Concurrent.STM.TQueue
+import           Data.IORef
+import           Data.Map (Map)
 import           Data.Text (Text)
 import           Database.Beam.Sqlite
 import           Database.SQLite.Simple
+import           System.Mem.Weak
 ------------------------------------------------------------------------------
 import           Backend.Types.ConnRepo
 import           Common.Types.BuildMsg
@@ -21,6 +25,8 @@ data ServerEnv = ServerEnv
   , _serverEnv_db :: Connection
   , _serverEnv_buildQueue :: TQueue BuildMsg
   , _serverEnv_connRepo :: ConnRepo
+  -- ^ Websocket connection repo that allows job updates to be pushed
+  , _serverEnv_buildThreads :: IORef (Map Int (Weak ThreadId))
   }
 
 beamQuery :: ServerEnv -> SqliteM a -> IO a

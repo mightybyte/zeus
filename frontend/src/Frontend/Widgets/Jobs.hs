@@ -13,19 +13,22 @@
 module Frontend.Widgets.Jobs where
 
 ------------------------------------------------------------------------------
+import           Control.Lens
 import           Control.Monad
 import           Control.Monad.Reader
+import           Data.Ord
 import qualified Data.Map as M
-import           Data.Map (Map)
-import           Data.Maybe
 import           Data.Text (Text)
+import qualified Data.Text as T
 import           Data.Time
+import           Reflex.Network
 import           Reflex.Dom.Core
 import           Reflex.Dom.SemanticUI
 import qualified Reflex.Dom.SemanticUI as SemUI
-import           Reflex.Time
+import           Text.Printf
 ------------------------------------------------------------------------------
 import           Common.Types.BuildJob
+import           Common.Types.JobStatus
 import           Common.Types.RepoBuildInfo
 import           Frontend.App
 import           Frontend.AppState
@@ -36,36 +39,106 @@ jobsWidget :: MonadApp t m => m ()
 jobsWidget = mdo
   as <- ask
 
-  let mkPair ca = (_buildJob_id ca, ca)
-  let jobMap = M.fromList . map mkPair <$> _as_jobs as
-  let widget m = if M.null m then jobsPlaceholder else jobsList jobMap
-  ee <- dyn (widget <$> jobMap)
+  let jobMap = _as_jobs as
+  let widget m = if M.null m
+        then genericPlaceholder "Job history empty"
+        else jobsList jobMap
+  _ <- dyn (widget <$> jobMap)
   return ()
 
-jobDuration :: UTCTime -> BuildJob -> Maybe NominalDiffTime
-jobDuration now bj = do
+jobDuration :: BuildJob -> Maybe NominalDiffTime
+jobDuration bj = do
   start <- _buildJob_startedAt bj
-  pure $ diffUTCTime (fromMaybe now $ _buildJob_endedAt bj) start
+  end <- _buildJob_endedAt bj
+  pure $ diffUTCTime end start
 
 jobsList
   :: MonadApp t m
-  => Dynamic t (Map Int BuildJob)
+  => Dynamic t (BeamMap Identity BuildJobT)
   -> m ()
 jobsList as = do
-  divClass "ui segment" $ do
-    elClass "h1" "ui header" $ text "Jobs"
-    let mkField f _ v = el "td" $ dynText (f <$> v) >> return ()
-    now <- liftIO getCurrentTime
-    del <- genericRemovableTable as
-      [ ("Status", (\_ -> void . el "td" . dynStatusWidget . fmap _buildJob_status))
-      --, ("ID", mkField $ tshow . _buildJob_id)
-      , ("Repo", mkField $ _rbi_repoFullName . _buildJob_repoBuildInfo)
-      , ("Git Ref", mkField $ _rbi_gitRef . _buildJob_repoBuildInfo)
-      , ("Commit Hash", mkField $ _rbi_commitHash . _buildJob_repoBuildInfo)
-      , ("Duration", mkField $ maybe "Not started" diffTimeToRelativeEnglish . jobDuration now)
-      --, ("", (\_ _ -> elClass "td" "right aligned collapsing" deleteButton))
-      ]
-    triggerBatch trigger_cancelJobs $ M.keys <$> del
+  elClass "h1" "ui header" $ text "Jobs"
+  let mkField f _ v = el "td" $ do
+        dynText (f <$> v)
+        return never
+      mkField' f _ v = el "td" $ f v >> return never
+  cancel <- genericTable (M.mapKeys Down <$> as)
+    [ ("Status", (\_ v -> el "td" $ dynStatusWidget (_buildJob_status <$> v)))
+    , ("ID", mkField $ tshow . _buildJob_id)
+    , ("Repository", \_ v -> el "td" (repoColumnWidget v) >> return never)
+    , ("Git Ref", mkField $ _rbi_gitRef . _buildJob_repoBuildInfo)
+    , ("Commit Hash", \_ v -> el "td" (commitWidget v) >> return never)
+    , ("Time", mkField' dynJobTimeWidget)
+    , ("", (\(Down k) v -> elClass "td" "right aligned collapsing" $ cancelOrRerun k (_buildJob_status <$> v)))
+    ]
+  triggerBatch trigger_cancelJobs $ fmap (\(Down a) -> a) . M.keys <$> cancel
+
+cancelOrRerun :: MonadApp t m => BuildJobId -> Dynamic t JobStatus -> m (Event t ())
+cancelOrRerun k dj = do
+    _ <- networkView $ ffor dj $ \case
+      JobInProgress -> cancelButton k
+      JobCanceled -> rerunButton k
+      JobTimedOut -> rerunButton k
+      JobVanished -> rerunButton k
+      JobFailed -> rerunButton k
+      _ -> return ()
+    return never
+
+cancelButton :: MonadApp t m => BuildJobId -> m ()
+cancelButton k = do
+    (e,_) <- elAttr' "i" ("class" =: "cancel icon" <> "placeholder" =: "Cancel build") blank
+    triggerBatch trigger_cancelJobs $ [k] <$ domEvent Click e
+
+rerunButton :: MonadApp t m => BuildJobId -> m ()
+rerunButton k = do
+    (e,_) <- elAttr' "i" ("class" =: "redo icon" <> "placeholder" =: "Re-run build") blank
+    triggerBatch trigger_rerunJobs $ [k] <$ domEvent Click e
+
+repoColumnWidget
+  :: MonadWidget t m
+  => Dynamic t BuildJob
+  -> m ()
+repoColumnWidget dj = do
+  let drbi = _buildJob_repoBuildInfo <$> dj
+  let mkAttrs rbi = ("href" =: rbiRepoLink rbi <> "target" =: "_blank")
+  elDynAttr "a" (mkAttrs <$> drbi) $ dynText (_rbi_repoFullName <$> drbi)
+
+commitWidget
+  :: MonadWidget t m
+  => Dynamic t BuildJob
+  -> m ()
+commitWidget dj = do
+  let drbi = _buildJob_repoBuildInfo <$> dj
+  let mkAttrs rbi = ("href" =: rbiCommitLink rbi <> "target" =: "_blank")
+  elDynAttr "a" (mkAttrs <$> drbi) $ dynText (T.take 7 . _rbi_commitHash <$> drbi)
+
+dynJobTimeWidget
+  :: MonadWidget t m
+  => Dynamic t BuildJob
+  -> m ()
+dynJobTimeWidget dj = do
+  el "div" $ do
+    icon (Static "clock") def
+    dynText $ maybe "--:--" formatDiffTime . jobDuration <$> dj
+  let mkAttrs j = ("data-tooltip" =: maybe "" tshow (view buildJob_startedAt j) <>
+                   "data-position" =: "bottom left")
+  elDynAttr "div" (mkAttrs <$> dj) $ do
+    icon (Static "calendar") def
+    let f = maybe (text "") pastTimeWiget . view buildJob_startedAt
+    void $ dyn $ f <$> dj
+
+formatDiffTime :: NominalDiffTime -> Text
+formatDiffTime t = T.pack $
+    if h > 0
+      then printf "%d:%02d:%02d" h m (round s :: Int)
+      else printf "%02d:%02d" m (round s :: Int)
+  where
+    h :: Int
+    h = truncate $ t / oneHour
+    m :: Int
+    m = truncate $ t / oneMinute
+    s :: NominalDiffTime
+    s = t - (fromIntegral h * oneHour) - (fromIntegral m * oneMinute)
 
 pastTimeWiget
   :: MonadWidget t m
@@ -73,7 +146,14 @@ pastTimeWiget
   -> m ()
 pastTimeWiget t = do
   ti <- clockLossy 5 t
-  dynText $ diffTimeToRelativeEnglish . _tickInfo_alreadyElapsed <$> ti
+  let calcDiff lastTick = diffUTCTime (_tickInfo_lastUTC lastTick) t
+  dynText $ diffTimeToRelativeEnglish . calcDiff <$> ti
+
+dynPastTimeWiget
+  :: MonadWidget t m
+  => Dynamic t UTCTime
+  -> m ()
+dynPastTimeWiget t = void $ dyn $ pastTimeWiget <$> t
 
 showInt :: Int -> Text
 showInt = tshow
@@ -107,49 +187,42 @@ oneMonth = oneDay * 30
 oneYear :: NominalDiffTime
 oneYear = oneDay * 365
 
-jobsPlaceholder :: MonadApp t m => m ()
-jobsPlaceholder = do
-  divClass "ui placeholder segment" $ do
-    divClass "ui icon header" $ do
-      elClass "i" "dont icon" blank
-      text "Job history empty"
-
-statusWidget :: MonadApp t m => JobStatus -> m (Event t ())
-statusWidget status = do
-    let cfg = def & buttonConfig_color .~ Static (Just $ statusColor status)
-                  & buttonConfig_basic .~ Static True
-    SemUI.button cfg $ do
-      icon (Static $ statusIcon status) def
-      text $ statusMessage status
-
-dynStatusWidget :: MonadApp t m => Dynamic t JobStatus -> m (Event t ())
+dynStatusWidget :: MonadWidget t m => Dynamic t JobStatus -> m (Event t ())
 dynStatusWidget status = do
     let cfg = def & buttonConfig_color .~ Dyn (Just . statusColor <$> status)
                   & buttonConfig_basic .~ Static True
-    SemUI.button cfg $ do
+                  & buttonConfig_elConfig . classes .~ Static (Classes ["jobstatus"])
+    _ <- SemUI.button cfg $ do
       icon (Dyn $ statusIcon <$> status) def
       dynText $ statusMessage <$> status
+    return never
 
 statusColor :: JobStatus -> Color
 statusColor = \case
-  JobSucceeded -> Green
-  JobFailed -> Red
+  JobPending -> Black
   JobInProgress -> Blue
   JobCanceled -> Grey
-  JobPending -> Black
+  JobTimedOut -> Grey
+  JobVanished -> Grey
+  JobFailed -> Red
+  JobSucceeded -> Green
 
 statusIcon :: JobStatus -> Text
 statusIcon = \case
-  JobSucceeded -> "check"
-  JobFailed -> "ban"
+  JobPending -> "clock outline"
   JobInProgress -> "hourglass half"
   JobCanceled -> "x"
-  JobPending -> "clock outline"
+  JobTimedOut -> "x"
+  JobVanished -> "question"
+  JobFailed -> "ban"
+  JobSucceeded -> "check"
 
 statusMessage :: JobStatus -> Text
 statusMessage = \case
-  JobSucceeded -> "passed"
-  JobFailed -> "failed"
+  JobPending -> "pending"
   JobInProgress -> "running"
   JobCanceled -> "canceled"
-  JobPending -> "pending"
+  JobTimedOut -> "timed out"
+  JobVanished -> "vanished"
+  JobFailed -> "failed"
+  JobSucceeded -> "passed"

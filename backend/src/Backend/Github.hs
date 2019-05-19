@@ -38,6 +38,7 @@ import           Backend.Types.ServerEnv
 import           Common.Route
 import           Common.Types.BuildJob
 import           Common.Types.BuildMsg
+import           Common.Types.JobStatus
 import           Common.Types.RepoBuildInfo
 ------------------------------------------------------------------------------
 
@@ -131,7 +132,7 @@ setupWebhook
   -> SslSettings
   -> IO (Either Error RepoWebhook)
 setupWebhook domain auth owner repo secret sslSettings = do
-    let url = toS $ "http://" ++ domain ++ "/" ++ toS githubHookPath
+    let url = toS domain <> "/" <> githubHookPath
     let cfg = M.fromList
           [ ("url", url)
           , ("content_type", "json")
@@ -149,9 +150,11 @@ setupWebhook domain auth owner repo secret sslSettings = do
     case eh of
       Left e -> return $ Left e
       Right hooks -> do
+        mapM_ print hooks
         case filter (\h -> hookUrl h == Just url) (V.toList hooks) of
           (h:_) -> return $ Right h
-          _ -> createRepoWebhook' auth (N owner) (N repo) $
+          _ -> do
+            createRepoWebhook' auth (N owner) (N repo) $
                  NewRepoWebhook "web" cfg events (Just True)
   where
     ssl = case sslSettings of

@@ -11,6 +11,7 @@ import           Data.Text (Text)
 import           Reflex
 import           Reflex.Dom
 ------------------------------------------------------------------------------
+import           Frontend.App
 import           Humanizable
 ------------------------------------------------------------------------------
 
@@ -20,7 +21,7 @@ textColumn :: MonadWidget t m => (a -> Text) -> Dynamic t a -> m ()
 textColumn f = dynText . fmap f
 
 genericTable
-  :: (MonadWidget t m, Ord k, Show b)
+  :: (MonadWidget t m, Ord k)
   => Dynamic t (Map k v)
   -> [(Text, k -> Dynamic t v -> m (Event t b))]
   -> m (Event t (Map k b))
@@ -30,7 +31,7 @@ genericTable rows cols = do
       mapM_ (el "th" . text . fst) cols
     let doRow k v = el "tr" $ do
            es <- mapM (\(_,field) -> field k v) cols
-           return $ traceEvent "row click" $ leftmost es
+           return $ leftmost es
     el "tbody" $ --networkView $ mapM doRow <$> rows
       promptListViewWithKey rows doRow
 
@@ -75,3 +76,10 @@ promptListViewWithKey vals mkChild =
 --      mapM_ (el "th" . text . fst) cols
 --    el "tbody" $ simpleList rows $ \pair ->
 --      el "tr" $ mapM (\(_,field) -> el "td" $ field pair) cols
+
+genericPlaceholder :: MonadApp t m => Text -> m ()
+genericPlaceholder placeholderText = do
+  divClass "ui placeholder segment" $ do
+    divClass "ui icon header" $ do
+      elClass "i" "dont icon" blank
+      text placeholderText

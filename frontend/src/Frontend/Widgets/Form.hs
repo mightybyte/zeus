@@ -1,3 +1,4 @@
+{-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE OverloadedStrings #-}
@@ -16,7 +17,7 @@ import           Reflex.Dom
 import           Reflex.Dom.Contrib.Utils
 import qualified Reflex.Dom.SemanticUI as SemUI
 ------------------------------------------------------------------------------
-import           Common.Types.ConnectedAccount
+import           Humanizable
 ------------------------------------------------------------------------------
 
 semuiForm :: MonadWidget t m => m a -> m a
@@ -27,11 +28,33 @@ class Formable t m a where
   --form :: MonadWidget t m => a -> Event t a -> m (Dynamic t a)
   aForm :: MonadWidget t m => a -> Event t a -> m (Dynamic t a)
 
-instance Formable t m (Maybe AccountProvider) where
+--instance Formable t m (Maybe AccountProvider) where
+--  aForm iv sv = do
+--    v <- SemUI.dropdown def iv sv $ TaggedStatic $ M.fromList $
+--           map (\a -> (a, text $ tshow a)) [GitHub, GitLab]
+--    return $ value v
+
+--instance Formable t m (Maybe CloneMethod) where
+--  aForm iv sv = do
+--    v <- SemUI.dropdown def iv sv $ TaggedStatic $ M.fromList $
+--           map (\a -> (a, text $ tshow a)) [HttpClone, SshClone]
+--    return $ value v
+
+instance (Ord a, Enum a, Bounded a, Humanizable a) => Formable t m (Maybe a) where
   aForm iv sv = do
     v <- SemUI.dropdown def iv sv $ TaggedStatic $ M.fromList $
-           map (\a -> (a, text $ tshow a)) [GitHub, GitLab]
+           map (\a -> (a, text $ humanize a)) [minBound..maxBound]
     return $ value v
+
+filledDropdown
+  :: (Ord a, Enum a, Bounded a, Humanizable a, MonadWidget t m)
+  => a
+  -> Event t a
+  -> m (Dynamic t a)
+filledDropdown iv sv = do
+  v <- SemUI.dropdown def (Identity iv) (Identity <$> sv) $ TaggedStatic $ M.fromList $
+         map (\a -> (a, text $ humanize a)) [minBound..maxBound]
+  return $ runIdentity <$> value v
 
 
 -- newtype Form t m a = Form { unForm :: Event t a -> m (Dynamic t a) }
@@ -54,6 +77,17 @@ labelledAs :: MonadWidget t m => Text -> m a -> m a
 labelledAs label m = divClass "field" $ do
   el "label" $ text label
   m
+
+textareaField
+  :: (MonadWidget t m)
+  => Text
+  -> Event t Text
+  -> m (Dynamic t Text)
+textareaField iv sv = do
+  t <- textArea $ def
+    & textAreaConfig_initialValue .~ iv
+    & textAreaConfig_setValue .~ sv
+  return $ value t
 
 textField
   :: (MonadWidget t m)

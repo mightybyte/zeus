@@ -34,6 +34,10 @@ import           Scrub
 data AccountProvider = GitHub | GitLab
   deriving (Eq,Ord,Show,Read,Enum,Bounded,Generic)
 
+providerUrl :: AccountProvider -> Text
+providerUrl GitHub = "https://github.com"
+providerUrl GitLab = "https://gitlab.com"
+
 instance ToJSON AccountProvider where
     toEncoding = genericToEncoding defaultOptions
 
@@ -48,25 +52,13 @@ instance (BeamBackend be, FromBackendRow be Text) => FromBackendRow be AccountPr
 instance BeamMigrateSqlBackend be => HasDefaultSqlDataType be AccountProvider where
   defaultSqlDataType _ _ _ = varCharType Nothing Nothing
 
---instance FunctorB (C f a)
---instance TraversableB (C f a)
---instance ProductB (C f a)
---instance ConstraintsB (C f a)
---instance ProductBC (C f a)
-
-------------------------------------------------------------------------------
---data ConnectedAccountGT f = ConnectedAccountG
---  { _connectedAccount_id :: f Int
---  , _connectedAccount_name :: f Text
---  -- ^ Name of the account (or organization) that owns the repositories that
---  -- you are connecting to.  This should NOT be the username of the account
---  -- you authenticate to github with.
---  , _connectedAccount_accessToken :: f Text
---  -- ^ The access token to the account that grants you access to the repo
---  -- (even if it is different from the owner of the repo).
---  , _connectedAccount_provider :: f AccountProvider
---  } deriving (Generic)
---type ConnectedAccountT f = ConnectedAccountGT (C f)
+--data WebhookInfo f = WebhookInfo
+--  { _webhookInfo_url :: C f Text
+--  , _webhookInfo_testUrl :: C f Text
+--  , _webhookInfo_id :: C f Int
+--  , _webhookInfo_name :: C f Text
+--  , _webhookInfo_active :: C f Bool
+--  } deriving Generic
 
 ------------------------------------------------------------------------------
 data ConnectedAccountT f = ConnectedAccount
@@ -100,11 +92,25 @@ type ConnectedAccount = ConnectedAccountT Identity
 type ConnectedAccountId = PrimaryKey ConnectedAccountT Identity
 
 deriving instance Eq (PrimaryKey ConnectedAccountT Identity)
+deriving instance Eq (PrimaryKey ConnectedAccountT Maybe)
 deriving instance Eq ConnectedAccount
 deriving instance Show (PrimaryKey ConnectedAccountT Identity)
 deriving instance Show ConnectedAccount
 deriving instance Show (ConnectedAccountT Maybe)
 deriving instance Default (ConnectedAccountT Maybe)
+
+deriving instance Ord (PrimaryKey ConnectedAccountT Identity)
+deriving instance Ord (PrimaryKey ConnectedAccountT Maybe)
+
+instance ToJSON (PrimaryKey ConnectedAccountT Identity) where
+    toEncoding = genericToEncoding defaultOptions
+
+instance FromJSON (PrimaryKey ConnectedAccountT Identity)
+
+instance ToJSON (PrimaryKey ConnectedAccountT Maybe) where
+    toEncoding = genericToEncoding defaultOptions
+
+instance FromJSON (PrimaryKey ConnectedAccountT Maybe)
 
 instance ToJSON (ConnectedAccountT Identity) where
     toEncoding = genericToEncoding defaultOptions
@@ -122,3 +128,13 @@ instance Table ConnectedAccountT where
   data PrimaryKey ConnectedAccountT f = ConnectedAccountId (Columnar f Int)
     deriving (Generic, Beamable)
   primaryKey = ConnectedAccountId . _connectedAccount_id
+
+caKeyToInt :: PrimaryKey ConnectedAccountT Identity -> Int
+caKeyToInt (ConnectedAccountId k) = k
+
+caKeyIdToMaybe :: PrimaryKey ConnectedAccountT Identity -> PrimaryKey ConnectedAccountT Maybe
+caKeyIdToMaybe (ConnectedAccountId k) = ConnectedAccountId (Just k)
+
+caKeyMaybeToId :: PrimaryKey ConnectedAccountT Maybe -> Maybe (PrimaryKey ConnectedAccountT Identity)
+caKeyMaybeToId (ConnectedAccountId (Just k)) = Just (ConnectedAccountId k)
+caKeyMaybeToId (ConnectedAccountId Nothing) = Nothing

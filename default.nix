@@ -33,11 +33,13 @@ project ./. ({ pkgs, ... }: {
     beam-core = dontCheck (self.callCabal2nix "beam-core" "${beam-src}/beam-core" {});
     beam-migrate = dontCheck (self.callCabal2nix "beam-migrate" "${beam-src}/beam-migrate" {});
     beam-sqlite = dontCheck (self.callCabal2nix "beam-sqlite" "${beam-src}/beam-sqlite" {});
+
+    # github = dontHaddock (doJailbreak (dontCheck (self.callCabal2nix "github" "/Users/doug/code/public/github" {})));
     github = dontHaddock (doJailbreak (dontCheck (self.callCabal2nix "github" (pkgs.fetchFromGitHub {
-        owner = "phadej";
+        owner = "mightybyte";
         repo = "github";
-        rev = "0c31bbd7d2ccca60171ba8be59082031e98a749d";
-        sha256 = "1nxzqzdg7l0b5nq5hyz9dasdvgiap003ixjrqmbynbmvg28wsk67";
+        rev = "a337ff7c6b185f2ca275a8ecfdfa4f100f68925d";
+        sha256 = "1npvqh8jjpgbygpsfwwr196mgkl0z1c92fbd51qlnir39lgrkljd";
     }) {})));
     heist = dontCheck (self.callCabal2nix "heist" (pkgs.fetchFromGitHub {
         owner = "snapframework";

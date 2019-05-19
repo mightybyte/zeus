@@ -29,6 +29,9 @@ data TableAction t a = TableAction
   , tableAction_cancelAdd :: Event t ()
   }
 
+instance Reflex t => Default (TableAction t a) where
+  def = TableAction def def
+
 addClassWhen :: Monad (Dynamic t) => CssClass -> Dynamic t Bool -> CssClass -> Dynamic t CssClass
 addClassWhen dynKlass dynBool staticKlass = do
   a <- dynBool

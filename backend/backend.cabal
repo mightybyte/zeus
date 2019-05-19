@@ -62,6 +62,7 @@ executable backend
   hs-source-dirs: src-bin
   if impl(ghcjs)
     buildable: False
+  ghc-options: -threaded -Wall -O
   build-depends:
     aeson,
     ansi-wl-pprint,

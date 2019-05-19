@@ -54,6 +54,16 @@ data RepoBuildInfoT f = RepoBuildInfo
   , _rbi_commitHash :: C f Text
   } deriving (Generic)
 
+-- TODO Handle links appropriately for github and gitlab
+rbiRepoLink :: RepoBuildInfo -> Text
+rbiRepoLink rbi =
+  "https://github.com/" <> _rbi_repoFullName rbi
+
+-- TODO Handle links appropriately for github and gitlab
+rbiCommitLink :: RepoBuildInfo -> Text
+rbiCommitLink rbi =
+  rbiRepoLink rbi <> "/commit/" <> _rbi_commitHash rbi
+
 RepoBuildInfo
   (LensFor rbi_repoName)
   (LensFor rbi_repoFullName)
@@ -67,6 +77,7 @@ RepoBuildInfo
 type RepoBuildInfo = RepoBuildInfoT Identity
 
 deriving instance Eq RepoBuildInfo
+deriving instance Ord RepoBuildInfo
 deriving instance Show RepoBuildInfo
 
 instance ToJSON (RepoBuildInfoT Identity) where

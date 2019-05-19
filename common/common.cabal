@@ -30,6 +30,7 @@ library
     Common.Types.BuildJob
     Common.Types.BuildMsg
     Common.Types.Builder
+    Common.Types.JobStatus
     Common.Types.Repo
     Common.Types.RepoBuildInfo
     Humanizable

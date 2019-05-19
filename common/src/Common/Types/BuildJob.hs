@@ -20,43 +20,18 @@ module Common.Types.BuildJob where
 ------------------------------------------------------------------------------
 import           Control.Lens
 import           Data.Aeson
-import           Data.Text (Text)
-import qualified Data.Text as T
 import           Data.Time
 import           Database.Beam
 import           Database.Beam.Backend.SQL
-import           Database.Beam.Backend.Types
 import           Database.Beam.Migrate.Generics
 import           Database.Beam.Migrate.SQL
 ------------------------------------------------------------------------------
+import           Common.Types.JobStatus
 import           Common.Types.RepoBuildInfo
 ------------------------------------------------------------------------------
 
 data RepoEvent = RepoPushEvent | RepoPullRequestEvent
   deriving (Eq,Ord,Show,Read,Enum,Bounded)
-
-data JobStatus
-  = JobPending
-  | JobInProgress
-  | JobCanceled
-  | JobFailed
-  | JobSucceeded
-  deriving (Eq,Ord,Show,Read,Enum,Bounded,Generic)
-
-
-instance HasSqlValueSyntax be String => HasSqlValueSyntax be JobStatus where
-  sqlValueSyntax = autoSqlValueSyntax
-
-instance (BeamBackend be, FromBackendRow be Text) => FromBackendRow be JobStatus where
-  fromBackendRow = read . T.unpack <$> fromBackendRow
-
-instance BeamMigrateSqlBackend be => HasDefaultSqlDataType be JobStatus where
-  defaultSqlDataType _ _ _ = varCharType Nothing Nothing
-
-instance ToJSON JobStatus where
-    toEncoding = genericToEncoding defaultOptions
-
-instance FromJSON JobStatus
 
 instance BeamMigrateSqlBackend be => HasDefaultSqlDataType be UTCTime where
   defaultSqlDataType _ _ _ = timestampType Nothing True
@@ -79,13 +54,28 @@ type BuildJobId = PrimaryKey BuildJobT Identity
 
 deriving instance Eq (PrimaryKey BuildJobT Identity)
 deriving instance Eq BuildJob
+deriving instance Ord (PrimaryKey BuildJobT Identity)
+deriving instance Ord BuildJob
 deriving instance Show (PrimaryKey BuildJobT Identity)
 deriving instance Show BuildJob
 
+instance ToJSON (PrimaryKey BuildJobT Identity) where
+    toEncoding = genericToEncoding defaultOptions
+instance FromJSON (PrimaryKey BuildJobT Identity)
+
 instance ToJSON (BuildJobT Identity) where
     toEncoding = genericToEncoding defaultOptions
-
 instance FromJSON (BuildJobT Identity)
+
+bjKeyToInt :: PrimaryKey BuildJobT Identity -> Int
+bjKeyToInt (BuildJobId k) = k
+
+bjKeyIdToMaybe :: PrimaryKey BuildJobT Identity -> PrimaryKey BuildJobT Maybe
+bjKeyIdToMaybe (BuildJobId k) = BuildJobId (Just k)
+
+bjKeyMaybeToId :: PrimaryKey BuildJobT Maybe -> Maybe (PrimaryKey BuildJobT Identity)
+bjKeyMaybeToId (BuildJobId (Just k)) = Just (BuildJobId k)
+bjKeyMaybeToId (BuildJobId Nothing) = Nothing
 
 instance Beamable BuildJobT
 

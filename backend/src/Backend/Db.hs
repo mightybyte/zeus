@@ -33,6 +33,7 @@ import           Database.SQLite.Simple
 import           Common.Types.ConnectedAccount
 import           Common.Types.Builder
 import           Common.Types.BuildJob
+import           Common.Types.JobStatus
 import           Common.Types.Repo
 import           Common.Types.RepoBuildInfo
 ------------------------------------------------------------------------------
