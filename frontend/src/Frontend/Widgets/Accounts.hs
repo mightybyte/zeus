@@ -30,7 +30,7 @@ import           Frontend.Widgets.Common
 import           Frontend.Widgets.Form
 ------------------------------------------------------------------------------
 
-accountsWidget :: MonadApp t m => m ()
+accountsWidget :: (MonadAppIO r t m, Prerender js t m) => m ()
 accountsWidget = mdo
   as <- ask
   let listToState = bool ListTable EmptyPlaceholder . null
@@ -50,7 +50,7 @@ accountsWidget = mdo
   return ()
 
 addAccount
-  :: MonadApp t m
+  :: (MonadApp r t m, Prerender js t m)
   => m (TableAction t (ConnectedAccountT Maybe))
 addAccount = do
   semuiForm $ do
@@ -62,7 +62,7 @@ addAccount = do
       return $ TableAction never (domEvent Click e2)
 
 accountsList
-  :: MonadApp t m
+  :: MonadAppIO r t m
   => Dynamic t (BeamMap Identity ConnectedAccountT)
   -> m (TableAction t (ConnectedAccountT Maybe))
 accountsList as = do
@@ -77,7 +77,7 @@ accountsList as = do
     triggerBatch trigger_delAccounts $ M.keys <$> del
     return $ TableAction add never
 
-accountPlaceholder :: MonadApp t m => m (TableAction t (ConnectedAccountT Maybe))
+accountPlaceholder :: MonadApp r t m => m (TableAction t (ConnectedAccountT Maybe))
 accountPlaceholder = mdo
   divClass "ui placeholder segment" $ do
     divClass "ui icon header" $ do
@@ -87,7 +87,7 @@ accountPlaceholder = mdo
     return $ TableAction (domEvent Click e) never
 
 newAccountForm
-  :: MonadApp t m
+  :: (MonadApp r t m, Prerender js t m)
   => Maybe (ConnectedAccountT Maybe)
   -> Event t (Maybe (ConnectedAccountT Maybe))
   -> m (Dynamic t (Maybe (ConnectedAccountT Maybe)))

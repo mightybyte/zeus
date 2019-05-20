@@ -35,7 +35,9 @@ import           Frontend.AppState
 import           Frontend.Widgets.Common
 ------------------------------------------------------------------------------
 
-jobsWidget :: MonadApp t m => m ()
+jobsWidget
+  :: MonadAppIO r t m
+  => m ()
 jobsWidget = mdo
   as <- ask
 
@@ -53,7 +55,7 @@ jobDuration bj = do
   pure $ diffUTCTime end start
 
 jobsList
-  :: MonadApp t m
+  :: (MonadApp r t m, TriggerEvent t m, PerformEvent t m, MonadIO m, MonadIO (Performable m))
   => Dynamic t (BeamMap Identity BuildJobT)
   -> m ()
 jobsList as = do
@@ -71,7 +73,7 @@ jobsList as = do
     ]
   triggerBatch trigger_cancelJobs $ fmap (\(Down a) -> a) . M.keys <$> cancel
 
-cancelOrRerun :: MonadApp t m => BuildJobId -> Dynamic t JobStatus -> m (Event t ())
+cancelOrRerun :: MonadApp r t m => BuildJobId -> Dynamic t JobStatus -> m (Event t ())
 cancelOrRerun k dj = do
     _ <- networkView $ ffor dj $ \case
       JobInProgress -> cancelButton k
@@ -82,18 +84,18 @@ cancelOrRerun k dj = do
       _ -> return ()
     return never
 
-cancelButton :: MonadApp t m => BuildJobId -> m ()
+cancelButton :: MonadApp r t m => BuildJobId -> m ()
 cancelButton k = do
     (e,_) <- elAttr' "i" ("class" =: "cancel icon" <> "placeholder" =: "Cancel build") blank
     triggerBatch trigger_cancelJobs $ [k] <$ domEvent Click e
 
-rerunButton :: MonadApp t m => BuildJobId -> m ()
+rerunButton :: MonadApp r t m => BuildJobId -> m ()
 rerunButton k = do
     (e,_) <- elAttr' "i" ("class" =: "redo icon" <> "placeholder" =: "Re-run build") blank
     triggerBatch trigger_rerunJobs $ [k] <$ domEvent Click e
 
 repoColumnWidget
-  :: MonadWidget t m
+  :: (DomBuilder t m, PostBuild t m)
   => Dynamic t BuildJob
   -> m ()
 repoColumnWidget dj = do
@@ -102,7 +104,7 @@ repoColumnWidget dj = do
   elDynAttr "a" (mkAttrs <$> drbi) $ dynText (_rbi_repoFullName <$> drbi)
 
 commitWidget
-  :: MonadWidget t m
+  :: (DomBuilder t m, PostBuild t m)
   => Dynamic t BuildJob
   -> m ()
 commitWidget dj = do
@@ -111,7 +113,7 @@ commitWidget dj = do
   elDynAttr "a" (mkAttrs <$> drbi) $ dynText (T.take 7 . _rbi_commitHash <$> drbi)
 
 dynJobTimeWidget
-  :: MonadWidget t m
+  :: (DomBuilder t m, PostBuild t m, TriggerEvent t m, MonadHold t m, PerformEvent t m, MonadIO m, MonadIO (Performable m), MonadFix m)
   => Dynamic t BuildJob
   -> m ()
 dynJobTimeWidget dj = do
@@ -151,7 +153,7 @@ formatDiffTime t = T.pack $
     s = t - (fromIntegral h * oneHour) - (fromIntegral m * oneMinute)
 
 pastTimeWiget
-  :: MonadWidget t m
+  :: (DomBuilder t m, PostBuild t m, MonadHold t m, PerformEvent t m, TriggerEvent t m, MonadFix m, MonadIO m, MonadIO (Performable m))
   => UTCTime
   -> m ()
 pastTimeWiget t = do
@@ -160,7 +162,7 @@ pastTimeWiget t = do
   dynText $ diffTimeToRelativeEnglish . calcDiff <$> ti
 
 dynPastTimeWiget
-  :: MonadWidget t m
+  :: MonadAppIO r t m
   => Dynamic t UTCTime
   -> m ()
 dynPastTimeWiget t = void $ dyn $ pastTimeWiget <$> t
@@ -197,7 +199,7 @@ oneMonth = oneDay * 30
 oneYear :: NominalDiffTime
 oneYear = oneDay * 365
 
-dynStatusWidget :: MonadWidget t m => Dynamic t JobStatus -> m (Event t ())
+dynStatusWidget :: MonadAppIO r t m => Dynamic t JobStatus -> m (Event t ())
 dynStatusWidget status = do
     let cfg = def & buttonConfig_color .~ Dyn (Just . statusColor <$> status)
                   & buttonConfig_basic .~ Static True

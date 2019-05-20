@@ -1,6 +1,7 @@
 {-# LANGUAGE DataKinds #-}
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE FlexibleInstances #-}
+{-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE RankNTypes #-}
@@ -12,13 +13,19 @@
 module Frontend where
 
 ------------------------------------------------------------------------------
+import           Control.Monad.Identity
 import           Control.Monad.Reader
+import           Data.Dependent.Sum
 import           Data.Map (Map)
 import           Data.Maybe
+import           Data.Some (Some)
+import qualified Data.Some as Some
 import           Data.Text (Text)
+import           Data.Universe
 import           Obelisk.Frontend
 import           Obelisk.Generated.Static
 import           Obelisk.Route
+import           Obelisk.Route.Frontend
 import           Reflex.Dom.Core
 import           Reflex.Dom.Contrib.CssClass
 import           Reflex.Dom.Contrib.Widgets.DynTabs
@@ -37,8 +44,10 @@ import           Frontend.Widgets.Repos
 
 frontend :: Frontend (R FrontendRoute)
 frontend = Frontend
-  { _frontend_head = prerender_ blank appHead
-  , _frontend_body = prerender_ (text "Loading...") $ runApp appBody
+  { _frontend_head = appHead
+  , _frontend_body = do
+      route <- liftIO getAppRoute
+      runApp route appBody
   }
 
 
@@ -57,24 +66,22 @@ css url = elAttr "link" ("rel" =: "stylesheet" <> "type" =: "text/css" <> "href"
 jsScript :: DomBuilder t m => Text -> m ()
 jsScript url = elAttr "script" ("src" =: url <> "type" =: "text/javascript") blank
 
-script :: MonadWidget t m =>  Text -> m ()
+script :: DomBuilder t m =>  Text -> m ()
 script code = elAttr "script" ("type" =: "text/javascript") $ text code
 
-appBody :: MonadApp t m => m ()
-appBody = mdo
+-- TODO Remove prerender constraint after updating reflex-dom-contrib
+appBody
+  :: MonadApp r t m
+  => m ()
+appBody = do
   pb <- getPostBuild
   trigger trigger_getAccounts pb
   trigger trigger_getJobs pb
   trigger trigger_getRepos pb
-  tabs <- divClass "ui fixed menu" $ do
+  divClass "ui fixed menu" $ do
     elAttr "div" ("class" =: "inverted header item") $ text "Zeus CI"
-    tabBar def
-  let staticAttrs = "class" =: "ui tab"
-  divClass "ui main container" $ do
-    myTabPane staticAttrs (_tabBar_curTab tabs) JobsTab $ jobsWidget
-    --myTabPane staticAttrs (_tabBar_curTab tabs) BuildersTab $ text "Builders"
-    myTabPane staticAttrs (_tabBar_curTab tabs) ReposTab $ reposWidget
-    myTabPane staticAttrs (_tabBar_curTab tabs) AccountsTab $ accountsWidget
+    let aTab nm = elAttr "div" ("class" =: "inverted item") $ text $ humanize nm
+    mapM_ aTab [JobsTab, ReposTab, AccountsTab]
   serverAlert <- asks _as_serverAlert
   modalExample serverAlert
   return ()
@@ -92,25 +99,19 @@ instance Humanizable MainTabs where
   humanize ReposTab = "Repos"
   humanize AccountsTab = "Accounts"
 
-instance MonadApp t m => Tab t m MainTabs where
-  tabIndicator tab activeDyn = do
-    let attrs = addClassWhen "active" activeDyn (singleClass "item")
-    (e,_) <- elDynKlass' "div" attrs $ text $ humanize tab
-    return $ domEvent Click e
-
-myTabPane
-    :: (MonadWidget t m, Eq tab)
-    => Map Text Text
-    -> Dynamic t tab
-    -> tab
-    -> m a
-    -> m a
-myTabPane staticAttrs currentTab t child = do
-    let attrs = addActiveClass ((==t) <$> currentTab) (constDyn staticAttrs)
-    elDynAttr "div" attrs child
+--navItemIndicator
+--  :: MonadApp r t m
+--  => Dynamic t (R FrontendRoute)
+--  -> FrontendRoute
+--  -> m ()
+--navItemIndicator activeTab tab = do
+--  let attrs = addClassWhen "active" ((\(t :=> _) -> t == tab) <$> activeTab) (singleClass "clickable item")
+--  (e,_) <- elDynKlass' "div" attrs $ text $ humanize tab
+--  trigger trigger_getJobs pb
+--  return $ domEvent Click e
 
 modal
-  :: MonadWidget t m
+  :: MonadApp r t m
   => Dynamic t Bool
   -> m a
   -> m a
@@ -119,7 +120,7 @@ modal isActive m = do
   elDynKlass "div" dclass m
 
 modalExample
-  :: MonadWidget t m
+  :: MonadApp r t m
   => Event t Text
   -> m ()
 modalExample showEvent = mdo
@@ -133,5 +134,8 @@ modalExample showEvent = mdo
     divClass "scrolling content" $
       el "p" $ dynText (fromMaybe "" <$> modalMsg)
     divClass "actions" $ do
-      SemUI.button def $ text "OK"
+      (e,_) <- el' "button" $ text "OK"
+      return $ domEvent Click e
+      -- TODO Deal with this
+      --SemUI.button def $ text "OK"
   return ()

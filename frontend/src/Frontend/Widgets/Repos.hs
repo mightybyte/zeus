@@ -32,7 +32,7 @@ import           Frontend.Widgets.Common
 import           Frontend.Widgets.Form
 ------------------------------------------------------------------------------
 
-reposWidget :: MonadApp t m => m ()
+reposWidget :: (MonadAppIO r t m, Prerender js t m) => m ()
 reposWidget = mdo
   as <- ask
   let listToState = bool ListTable EmptyPlaceholder . null
@@ -53,7 +53,7 @@ reposWidget = mdo
   return ()
 
 textDynColumn
-  :: MonadWidget t m
+  :: MonadApp r t m
   => (a f -> Text)
   -> PrimaryKey a f
   -> Dynamic t (a f)
@@ -63,7 +63,7 @@ textDynColumn f _ v = el "td" $ do
   return ()
 
 reposList
-  :: MonadApp t m
+  :: MonadAppIO r t m
   => Dynamic t (BeamMap Identity RepoT)
   -> m (TableAction t (RepoT Maybe))
 reposList as = do
@@ -82,7 +82,7 @@ reposList as = do
   return $ TableAction add never
 
 addRepo
-  :: MonadApp t m
+  :: (MonadAppIO r t m, Prerender js t m)
   => m (TableAction t (RepoT Maybe))
 addRepo = do
   semuiForm $ do
@@ -99,17 +99,18 @@ unfilledRepo :: RepoT Maybe
 unfilledRepo = Repo Nothing Nothing (ConnectedAccountId Nothing) Nothing Nothing Nothing Nothing Nothing
 
 newRepoForm
-  :: MonadApp t m
+  :: (MonadAppIO r t m, Prerender js t m)
   => RepoT Maybe
   -> Event t (RepoT Maybe)
   -> m (Dynamic t (RepoT Maybe))
 newRepoForm iv sv = do
     accounts <- asks _as_accounts
-    dmca <- labelledAs "Owning Account" $
-      SemUI.dropdown def Nothing never $
+    dmca <- labelledAs "Owning Account" $ do
+      res <- prerender (pure $ pure (Nothing :: Maybe ConnectedAccountId)) $ fmap value $ SemUI.dropdown def Nothing never $
         -- (maybe (head accounts) _connectedAccount_name $ _repo_owner =<< iv)
         -- (fmap join $ _repo_owner <$$> sv) $
         TaggedDynamic $ text . accountText <$$> accounts
+      return $ join res
     dn <- labelledAs "Repo name" $ textField
       (fromMaybe "" $ _repo_name iv)
       (fromMaybe "" . _repo_name <$> sv)
@@ -128,7 +129,7 @@ newRepoForm iv sv = do
         cm <- dcm
         t <- dt
         accountMap <- accounts
-        mca <- value dmca
+        mca <- dmca
         pure $ case flip M.lookup accountMap =<< mca of
           Nothing -> unfilledRepo
           Just a -> do

@@ -102,10 +102,11 @@ data AppState t = AppState
     } deriving Generic
 
 stateManager
-    :: MonadWidget t m
-    => Event t AppTriggers
+    :: (DomBuilder t m, MonadHold t m, Prerender js t m)
+    => Text
+    -> Event t AppTriggers
     -> m (AppState t)
-stateManager ft = do
+stateManager route ft = do
     let upEvent = mergeWith (++) $ map (fmap (:[]))
           [ Up_ListAccounts <$ fmapMaybe (listToMaybe . _trigger_getAccounts) ft
           , Up_ConnectAccount . _trigger_connectAccount <$> ft
@@ -118,7 +119,6 @@ stateManager ft = do
           , Up_RerunJobs . _trigger_rerunJobs <$> ft
           ]
     let cfg = WebSocketConfig upEvent never True []
-    route <- liftIO getAppRoute
     ws <- startWebsocket route cfg
     let downEvent = _webSocket_recv ws
     accounts <- holdDyn mempty $
@@ -133,11 +133,12 @@ listToBeamMap :: (Table a, Ord (PrimaryKey a f)) => [a f] -> BeamMap f a
 listToBeamMap = M.fromList . map (\a -> (primaryKey a, a))
 
 startWebsocket
-  :: MonadWidget t m
+  :: (DomBuilder t m, Prerender js t m)
   => Text
   -> WebSocketConfig t Up
   -> m (RawWebSocket t Down)
 startWebsocket siteRoute wsCfg = do
+  res <- prerender (pure neverWebSocket) $ do
     let (scheme,rest) = T.breakOn "://" siteRoute
         wsScheme = case scheme of
                      "http" -> "ws"
@@ -145,3 +146,22 @@ startWebsocket siteRoute wsCfg = do
                      _ -> error $ "Invalid scheme: " ++ T.unpack scheme
     RawWebSocket r o e c <- jsonWebSocket (wsScheme <> rest <> "/ws") wsCfg
     return (RawWebSocket (fmapMaybe id r) o e c)
+  let r = switch $ current $ _webSocket_recv <$> res
+  let o = switch $ current $ _webSocket_open <$> res
+  let e = switch $ current $ _webSocket_error <$> res
+  let c = switch $ current $ _webSocket_close <$> res
+  return $ RawWebSocket r o e c
+
+--   = RawWebSocket { _webSocket_recv :: Event t a
+--                  , _webSocket_open :: Event t ()
+--                  , _webSocket_error :: Event t () -- eror event does not carry any data and is always
+--                                                   -- followed by termination of the connection
+--                                                   -- for details see the close event
+--                  , _webSocket_close :: Event t ( Bool -- wasClean
+--                                                , Word -- code
+--                                                , Text -- reason
+--                                                )
+--                  }
+
+neverWebSocket :: Reflex t => RawWebSocket t a
+neverWebSocket = RawWebSocket never never never never

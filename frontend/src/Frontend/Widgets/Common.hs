@@ -18,9 +18,9 @@ import           Frontend.App
 import           Humanizable
 ------------------------------------------------------------------------------
 
-humanColumn :: (MonadWidget t m, Humanizable b) => (a -> b) -> Dynamic t a -> m ()
+humanColumn :: (DomBuilder t m, PostBuild t m, Humanizable b) => (a -> b) -> Dynamic t a -> m ()
 humanColumn f = dynText . fmap (humanize . f)
-textColumn :: MonadWidget t m => (a -> Text) -> Dynamic t a -> m ()
+textColumn :: (DomBuilder t m, PostBuild t m) => (a -> Text) -> Dynamic t a -> m ()
 textColumn f = dynText . fmap f
 
 promptListViewWithKey
@@ -32,7 +32,7 @@ promptListViewWithKey vals mkChild =
   switchPromptlyDyn . fmap mergeMap <$> listWithKey vals mkChild
 
 genericTable
-  :: (MonadWidget t m, Ord k)
+  :: (DomBuilder t m, PostBuild t m, MonadHold t m, MonadFix m, Ord k)
   => Dynamic t (Map k v)
   -> [(Text, k -> Dynamic t v -> m (Event t b))]
   -> m (Event t (Map k b))
@@ -46,7 +46,7 @@ genericTable rows cols = do
     el "tbody" $ promptListViewWithKey rows doRow
 
 genericTableG
-  :: (MonadWidget t m, Ord k)
+  :: (DomBuilder t m, PostBuild  t m, MonadHold t m, MonadFix m, Ord k)
   => TableConfig k v t m a
   -> Dynamic t (Map k v)
   -> [(Text, k -> Dynamic t v -> m (Event t a))]
@@ -70,7 +70,7 @@ data TableConfig k v t m a = TableConfig
   , _tableConfig_cellFunc :: k -> Dynamic t v -> (Text, (k -> Dynamic t v -> m (Event t a))) -> m (Event t a)
   }
 
-instance MonadWidget t m => Default (TableConfig k v t m a) where
+instance DomBuilder t m => Default (TableConfig k v t m a) where
   def = TableConfig
     { _tableConfig_tableWrapper = elClass "table" "ui celled table"
     , _tableConfig_headWrapper = el "thead" . el "tr"
@@ -80,13 +80,13 @@ instance MonadWidget t m => Default (TableConfig k v t m a) where
     , _tableConfig_cellFunc = (\k v (_,f) -> f k v)
     }
 
-deleteButton :: MonadWidget t m => m (Event t ())
+deleteButton :: DomBuilder t m => m (Event t ())
 deleteButton = do
   (e,_) <- el' "span" $ elAttr "i" ("class" =: "close icon") blank
   return $ domEvent Click e
 
 genericRemovableTable
-  :: (MonadWidget t m, Ord k)
+  :: (DomBuilder t m, PostBuild  t m, MonadHold t m, MonadFix m, Ord k)
   => Dynamic t (Map k v)
   -> [(Text, k -> Dynamic t v -> m ())]
   -> m (Event t (Map k ()))
@@ -103,7 +103,7 @@ genericRemovableTable rows cols = do
       listViewWithKey rows doRow
 
 --genericDynTable
---  :: MonadWidget t m
+--  :: DomBuilder t m
 --  => Dynamic t [a]
 --  -> [(Text, Dynamic t a -> m b)]
 --  -> m b
@@ -114,7 +114,7 @@ genericRemovableTable rows cols = do
 --    el "tbody" $ simpleList rows $ \pair ->
 --      el "tr" $ mapM (\(_,field) -> el "td" $ field pair) cols
 
-genericPlaceholder :: MonadApp t m => Text -> m ()
+genericPlaceholder :: DomBuilder t m => Text -> m ()
 genericPlaceholder placeholderText = do
   divClass "ui placeholder segment" $ do
     divClass "ui icon header" $ do

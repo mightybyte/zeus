@@ -41,11 +41,11 @@ data BackendRoute :: * -> * where
   BackendRoute_Websocket :: BackendRoute ()
 
 data FrontendRoute :: * -> * where
-  FrontendRoute_Main :: FrontendRoute ()
-  FrontendRoute_Jobs :: FrontendRoute ()
-  FrontendRoute_Repos :: FrontendRoute ()
-  --FrontendRoute_Repos :: FrontendRoute (R CrudRoute)
-  FrontendRoute_Accounts :: FrontendRoute ()
+  FR_Home :: FrontendRoute ()
+  FR_Jobs :: FrontendRoute ()
+  FR_Repos :: FrontendRoute ()
+  --FR_Repos :: FrontendRoute (R CrudRoute)
+  FR_Accounts :: FrontendRoute ()
   -- This type is used to define frontend routes, i.e. ones for which the backend will serve the frontend.
 
 type FullRoute = Sum BackendRoute (ObeliskRoute FrontendRoute)
@@ -62,10 +62,10 @@ backendRouteEncoder = handleEncoder (const (InL BackendRoute_Missing :/ ())) $
     InR obeliskRoute -> obeliskRouteSegment obeliskRoute $ \case
       -- The encoder given to PathEnd determines how to parse query parameters,
       -- in this example, we have none, so we insist on it.
-      FrontendRoute_Main -> PathEnd $ unitEncoder mempty
-      FrontendRoute_Jobs -> PathSegment "jobs" $ unitEncoder mempty
-      FrontendRoute_Repos -> PathSegment "repos" $ unitEncoder mempty
-      FrontendRoute_Accounts -> PathSegment "accounts" $ unitEncoder mempty
+      FR_Home -> PathEnd $ unitEncoder mempty
+      FR_Jobs -> PathSegment "jobs" $ unitEncoder mempty
+      FR_Repos -> PathSegment "repos" $ unitEncoder mempty
+      FR_Accounts -> PathSegment "accounts" $ unitEncoder mempty
 
 -- | Stolen from Obelisk as it is not exported. (Probably for a reason, but it
 -- seems to do what we want right now.
