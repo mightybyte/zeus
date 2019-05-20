@@ -3,12 +3,15 @@
 {-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE RecursiveDo #-}
+{-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TypeApplications #-}
 module Frontend.Nav (nav) where
 
 ------------------------------------------------------------------------------
+import           Control.Lens hiding (element, universe)
 import           Control.Monad (forM_)
 import           Data.Dependent.Sum (DSum ((:=>)))
+import           Data.Proxy
 import qualified Data.Some as Some
 import           Data.Universe (universe)
 import           Obelisk.Route
@@ -16,25 +19,11 @@ import           Obelisk.Route.Frontend
 import           Reflex.Dom
 ------------------------------------------------------------------------------
 import           Common.Route
+import           Frontend.App
 ------------------------------------------------------------------------------
 
--- | Displays the logo and returns an event that fires when the logo is clicked
---logo :: (DomBuilder t m, SetRoute t (R FrontendRoute) m, RouteToUrl (R FrontendRoute) m) => m ()
---logo = do
---  let logoAttrs = mconcat
---        [ "class" =: "inverted header item"
---        , "alt" =: "Zeus CI"
---        ]
---  routeLink (FR_Home :/ ()) $ elAttr "div" logoAttrs $ text "Zeus CI"
-
--- | Build the nav's tabs
 nav
-  :: ( DomBuilder t m
-     , PostBuild t m
-     , SetRoute t (R FrontendRoute) m
-     , Routed t (R FrontendRoute) m
-     , RouteToUrl (R FrontendRoute) m
-     )
+  :: forall t m. MonadApp (R FrontendRoute) t m
   => m ()
 nav = do
   -- Get the current route, so that we can highlight the corresponding tab
@@ -44,8 +33,16 @@ nav = do
   -- Iterate over all the top-level routes except Home
   -- Home is reached by clicking logo
   forM_ (filter (/= (Some.This FR_Home)) universe) $ \tab -> do
+    -- Create a link that is highlighted if it is the current tab
     let thisTabIsSelected = demuxed currentTabDemux tab
         highlight = ffor thisTabIsSelected $ \case
-          True -> "class" =: "active item"
-          False -> "class" =: "item"
-    elDynAttr "span" highlight $ routeLink (tabHomepage tab) $ text $ tabTitle tab
+          True -> "class" =: "active clickable item"
+          False -> "class" =: "clickable item"
+        r = tabHomepage tab
+    enc <- askRouteToUrl
+    let cfg = (def :: ElementConfig EventResult t (DomBuilderSpace m))
+          & elementConfig_eventSpec %~ addEventSpecFlags (Proxy :: Proxy (DomBuilderSpace m)) Click (\_ -> preventDefault)
+          & elementConfig_initialAttributes .~ "href" =: enc r
+    (e, a) <- elDynAttr' "span" highlight $ fmap snd $ element "a" cfg $ text $ tabTitle tab
+    setRoute $ r <$ domEvent Click e
+    return a

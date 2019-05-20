@@ -106,17 +106,6 @@ instance Humanizable MainTabs where
   humanize ReposTab = "Repos"
   humanize AccountsTab = "Accounts"
 
---navItemIndicator
---  :: MonadApp r t m
---  => Dynamic t (R FrontendRoute)
---  -> FrontendRoute
---  -> m ()
---navItemIndicator activeTab tab = do
---  let attrs = addClassWhen "active" ((\(t :=> _) -> t == tab) <$> activeTab) (singleClass "clickable item")
---  (e,_) <- elDynKlass' "div" attrs $ text $ humanize tab
---  trigger trigger_getJobs pb
---  return $ domEvent Click e
-
 modal
   :: MonadApp r t m
   => Dynamic t Bool
