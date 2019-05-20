@@ -155,7 +155,7 @@ buildThread ecMVar rng repo msg = do
               HttpClone -> _rbi_cloneUrlHttp rbi
   let timeStr = formatTime defaultTimeLocale "%Y%m%d%H%M%S" start
   let buildId = printf "build-%s-%s" timeStr (toS tok :: String) :: String
-  let cloneDir = printf "/tmp/simple-ci-builds/%s" buildId :: String
+  let cloneDir = printf "/tmp/zeus-builds/%s" buildId :: String
   createDirectoryIfMissing True cloneDir
   let outputDir = "log/builds"
   createDirectoryIfMissing True outputDir
