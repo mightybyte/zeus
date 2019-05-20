@@ -19,6 +19,9 @@ import Control.Category
 
 ------------------------------------------------------------------------------
 import           Control.Monad.Except
+import           Data.Dependent.Sum (DSum (..))
+import           Data.Some (Some)
+import qualified Data.Some as Some
 import           Data.Text (Text)
 import qualified Data.Text as T
 import           Data.Functor.Identity
@@ -86,3 +89,22 @@ getAppRoute = do
     case mroute of
       Nothing -> fail "Error getAppRoute: config/common/route not defined"
       Just r -> return $ T.dropWhileEnd (== '/') $ T.strip r
+
+-- | Provide a human-readable name for a given section
+tabTitle :: Some FrontendRoute -> Text
+tabTitle (Some.This sec) = case sec of
+  FR_Home -> "Home"
+  FR_Jobs -> "Jobs"
+  FR_Repos -> "Repos"
+  FR_Accounts -> "Accounts"
+
+-- | Provide a human-readable name for a route
+frToText :: R FrontendRoute -> Text
+frToText (sec :=> _) = tabTitle $ Some.This sec
+
+tabHomepage :: Some FrontendRoute -> R FrontendRoute
+tabHomepage (Some.This sec) = sec :/ case sec of
+  FR_Home -> ()
+  FR_Jobs -> ()
+  FR_Repos -> ()
+  FR_Accounts -> ()

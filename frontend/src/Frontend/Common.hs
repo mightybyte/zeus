@@ -9,7 +9,9 @@ module Frontend.Common where
 
 ------------------------------------------------------------------------------
 import           Data.Default
+import           Data.Text (Text)
 import           Reflex
+import           Reflex.Dom
 import           Reflex.Dom.Contrib.CssClass
 ------------------------------------------------------------------------------
 
@@ -36,3 +38,11 @@ addClassWhen :: Monad (Dynamic t) => CssClass -> Dynamic t Bool -> CssClass -> D
 addClassWhen dynKlass dynBool staticKlass = do
   a <- dynBool
   return $ if a then dynKlass <> staticKlass else staticKlass
+
+--intLink :: DomBuilder t m => Text -> m a -> m a
+--intLink href m =
+--  elAttr "a" ("href" =: href) $ m
+
+extLink :: DomBuilder t m => Text -> m a -> m a
+extLink href m =
+  elAttr "a" ("href" =: href <> "target" =: "_blank" <> "rel" =: "noopener") $ m

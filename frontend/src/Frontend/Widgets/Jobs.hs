@@ -55,7 +55,7 @@ jobDuration bj = do
   pure $ diffUTCTime end start
 
 jobsList
-  :: (MonadApp r t m, TriggerEvent t m, PerformEvent t m, MonadIO m, MonadIO (Performable m))
+  :: (MonadApp r t m, MonadIO m, MonadIO (Performable m))
   => Dynamic t (BeamMap Identity BuildJobT)
   -> m ()
 jobsList as = do

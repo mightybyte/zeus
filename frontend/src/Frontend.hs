@@ -15,13 +15,9 @@ module Frontend where
 ------------------------------------------------------------------------------
 import           Control.Monad.Identity
 import           Control.Monad.Reader
-import           Data.Dependent.Sum
-import           Data.Map (Map)
+import           Control.Monad.Ref
 import           Data.Maybe
-import           Data.Some (Some)
-import qualified Data.Some as Some
 import           Data.Text (Text)
-import           Data.Universe
 import           Obelisk.Frontend
 import           Obelisk.Generated.Static
 import           Obelisk.Route
@@ -36,6 +32,7 @@ import           Humanizable
 import           Frontend.App
 import           Frontend.AppState
 import           Frontend.Common
+import           Frontend.Nav
 import           Frontend.Widgets.Accounts
 import           Frontend.Widgets.Jobs
 import           Frontend.Widgets.Repos
@@ -71,8 +68,13 @@ script code = elAttr "script" ("type" =: "text/javascript") $ text code
 
 -- TODO Remove prerender constraint after updating reflex-dom-contrib
 appBody
-  :: MonadApp r t m
-  => m ()
+  :: (PostBuild t m, DomBuilder t m, MonadHold t m, MonadFix m,
+      TriggerEvent t m, PerformEvent t m, MonadRef m,
+      MonadSample t (Performable m), RouteToUrl (R FrontendRoute) m,
+      SetRoute t (R FrontendRoute) m, MonadIO m, MonadIO (Performable m),
+      Prerender js t m
+     )
+  => App (R FrontendRoute) t m ()
 appBody = do
   pb <- getPostBuild
   trigger trigger_getAccounts pb
@@ -80,8 +82,13 @@ appBody = do
   trigger trigger_getRepos pb
   divClass "ui fixed menu" $ do
     elAttr "div" ("class" =: "inverted header item") $ text "Zeus CI"
-    let aTab nm = elAttr "div" ("class" =: "inverted item") $ text $ humanize nm
-    mapM_ aTab [JobsTab, ReposTab, AccountsTab]
+    nav
+  divClass "ui main container" $ do
+    subRoute_ $ \case
+      FR_Home -> text "Wizard"
+      FR_Jobs -> jobsWidget
+      FR_Repos -> reposWidget
+      FR_Accounts -> accountsWidget
   serverAlert <- asks _as_serverAlert
   modalExample serverAlert
   return ()

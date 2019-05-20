@@ -29,9 +29,9 @@ type MonadApp r t m =
   , MonadRef m
   , PerformEvent t m
   , TriggerEvent t m
+  , Routed t r m
   , MonadReader (AppState t) m
   , EventWriter t AppTriggers m
-  , Routed t r m
   , SetRoute t (R FrontendRoute) m
   , RouteToUrl (R FrontendRoute) m
   )
@@ -42,16 +42,22 @@ type MonadAppIO r t m =
   , MonadIO (Performable m)
   )
 
---type App r t m a =
---    RoutedT t r (ReaderT (AppState t) (EventWriterT t AppTriggers m)) a
+type App r t m a =
+    RoutedT t r (ReaderT (AppState t) (EventWriterT t AppTriggers m)) a
 
 runApp
-  :: (Routed t r m, DomBuilder t m, Prerender js t m, MonadHold t m, MonadFix m)
+  :: (DomBuilder t m, Routed t (R FrontendRoute) m, MonadHold t m, MonadFix m, Prerender js t m)
   => Text
-  -> RoutedT t r (ReaderT (AppState t) (EventWriterT t AppTriggers m)) a
+  -> RoutedT t (R FrontendRoute) (ReaderT (AppState t) (EventWriterT t AppTriggers m)) a
   -> m a
 runApp publicUrl m = mdo
     r <- askRoute
     as <- stateManager publicUrl triggers
     (res, triggers) <- runEventWriterT (runReaderT (runRoutedT m r) as)
     return res
+
+--runApp publicUrl m = mdo
+--    r <- askRoute
+--    as <- stateManager publicUrl triggers
+--    (res, triggers) <- runRoutedT (runEventWriterT (runReaderT m as)) r
+--    return res
