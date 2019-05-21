@@ -79,6 +79,9 @@ labelledAs label m = divClass "field" $ do
   el "label" $ text label
   m
 
+fieldLabel :: MonadWidget t m => m a -> m a
+fieldLabel m = divClass "field" $ el "label" m
+
 textareaField
   :: (DomBuilder t m)
   => Text

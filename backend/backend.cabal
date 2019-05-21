@@ -35,11 +35,13 @@ library
     , readable                >= 0.3.1   && < 0.4
     , rng-utils               >= 0.3     && < 0.4
     , scrub
+    , shelly
     , snap-core               >= 1.0     && < 1.1
     , snap-server             >= 1.1     && < 1.2
     , sqlite-simple           >= 0.4.16  && < 0.5
     , stm
     , string-conv             >= 0.1.2   && < 0.2
+    , template-haskell
     , text                    >= 1.2.3   && < 1.3
     , time                    >= 1.8.0   && < 1.9
     , transformers            >= 0.5.2   && < 0.6
@@ -55,6 +57,7 @@ library
     Backend.Types.ServerEnv
     Backend.WsCmds
     Backend.WsUtils
+    Which
   ghc-options: -Wall
 
 executable backend

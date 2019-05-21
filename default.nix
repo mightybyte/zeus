@@ -17,7 +17,7 @@ project ./. ({ pkgs, ... }: {
         sha256 = "1li8w95ibq4xm717clz5wz23kdp15j9vrqb1kq64d5ld0fjx7ln0";
       };
   in {
-
+    backend = addBuildDepends super.backend [pkgs.git pkgs.nix];
     # aeson = dontCheck (self.callCabal2nix "aeson" (pkgs.fetchFromGitHub {
     #     owner = "bos";
     #     repo = "aeson";
@@ -61,6 +61,12 @@ project ./. ({ pkgs, ... }: {
     }) {});
     semantic-reflex = dontHaddock (dontCheck
       (self.callCabal2nix "semantic-reflex" "${semantic-reflex-src}/semantic-reflex" {}));
+    shelly = dontCheck (self.callCabal2nix "snap-server" (pkgs.fetchFromGitHub {
+        owner = "yesodweb";
+        repo = "Shelly.hs";
+        rev = "cf2f48a298ce7a40da0283702a3d98d53db9027a";
+        sha256 = "14m3zp4f2n14chl4d0mb1n8i8kgx3x504h28zpjcvp27ffrxr1cl";
+    }) {});
     snap-server = dontCheck (self.callCabal2nix "snap-server" (pkgs.fetchFromGitHub {
         owner = "snapframework";
         repo = "snap-server";

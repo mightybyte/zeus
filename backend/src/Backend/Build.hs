@@ -1,6 +1,7 @@
 {-# LANGUAGE BangPatterns #-}
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE TemplateHaskell #-}
 {-# LANGUAGE TypeFamilies #-}
 module Backend.Build where
 
@@ -35,6 +36,7 @@ import           Common.Types.BuildMsg
 import           Common.Types.JobStatus
 import           Common.Types.Repo
 import           Common.Types.RepoBuildInfo
+import           Which
 ------------------------------------------------------------------------------
 
 buildManagerThread :: ServerEnv -> IO ()
@@ -140,6 +142,12 @@ threadWatcher buildThreads start timeout ecMVar wtid jobId = go
               threadDelay 5000000 >> go
         Just ec -> return $ exitCodeToStatus ec
 
+gitBinary :: String
+gitBinary = $(staticWhich "git")
+
+nixBuildBinary :: String
+nixBuildBinary = $(staticWhich "nix-build")
+
 buildThread
   :: MVar ExitCode
   -> RNG
@@ -155,22 +163,23 @@ buildThread ecMVar rng repo msg = do
               HttpClone -> _rbi_cloneUrlHttp rbi
   let timeStr = formatTime defaultTimeLocale "%Y%m%d%H%M%S" start
   let buildId = printf "build-%s-%s" timeStr (toS tok :: String) :: String
-  let cloneDir = printf "/tmp/simple-ci-builds/%s" buildId :: String
+  let cloneDir = printf "/tmp/zeus-builds/%s" buildId :: String
   createDirectoryIfMissing True cloneDir
   let outputDir = "log/builds"
   createDirectoryIfMissing True outputDir
   let outputFile = printf "%s/%s.output" outputDir buildId
   printf "Writing build output to %s\n" outputFile
   withLogHandle outputFile $ \lh  -> do
-    let cloneCmd = printf "git clone %s" url
+    let cloneCmd = printf "%s clone %s" gitBinary url
     logWithTimestamp lh cloneCmd
 
     logWithTimestamp lh $ printf "Cloning %s to %s" (_repo_fullName repo) cloneDir
     _ <- runInDirWithEnv lh cloneCmd cloneDir Nothing
     let repoDir = cloneDir </> toS (_repo_name repo)
-    let checkout = printf "git checkout %s" (_rbi_commitHash rbi)
+    let checkout = printf "%s checkout %s" gitBinary (_rbi_commitHash rbi)
     _ <- runInDirWithEnv lh checkout repoDir Nothing
-    exitCode <- runInDirWithEnv lh (toS $ _repo_buildCmd repo) repoDir Nothing
+    let buildCmd = printf "%s %s" nixBuildBinary (_repo_buildNixFile repo)
+    exitCode <- runInDirWithEnv lh buildCmd repoDir Nothing
     end <- getCurrentTime
     let finishMsg = printf "Build finished in %.3f seconds with exit code %s" (realToFrac (diffUTCTime end start) :: Double) (show exitCode)
     logWithTimestamp lh (finishMsg ++ "\n")
