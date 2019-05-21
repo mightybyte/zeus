@@ -46,17 +46,30 @@ data BackendRoute :: * -> * where
 data FrontendRoute :: * -> * where
   FR_Home :: FrontendRoute ()
   FR_Jobs :: FrontendRoute ()
-  FR_Repos :: FrontendRoute ()
-  --FR_Repos :: FrontendRoute (R CrudRoute)
+  --FR_Repos :: FrontendRoute ()
+  FR_Repos :: FrontendRoute (R CrudRoute)
   FR_Accounts :: FrontendRoute ()
-  -- This type is used to define frontend routes, i.e. ones for which the backend will serve the frontend.
 
 type FullRoute = Sum BackendRoute (ObeliskRoute FrontendRoute)
 
+data CrudRoute :: * -> * where
+  Crud_List :: CrudRoute ()
+  Crud_Create :: CrudRoute ()
+  --Crud_Update :: CrudRoute Int
+  --Crud_Delete :: CrudRoute Int
+
+deriveRouteComponent ''CrudRoute
+
+crudRouteEncoder
+  :: Encoder (Either Text) (Either Text) (R CrudRoute) PageName
+crudRouteEncoder = pathComponentEncoder $ \case
+  Crud_List -> PathEnd $ unitEncoder mempty
+  Crud_Create -> PathSegment "new" $ unitEncoder mempty
+
 backendRouteEncoder
   :: Encoder (Either Text) Identity (R FullRoute) PageName
-backendRouteEncoder = handleEncoder (const (InL BackendRoute_Missing :/ ())) $
-  pathComponentEncoder $ \case
+backendRouteEncoder =
+  handleEncoder (\_ -> InR (ObeliskRoute_App FR_Home) :/ ()) $ pathComponentEncoder $ \case
     InL backendRoute -> case backendRoute of
       BackendRoute_Missing -> PathSegment "missing" $ unitEncoder mempty
       BackendRoute_GithubHook -> PathSegment "hook" $ unitEncoder (["github"], mempty)
@@ -67,16 +80,8 @@ backendRouteEncoder = handleEncoder (const (InL BackendRoute_Missing :/ ())) $
       -- in this example, we have none, so we insist on it.
       FR_Home -> PathEnd $ unitEncoder mempty
       FR_Jobs -> PathSegment "jobs" $ unitEncoder mempty
-      FR_Repos -> PathSegment "repos" $ unitEncoder mempty
+      FR_Repos -> PathSegment "repos" crudRouteEncoder
       FR_Accounts -> PathSegment "accounts" $ unitEncoder mempty
-
--- | Stolen from Obelisk as it is not exported. (Probably for a reason, but it
--- seems to do what we want right now.
-pathOnlyEncoderIgnoringQuery :: (Applicative check, MonadError Text parse) => Encoder check parse [Text] PageName
-pathOnlyEncoderIgnoringQuery = unsafeMkEncoder $ EncoderImpl
-  { _encoderImpl_decode = \(path, _query) -> pure path
-  , _encoderImpl_encode = \path -> (path, mempty)
-  }
 
 concat <$> mapM deriveRouteComponent
   [ ''BackendRoute
@@ -106,5 +111,5 @@ tabHomepage :: Some FrontendRoute -> R FrontendRoute
 tabHomepage (Some.This sec) = sec :/ case sec of
   FR_Home -> ()
   FR_Jobs -> ()
-  FR_Repos -> ()
+  FR_Repos -> Crud_List :/ ()
   FR_Accounts -> ()

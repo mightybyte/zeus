@@ -1,5 +1,6 @@
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE FlexibleInstances #-}
+{-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE RankNTypes #-}
@@ -18,11 +19,14 @@ import qualified Data.Map as M
 import           Data.Maybe
 import           Data.Text (Text)
 import           Database.Beam
+import           Obelisk.Route
+import           Obelisk.Route.Frontend
 import           Reflex.Dom.Contrib.CssClass
 import           Reflex.Dom.Core
 import           Reflex.Dom.SemanticUI
 import qualified Reflex.Dom.SemanticUI as SemUI
 ------------------------------------------------------------------------------
+import           Common.Route
 import           Common.Types.ConnectedAccount
 import           Common.Types.Repo
 import           Frontend.App
@@ -32,7 +36,11 @@ import           Frontend.Widgets.Common
 import           Frontend.Widgets.Form
 ------------------------------------------------------------------------------
 
-reposWidget :: (MonadAppIO r t m, Prerender js t m) => m ()
+reposWidget
+--  :: (MonadAppIO (R CrudRoute) t m, Prerender js t m)
+--  => App (R CrudRoute) t m ()
+  :: (MonadAppIO (R CrudRoute) t m, Prerender js t m)
+  => RoutedT t (R CrudRoute) m ()
 reposWidget = mdo
   as <- ask
   let listToState = bool ListTable EmptyPlaceholder . null
@@ -43,13 +51,16 @@ reposWidget = mdo
     , AddForm <$ showForm
     ]
   let repoMap = _as_repos as
-  let widget s = case s of
-        EmptyPlaceholder -> genericPlaceholder "Not watching any repos" >> return def
-        AddForm -> addRepo
-        ListTable -> reposList repoMap
-  ee <- dyn (widget <$> listState)
-  showForm <- switch <$> hold never (tableAction_showAddForm <$> ee)
-  showList <- switch <$> hold never (tableAction_showList <$> ee)
+  --let widget s = case s of
+  --      EmptyPlaceholder -> genericPlaceholder "Not watching any repos" >> return def
+  --      AddForm -> addRepo
+  --      ListTable -> reposList repoMap
+  --ee <- dyn (widget <$> listState)
+  subRoute_ $ \case
+    Crud_List -> reposList repoMap
+    Crud_Create -> addRepo
+  showForm <- return never -- switch <$> hold never (tableAction_showAddForm <$> ee)
+  showList <- return never -- switch <$> hold never (tableAction_showList <$> ee)
   return ()
 
 textDynColumn
@@ -65,7 +76,7 @@ textDynColumn f _ v = el "td" $ do
 reposList
   :: MonadAppIO r t m
   => Dynamic t (BeamMap Identity RepoT)
-  -> m (TableAction t (RepoT Maybe))
+  -> m () -- (TableAction t (RepoT Maybe))
 reposList as = do
   add <- SemUI.button def $ text "Add Repository"
   del <- genericRemovableTable as
@@ -79,11 +90,11 @@ reposList as = do
     --, ("", (\k v -> elClass "td" "right aligned collapsing" $ cancelButton k v))
     ]
   triggerBatch trigger_delRepos $ M.keys <$> del
-  return $ TableAction add never
+  return () -- $ TableAction add never
 
 addRepo
   :: (MonadAppIO r t m, Prerender js t m)
-  => m (TableAction t (RepoT Maybe))
+  => m () -- (TableAction t (RepoT Maybe))
 addRepo = do
   semuiForm $ do
     dr <- newRepoForm unfilledRepo never
@@ -93,7 +104,7 @@ addRepo = do
       (e1,_) <- elDynKlass' "button" as $ text "Add Repo"
       (e2,_) <- elAttr' "button" ("class" =: "ui button") $ text "Cancel"
       trigger trigger_addRepo $ tag (current dr) (domEvent Click e1)
-      return $ TableAction never (leftmost [domEvent Click e1, domEvent Click e2])
+      return () -- $ TableAction never (leftmost [domEvent Click e1, domEvent Click e2])
 
 unfilledRepo :: RepoT Maybe
 unfilledRepo = Repo Nothing Nothing (ConnectedAccountId Nothing) Nothing Nothing Nothing Nothing Nothing

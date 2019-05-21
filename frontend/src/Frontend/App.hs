@@ -55,9 +55,3 @@ runApp publicUrl m = mdo
     as <- stateManager publicUrl triggers
     (res, triggers) <- runEventWriterT (runReaderT (runRoutedT m r) as)
     return res
-
---runApp publicUrl m = mdo
---    r <- askRoute
---    as <- stateManager publicUrl triggers
---    (res, triggers) <- runRoutedT (runEventWriterT (runReaderT m as)) r
---    return res

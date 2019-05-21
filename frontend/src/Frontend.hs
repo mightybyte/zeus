@@ -16,14 +16,19 @@ module Frontend where
 import           Control.Monad.Identity
 import           Control.Monad.Reader
 import           Control.Monad.Ref
+import           Data.Map (Map)
+import qualified Data.Map as M
 import           Data.Maybe
 import           Data.Text (Text)
+import qualified Data.Text as T
 import           Obelisk.Frontend
 import           Obelisk.Generated.Static
 import           Obelisk.Route
 import           Obelisk.Route.Frontend
+import           Reflex.Network
 import           Reflex.Dom.Core
 import           Reflex.Dom.Contrib.CssClass
+import           Reflex.Dom.Contrib.Utils
 import           Reflex.Dom.Contrib.Widgets.DynTabs
 import qualified Reflex.Dom.SemanticUI as SemUI
 ------------------------------------------------------------------------------
@@ -72,7 +77,7 @@ appBody
       TriggerEvent t m, PerformEvent t m, MonadRef m,
       MonadSample t (Performable m), RouteToUrl (R FrontendRoute) m,
       SetRoute t (R FrontendRoute) m, MonadIO m, MonadIO (Performable m),
-      Prerender js t m
+      Prerender js t m, MonadReader (AppState t) m, EventWriter t AppTriggers m
      )
   => App (R FrontendRoute) t m ()
 appBody = do
@@ -85,13 +90,27 @@ appBody = do
     nav
   divClass "ui main container" $ do
     subRoute_ $ \case
-      FR_Home -> text "Wizard"
+      FR_Home -> text "Wizard" >> setRoute ((FR_Accounts :/ ()) <$ pb)
       FR_Jobs -> jobsWidget
       FR_Repos -> reposWidget
       FR_Accounts -> accountsWidget
   serverAlert <- asks _as_serverAlert
   modalExample serverAlert
   return ()
+
+--wizard :: (MonadApp r t m, SetRoute t (R FrontendRoute) m) => m ()
+--wizard = do
+--  repos <- asks _as_repos
+--  accounts <- asks _as_accounts
+--  pb <- getPostBuild
+--  let action = ffor ((,) <$> accounts <*> repos) $ \(as,rs) -> return $
+--        if M.null as
+--          then setRoute $ (FR_Accounts :/ ()) <$ pb
+--          else if M.null rs
+--                 then setRoute $ (FR_Repos :/ ()) <$ pb
+--                 else setRoute $ (FR_Jobs :/ ()) <$ pb
+--  _ <- networkView action
+--  return ()
 
 data MainTabs
   = JobsTab
