@@ -53,7 +53,7 @@ data RepoT f = Repo
   , _repo_owner :: PrimaryKey ConnectedAccountT f
   , _repo_name :: C f Text
   , _repo_cloneMethod :: C f CloneMethod
-  , _repo_buildCmd :: C f Text
+  , _repo_buildNixFile :: C f Text
   , _repo_timeout :: C f Int
   -- ^ Build timeout in seconds
   , _repo_hookId :: C f Int
@@ -66,7 +66,7 @@ repoToMaybe (Repo i f (ConnectedAccountId o) n c b t h) = Repo (Just i) (Just f)
 
 Repo (LensFor repo_id) (LensFor repo_fullName)
      (ConnectedAccountId (LensFor repo_owner))
-     (LensFor repo_name) (LensFor rep_cloneMethod) (LensFor repo_buildCmd)
+     (LensFor repo_name) (LensFor rep_cloneMethod) (LensFor repo_buildNixFile)
      (LensFor repo_timeout) (LensFor repo_hookId) =
      tableLenses
 

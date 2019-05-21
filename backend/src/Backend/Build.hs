@@ -145,6 +145,9 @@ threadWatcher buildThreads start timeout ecMVar wtid jobId = go
 gitBinary :: String
 gitBinary = $(staticWhich "git")
 
+nixBuildBinary :: String
+nixBuildBinary = $(staticWhich "nix-build")
+
 buildThread
   :: MVar ExitCode
   -> RNG
@@ -175,7 +178,8 @@ buildThread ecMVar rng repo msg = do
     let repoDir = cloneDir </> toS (_repo_name repo)
     let checkout = printf "%s checkout %s" gitBinary (_rbi_commitHash rbi)
     _ <- runInDirWithEnv lh checkout repoDir Nothing
-    exitCode <- runInDirWithEnv lh (toS $ _repo_buildCmd repo) repoDir Nothing
+    let buildCmd = printf "%s %s" nixBuildBinary (_repo_buildNixFile repo)
+    exitCode <- runInDirWithEnv lh buildCmd repoDir Nothing
     end <- getCurrentTime
     let finishMsg = printf "Build finished in %.3f seconds with exit code %s" (realToFrac (diffUTCTime end start) :: Double) (show exitCode)
     logWithTimestamp lh (finishMsg ++ "\n")

@@ -113,14 +113,22 @@ newRepoForm iv sv = do
     dn <- labelledAs "Repo name" $ textField
       (fromMaybe "" $ _repo_name iv)
       (fromMaybe "" . _repo_name <$> sv)
-    dbc <- labelledAs "Build Command" $ textareaField
-      (fromMaybe "" $ _repo_buildCmd iv)
-      (fromMaybe "" . _repo_buildCmd <$> sv)
+    let tip = "Path to .nix file in your repo that describes the build (default.nix, release.nix, etc)"
+    let bnfLabel = do
+          text "Build Nix File "
+          elAttr "span" ("data-tooltip" =: tip <> "data-position" =: "top left") $
+            elAttr "i" ("class" =: "info circle icon") blank
+    dbc <- divClass "field" $ do
+      el "label" $ bnfLabel
+      ie <- inputElement $ def
+        & inputElementConfig_initialValue .~ (fromMaybe "default.nix" $ _repo_buildNixFile iv)
+        & inputElementConfig_setValue .~ (fromMaybe "default.nix" . _repo_buildNixFile <$> sv)
+      return $ value ie
     dcm <- labelledAs "Clone Method" $ filledDropdown
       (fromMaybe HttpClone $ _repo_cloneMethod iv)
       (fmapMaybe id $ _repo_cloneMethod <$> sv)
     dt <- labelledAs "Timeout (in seconds)" $ readableField Nothing
-      (_repo_timeout iv)
+      (maybe (Just 3600) Just $ _repo_timeout iv)
       (_repo_timeout <$> sv)
     return $ do
         n <- dn
