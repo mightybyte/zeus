@@ -17,7 +17,7 @@ project ./. ({ pkgs, ... }: {
         sha256 = "1li8w95ibq4xm717clz5wz23kdp15j9vrqb1kq64d5ld0fjx7ln0";
       };
   in {
-
+    backend = addBuildDepend super.backend pkgs.git;
     # aeson = dontCheck (self.callCabal2nix "aeson" (pkgs.fetchFromGitHub {
     #     owner = "bos";
     #     repo = "aeson";
