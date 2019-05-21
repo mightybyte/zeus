@@ -35,6 +35,7 @@ library
     , readable                >= 0.3.1   && < 0.4
     , rng-utils               >= 0.3     && < 0.4
     , scrub
+    , shelly                  >= 1.8     && < 1.7
     , snap-core               >= 1.0     && < 1.1
     , snap-server             >= 1.1     && < 1.2
     , sqlite-simple           >= 0.4.16  && < 0.5
@@ -55,6 +56,7 @@ library
     Backend.Types.ServerEnv
     Backend.WsCmds
     Backend.WsUtils
+    Which
   ghc-options: -Wall
 
 executable backend

@@ -1,6 +1,7 @@
 {-# LANGUAGE BangPatterns #-}
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE TemplateHaskell #-}
 {-# LANGUAGE TypeFamilies #-}
 module Backend.Build where
 
@@ -35,6 +36,7 @@ import           Common.Types.BuildMsg
 import           Common.Types.JobStatus
 import           Common.Types.Repo
 import           Common.Types.RepoBuildInfo
+import           Which
 ------------------------------------------------------------------------------
 
 buildManagerThread :: ServerEnv -> IO ()
@@ -140,6 +142,9 @@ threadWatcher buildThreads start timeout ecMVar wtid jobId = go
               threadDelay 5000000 >> go
         Just ec -> return $ exitCodeToStatus ec
 
+gitBinary :: String
+gitBinary = $(staticWhich "git")
+
 buildThread
   :: MVar ExitCode
   -> RNG
@@ -162,13 +167,13 @@ buildThread ecMVar rng repo msg = do
   let outputFile = printf "%s/%s.output" outputDir buildId
   printf "Writing build output to %s\n" outputFile
   withLogHandle outputFile $ \lh  -> do
-    let cloneCmd = printf "$(staticWhich \"git\") clone %s" url
+    let cloneCmd = printf "%s clone %s" gitBinary url
     logWithTimestamp lh cloneCmd
 
     logWithTimestamp lh $ printf "Cloning %s to %s" (_repo_fullName repo) cloneDir
     _ <- runInDirWithEnv lh cloneCmd cloneDir Nothing
     let repoDir = cloneDir </> toS (_repo_name repo)
-    let checkout = printf "$(staticWhich \"git\") checkout %s" (_rbi_commitHash rbi)
+    let checkout = printf "%s checkout %s" gitBinary (_rbi_commitHash rbi)
     _ <- runInDirWithEnv lh checkout repoDir Nothing
     exitCode <- runInDirWithEnv lh (toS $ _repo_buildCmd repo) repoDir Nothing
     end <- getCurrentTime
