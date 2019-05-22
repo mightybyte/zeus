@@ -178,7 +178,7 @@ buildThread ecMVar rng repo msg = do
     let repoDir = cloneDir </> toS (_repo_name repo)
     let checkout = printf "%s checkout %s" gitBinary (_rbi_commitHash rbi)
     _ <- runInDirWithEnv lh checkout repoDir Nothing
-    let buildCmd = printf "%s %s" nixBuildBinary (_repo_buildNixFile repo)
+    let buildCmd = printf "%s --show-trace %s" nixBuildBinary (_repo_buildNixFile repo)
     exitCode <- runInDirWithEnv lh buildCmd repoDir Nothing
     end <- getCurrentTime
     let finishMsg = printf "Build finished in %.3f seconds with exit code %s" (realToFrac (diffUTCTime end start) :: Double) (show exitCode)
