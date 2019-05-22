@@ -54,6 +54,7 @@ data RepoT f = Repo
   , _repo_name :: C f Text
   , _repo_cloneMethod :: C f CloneMethod
   , _repo_buildNixFile :: C f Text
+  , _repo_nixPath :: C f Text
   , _repo_timeout :: C f Int
   -- ^ Build timeout in seconds
   , _repo_hookId :: C f Int
@@ -61,12 +62,13 @@ data RepoT f = Repo
   } deriving Generic
 
 repoToMaybe :: RepoT Identity -> RepoT Maybe
-repoToMaybe (Repo i f (ConnectedAccountId o) n c b t h) = Repo (Just i) (Just f)
-    (ConnectedAccountId $ Just o) (Just n) (Just c) (Just b) (Just t) (Just h)
+repoToMaybe (Repo i f (ConnectedAccountId o) n c bf p t h) = Repo (Just i) (Just f)
+    (ConnectedAccountId $ Just o) (Just n) (Just c) (Just bf) (Just p) (Just t) (Just h)
 
 Repo (LensFor repo_id) (LensFor repo_fullName)
      (ConnectedAccountId (LensFor repo_owner))
-     (LensFor repo_name) (LensFor rep_cloneMethod) (LensFor repo_buildNixFile)
+     (LensFor repo_name) (LensFor rep_cloneMethod)
+     (LensFor repo_buildNixFile) (LensFor repo_nixPath)
      (LensFor repo_timeout) (LensFor repo_hookId) =
      tableLenses
 

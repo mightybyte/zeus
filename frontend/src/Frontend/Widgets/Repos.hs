@@ -72,8 +72,8 @@ reposList as = do
     [ ("ID", textDynColumn (tshow . _repo_id))
     --, ("Owner", textDynColumn _repo_owner)
     , ("Full Name", textDynColumn $ _repo_fullName)
-    , ("Name", textDynColumn $ _repo_name)
-    --, ("Clone Method", mkField $ _rbi_gitRef . _buildJob_repoBuildInfo)
+    , ("Clone Method", textDynColumn $ tshow . _repo_cloneMethod)
+    , ("Nix File", textDynColumn $ _repo_buildNixFile)
     , ("Timeout", textDynColumn (tshow . _repo_timeout))
     --, ("Build Command", \_ v -> el "td" (commitWidget v) >> return never)
     --, ("", (\k v -> elClass "td" "right aligned collapsing" $ cancelButton k v))
@@ -96,7 +96,7 @@ addRepo = do
       return $ TableAction never (leftmost [domEvent Click e1, domEvent Click e2])
 
 unfilledRepo :: RepoT Maybe
-unfilledRepo = Repo Nothing Nothing (ConnectedAccountId Nothing) Nothing Nothing Nothing Nothing Nothing
+unfilledRepo = Repo Nothing Nothing (ConnectedAccountId Nothing) Nothing Nothing Nothing Nothing Nothing Nothing
 
 newRepoForm
   :: MonadApp t m
@@ -118,12 +118,15 @@ newRepoForm iv sv = do
           text "Build Nix File "
           elAttr "span" ("data-tooltip" =: tip <> "data-position" =: "top left") $
             elAttr "i" ("class" =: "info circle icon") blank
-    dbc <- divClass "field" $ do
+    dnf <- divClass "field" $ do
       el "label" $ bnfLabel
       ie <- inputElement $ def
         & inputElementConfig_initialValue .~ (fromMaybe "default.nix" $ _repo_buildNixFile iv)
         & inputElementConfig_setValue .~ (fromMaybe "default.nix" . _repo_buildNixFile <$> sv)
       return $ value ie
+    dnp <- labelledAs "NIX_PATH to use for the build" $ textField
+      (fromMaybe "" $ _repo_nixPath iv)
+      (fromMaybe "" . _repo_nixPath <$> sv)
     dcm <- labelledAs "Clone Method" $ filledDropdown
       (fromMaybe HttpClone $ _repo_cloneMethod iv)
       (fmapMaybe id $ _repo_cloneMethod <$> sv)
@@ -132,9 +135,10 @@ newRepoForm iv sv = do
       (_repo_timeout <$> sv)
     return $ do
         n <- dn
-        bc <- dbc
+        nf <- dnf
         cm <- dcm
         t <- dt
+        np <- dnp
         accountMap <- accounts
         mca <- value dmca
         pure $ case flip M.lookup accountMap =<< mca of
@@ -144,7 +148,7 @@ newRepoForm iv sv = do
                 maid = ConnectedAccountId $ Just aid
                 ownerName = _connectedAccount_name a
                 fn = mkFullName (_connectedAccount_provider a) ownerName n
-             in Repo Nothing (Just fn) maid (Just n) (Just cm) (Just bc) t Nothing
+             in Repo Nothing (Just fn) maid (Just n) (Just cm) (Just nf) (Just np) t Nothing
   where
     --showAccount a =
     --  (fromJust $ _connectedAccount_id a, accountText a)
@@ -157,5 +161,5 @@ mkFullName GitHub owner name = owner <> "/" <> name
 mkFullName GitLab owner name = owner <> "/" <> name
 
 isValidRepo :: RepoT Maybe -> Bool
-isValidRepo (Repo _ (Just _) (ConnectedAccountId (Just _)) (Just _) (Just _) (Just _) (Just _) _) = True
+isValidRepo (Repo _ (Just _) (ConnectedAccountId (Just _)) (Just _) (Just _) (Just _) (Just _) (Just _) _) = True
 isValidRepo _ = False

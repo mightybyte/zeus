@@ -20,6 +20,7 @@ import           Data.Time
 import           Database.Beam
 import           Database.Beam.Sqlite
 import           System.Directory
+import           System.Environment
 import           System.Exit
 import           System.FilePath
 import           System.IO
@@ -179,7 +180,9 @@ buildThread ecMVar rng repo msg = do
     let checkout = printf "%s checkout %s" gitBinary (_rbi_commitHash rbi)
     _ <- runInDirWithEnv lh checkout repoDir Nothing
     let buildCmd = printf "%s --show-trace %s" nixBuildBinary (_repo_buildNixFile repo)
-    exitCode <- runInDirWithEnv lh buildCmd repoDir Nothing
+    env <- getEnvironment
+    let buildEnv = M.toList $ M.insert "NIX_PATH" (toS $ _repo_nixPath repo) $ M.fromList env
+    exitCode <- runInDirWithEnv lh buildCmd repoDir (Just buildEnv)
     end <- getCurrentTime
     let finishMsg = printf "Build finished in %.3f seconds with exit code %s" (realToFrac (diffUTCTime end start) :: Double) (show exitCode)
     logWithTimestamp lh (finishMsg ++ "\n")
