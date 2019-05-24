@@ -29,7 +29,6 @@ type MonadApp r t m =
   , MonadRef m
   , PerformEvent t m
   , TriggerEvent t m
-  , Routed t r m
   , MonadReader (AppState t) m
   , EventWriter t AppTriggers m
   , SetRoute t (R FrontendRoute) m

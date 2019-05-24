@@ -17,6 +17,7 @@ import           Control.Monad.Reader
 import           Data.Bool
 import qualified Data.Map as M
 import           Data.Maybe
+import           Data.Readable
 import           Data.Text (Text)
 import           Database.Beam
 import           Obelisk.Route
@@ -25,6 +26,7 @@ import           Reflex.Dom.Contrib.CssClass
 import           Reflex.Dom.Core
 import           Reflex.Dom.SemanticUI
 import qualified Reflex.Dom.SemanticUI as SemUI
+import           Reflex.Network
 ------------------------------------------------------------------------------
 import           Common.Route
 import           Common.Types.ConnectedAccount
@@ -79,6 +81,8 @@ reposList
   -> m () -- (TableAction t (RepoT Maybe))
 reposList as = do
   add <- SemUI.button def $ text "Add Repository"
+  setRoute $ (FR_Repos :/ Crud_Create :/ ()) <$ add
+
   del <- genericRemovableTable as
     [ ("ID", textDynColumn (tshow . _repo_id))
     --, ("Owner", textDynColumn _repo_owner)
@@ -90,7 +94,7 @@ reposList as = do
     --, ("", (\k v -> elClass "td" "right aligned collapsing" $ cancelButton k v))
     ]
   triggerBatch trigger_delRepos $ M.keys <$> del
-  return () -- $ TableAction add never
+  return ()
 
 addRepo
   :: (MonadAppIO r t m, Prerender js t m)
@@ -104,7 +108,9 @@ addRepo = do
       (e1,_) <- elDynKlass' "button" as $ text "Add Repo"
       (e2,_) <- elAttr' "button" ("class" =: "ui button") $ text "Cancel"
       trigger trigger_addRepo $ tag (current dr) (domEvent Click e1)
-      return () -- $ TableAction never (leftmost [domEvent Click e1, domEvent Click e2])
+      setRoute $ (FR_Repos :/ Crud_List :/ ()) <$ leftmost
+        [domEvent Click e1, domEvent Click e2]
+      return ()
 
 unfilledRepo :: RepoT Maybe
 unfilledRepo = Repo Nothing Nothing (ConnectedAccountId Nothing) Nothing Nothing Nothing Nothing Nothing
@@ -117,11 +123,8 @@ newRepoForm
 newRepoForm iv sv = do
     accounts <- asks _as_accounts
     dmca <- labelledAs "Owning Account" $ do
-      res <- prerender (pure $ pure (Nothing :: Maybe ConnectedAccountId)) $ fmap value $ SemUI.dropdown def Nothing never $
-        -- (maybe (head accounts) _connectedAccount_name $ _repo_owner =<< iv)
-        -- (fmap join $ _repo_owner <$$> sv) $
-        TaggedDynamic $ text . accountText <$$> accounts
-      return $ join res
+      divClass "ui dropdown selection" $
+        accountDropdown accounts (_repo_owner iv) (_repo_owner <$> sv)
     dn <- labelledAs "Repo name" $ textField
       (fromMaybe "" $ _repo_name iv)
       (fromMaybe "" . _repo_name <$> sv)
@@ -147,9 +150,8 @@ newRepoForm iv sv = do
         bc <- dbc
         cm <- dcm
         t <- dt
-        accountMap <- accounts
         mca <- dmca
-        pure $ case flip M.lookup accountMap =<< mca of
+        pure $ case mca of
           Nothing -> unfilledRepo
           Just a -> do
             let aid = _connectedAccount_id a
@@ -163,6 +165,28 @@ newRepoForm iv sv = do
     accountText a =
        providerUrl (_connectedAccount_provider a) <> "/" <>
               (_connectedAccount_name a)
+
+accountDropdown
+  :: MonadApp r t m
+  => Dynamic t (BeamMap Identity ConnectedAccountT)
+  -> PrimaryKey ConnectedAccountT Maybe
+  -> Event t (PrimaryKey ConnectedAccountT Maybe)
+  -> m (Dynamic t (Maybe ConnectedAccount))
+accountDropdown accounts iv sv = do
+  ed <- networkView $ ffor accounts $ \as -> do
+    let scfg = SelectElementConfig
+                 (maybe "" tshow $ caKeyMaybeToId iv)
+                 (Just $ tshow . caKeyToInt <$> fmapMaybe caKeyMaybeToId sv)
+                 def
+    (se,_) <- selectElement scfg $ do
+      forM_ (M.toList as) $ \(k,a) -> do
+        let cfg = def
+                  & elementConfig_initialAttributes .~ (AttributeName Nothing "value" =: tshow k)
+        element "option" cfg $ text $ providerUrl (_connectedAccount_provider a) <> "/" <> _connectedAccount_name a
+    return $ join . fmap ((\aid -> M.lookup aid as)  . intToCaKey) . fromText <$> _selectElement_value se
+  dyndyn <- holdDyn (constDyn Nothing) ed
+  return $ join dyndyn
+
 
 mkFullName :: AccountProvider -> Text -> Text -> Text
 mkFullName GitHub owner name = owner <> "/" <> name

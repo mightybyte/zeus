@@ -77,7 +77,7 @@ appBody
       TriggerEvent t m, PerformEvent t m, MonadRef m,
       MonadSample t (Performable m), RouteToUrl (R FrontendRoute) m,
       SetRoute t (R FrontendRoute) m, MonadIO m, MonadIO (Performable m),
-      Prerender js t m, MonadReader (AppState t) m, EventWriter t AppTriggers m
+      Prerender js t m
      )
   => App (R FrontendRoute) t m ()
 appBody = do

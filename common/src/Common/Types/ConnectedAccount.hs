@@ -132,6 +132,9 @@ instance Table ConnectedAccountT where
 caKeyToInt :: PrimaryKey ConnectedAccountT Identity -> Int
 caKeyToInt (ConnectedAccountId k) = k
 
+intToCaKey :: Int -> PrimaryKey ConnectedAccountT Identity
+intToCaKey k = ConnectedAccountId k
+
 caKeyIdToMaybe :: PrimaryKey ConnectedAccountT Identity -> PrimaryKey ConnectedAccountT Maybe
 caKeyIdToMaybe (ConnectedAccountId k) = ConnectedAccountId (Just k)
 
