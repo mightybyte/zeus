@@ -69,9 +69,9 @@ jobsList as = do
     , ("Git Ref", mkField $ dynText . fmap (_rbi_gitRef . _buildJob_repoBuildInfo))
     , ("Commit Hash", \_ v -> el "td" (commitWidget v) >> return never)
     , ("Time", mkField dynJobTimeWidget)
-    , ("", (\(Down k) v -> elClass "td" "right aligned collapsing" $ cancelOrRerun k (_buildJob_status <$> v)))
+    , ("", (\(Down k) v -> elClass "td" "right aligned collapsing" $
+             cancelOrRerun k (_buildJob_status <$> v)))
     ]
-  --triggerBatch trigger_cancelJobs $ fmap (\(Down a) -> a) . M.keys <$> cancel
   return ()
 
 cancelOrRerun :: MonadApp r t m => BuildJobId -> Dynamic t JobStatus -> m (Event t ())
@@ -87,14 +87,22 @@ cancelOrRerun k dj = do
 
 cancelButton :: MonadApp r t m => BuildJobId -> m ()
 cancelButton k = do
-    (e,_) <- elAttr' "i" ("class" =: "cancel icon" <> "placeholder" =: "Cancel build") blank
-    --triggerBatch trigger_cancelJobs $ [k] <$ domEvent Click e
+    (e,_) <- elAttr' "span" ("class" =: "clickable" <>
+                             "data-tooltip" =: "Cancel build" <>
+                             "data-position" =: "bottom right"
+                            ) $
+      elAttr' "i" ("class" =: "cancel icon") blank
+    triggerBatch trigger_cancelJobs $ [k] <$ domEvent Click e
     return ()
 
 rerunButton :: MonadApp r t m => BuildJobId -> m ()
 rerunButton k = do
-    (e,_) <- elAttr' "i" ("class" =: "redo icon" <> "placeholder" =: "Re-run build") blank
-    --triggerBatch trigger_rerunJobs $ [k] <$ domEvent Click e
+    (e,_) <- elAttr' "span" ("class" =: "clickable" <>
+                             "data-tooltip" =: "Re-run build" <>
+                             "data-position" =: "bottom right"
+                            ) $
+      elAttr' "i" ("class" =: "redo icon") blank
+    triggerBatch trigger_rerunJobs $ [k] <$ domEvent Click e
     return ()
 
 repoColumnWidget
