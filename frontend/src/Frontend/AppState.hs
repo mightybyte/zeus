@@ -26,6 +26,7 @@ import qualified Data.Map as M
 import           Data.Maybe
 import           Data.Text (Text)
 import qualified Data.Text as T
+import qualified Data.Witherable as W
 import           Database.Beam (Table, primaryKey)
 import           GHC.Generics
 import           Reflex
@@ -101,6 +102,8 @@ data AppState t = AppState
     , _as_serverAlert :: Event t Text
     } deriving Generic
 
+squash f = W.filter (not . null) . fmap f
+
 stateManager
     :: (DomBuilder t m, MonadHold t m, Prerender js t m)
     => Text
@@ -109,8 +112,8 @@ stateManager
 stateManager route ft = do
     let upEvent = mergeWith (++) $ map (fmap (:[]))
           [ Up_ListAccounts <$ fmapMaybe (listToMaybe . _trigger_getAccounts) ft
-          , Up_ConnectAccount . _trigger_connectAccount <$> ft
-          , Up_DelAccounts . _trigger_delAccounts <$> ft
+          , Up_ConnectAccount <$> squash _trigger_connectAccount ft
+          , Up_DelAccounts <$> squash _trigger_delAccounts ft
           , Up_ListRepos <$ fmapMaybe (listToMaybe . _trigger_getRepos) ft
           , Up_AddRepo . _trigger_addRepo <$> ft
           , Up_DelRepos . _trigger_delRepos <$> ft

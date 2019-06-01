@@ -109,6 +109,9 @@ serveBackendRoute env = \case
   BackendRoute_Ping :=> _ -> writeText "PONG\nPONG\nPONG\n"
   BackendRoute_Websocket :=> _ -> wsHandler $ \conn -> do
       cid <- addConnection conn (_serverEnv_connRepo env)
+      listJobs env conn
+      listAccounts env conn
+      listRepos env conn
       talkClient env cid conn
   BackendRoute_Missing :=> _ -> do
     liftIO $ putStrLn "Unknown backend route"
@@ -118,6 +121,8 @@ talkClient :: ServerEnv -> ConnId -> WS.Connection -> IO ()
 talkClient env cid conn = do
     E.handle cleanup $ forever $ do
       clientCmd <- wsReceive conn
+      putStrLn "================================="
+      putStrLn $ "Got Up_ message " <> show clientCmd
       case clientCmd of
         Left e -> do
           putStrLn $ "************************************************"
@@ -129,10 +134,7 @@ talkClient env cid conn = do
         Right Up_ListRepos -> listRepos env conn
         Right (Up_AddRepo rs) -> mapM_ (addRepo env conn) rs
         Right (Up_DelRepos rs) -> mapM_ (deleteRepo env) rs
-        Right Up_GetJobs -> do
-          let dbConn = _serverEnv_db env
-          jobs <- getJobsFromDb dbConn
-          wsSend conn $ Down_Jobs jobs
+        Right Up_GetJobs -> listJobs env conn
         Right (Up_CancelJobs jids) -> do
           mapM_ (cancelJobAndRemove env) jids
         Right (Up_RerunJobs jids) -> do
@@ -229,6 +231,11 @@ listRepos :: ServerEnv -> WS.Connection -> IO ()
 listRepos env wsConn = do
   repos <- queryAllRepos env
   wsSend wsConn $ Down_Repos repos
+
+listJobs :: ServerEnv -> WS.Connection -> IO ()
+listJobs env conn = do
+  jobs <- getJobsFromDb (_serverEnv_db env)
+  wsSend conn $ Down_Jobs jobs
 
 addRepo
   :: ServerEnv

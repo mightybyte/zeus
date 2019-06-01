@@ -79,6 +79,7 @@ deriving instance Eq Repo
 deriving instance Show (PrimaryKey RepoT Identity)
 deriving instance Show (PrimaryKey RepoT Maybe)
 deriving instance Show Repo
+deriving instance Show (RepoT Maybe)
 deriving instance Ord (PrimaryKey RepoT Identity)
 deriving instance Ord (PrimaryKey RepoT Maybe)
 

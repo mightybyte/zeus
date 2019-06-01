@@ -21,6 +21,7 @@ import qualified Data.Map as M
 import           Data.Maybe
 import           Data.Text (Text)
 import qualified Data.Text as T
+import qualified GHCJS.DOM.Types as DOM
 import           Obelisk.Frontend
 import           Obelisk.Generated.Static
 import           Obelisk.Route
@@ -71,9 +72,12 @@ jsScript url = elAttr "script" ("src" =: url <> "type" =: "text/javascript") bla
 script :: DomBuilder t m =>  Text -> m ()
 script code = elAttr "script" ("type" =: "text/javascript") $ text code
 
+--pr :: PostBuild t n => m a -> n a -> m (Dynamic t a)
+--pr a = prerender a a
+
 -- TODO Remove prerender constraint after updating reflex-dom-contrib
 appBody
-  :: (PostBuild t m, DomBuilder t m, MonadHold t m, MonadFix m,
+  :: forall js t m. (PostBuild t m, DomBuilder t m, MonadHold t m, MonadFix m,
       TriggerEvent t m, PerformEvent t m, MonadRef m,
       MonadSample t (Performable m), RouteToUrl (R FrontendRoute) m,
       SetRoute t (R FrontendRoute) m, MonadIO m, MonadIO (Performable m),
@@ -81,16 +85,20 @@ appBody
      )
   => App (R FrontendRoute) t m ()
 appBody = do
+  --dpb <- prerender (pure never) (getPostBuild)
+  --let pb = switch $ current pb
+  --pb <- switch . current <$> prerender (DOM.liftJSM getPostBuild) getPostBuild
   pb <- getPostBuild
-  trigger trigger_getAccounts pb
-  trigger trigger_getJobs pb
-  trigger trigger_getRepos pb
+  --performEvent_ (liftIO (putStrLn "appBody postBuild") <$ pb)
+  --trigger trigger_getAccounts $ traceEvent "---postbuild---" pb
+  --trigger trigger_getJobs pb
+  --trigger trigger_getRepos pb
   divClass "ui fixed menu" $ do
     elAttr "div" ("class" =: "inverted header item") $ text "Zeus CI"
     nav
   divClass "ui main container" $ do
     subRoute_ $ \case
-      FR_Home -> text "Wizard" >> setRoute ((FR_Accounts :/ ()) <$ pb)
+      FR_Home -> text "Wizard" >> setRoute ((FR_Accounts :/ Crud_List :/ ()) <$ pb)
       FR_Jobs -> jobsWidget
       FR_Repos -> reposWidget
       FR_Accounts -> accountsWidget

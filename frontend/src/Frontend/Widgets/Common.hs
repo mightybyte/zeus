@@ -1,12 +1,14 @@
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE UndecidableInstances #-}
 
 module Frontend.Widgets.Common where
 
 ------------------------------------------------------------------------------
+import           Control.Lens
 import           Control.Monad.Fix
 import           Data.Default
 import           Data.Map (Map)
@@ -14,7 +16,9 @@ import           Data.Text (Text)
 import           Reflex
 import           Reflex.Dom
 ------------------------------------------------------------------------------
+import           Common.Api
 import           Frontend.App
+import           Frontend.AppState
 import           Humanizable
 ------------------------------------------------------------------------------
 
@@ -82,8 +86,19 @@ instance DomBuilder t m => Default (TableConfig k v t m a) where
 
 deleteButton :: DomBuilder t m => m (Event t ())
 deleteButton = do
-  (e,_) <- el' "span" $ elAttr "i" ("class" =: "close icon") blank
+  (e,_) <- elAttr' "i" ("class" =: "trash icon") blank
   return $ domEvent Click e
+
+deleteColumn
+  :: MonadApp r t m
+  => Lens' AppTriggers (Batch a)
+  -> a
+  -> m (Event t ())
+deleteColumn trig k = do
+  (e,_) <- elAttr' "td" ("class" =: "clickable right aligned collapsing") $
+    elAttr "i" ("class" =: "trash icon") blank
+  triggerBatch trig ([k] <$ domEvent Click e)
+  return never
 
 genericRemovableTable
   :: (DomBuilder t m, PostBuild  t m, MonadHold t m, MonadFix m, Ord k)

@@ -48,7 +48,7 @@ data FrontendRoute :: * -> * where
   FR_Jobs :: FrontendRoute ()
   --FR_Repos :: FrontendRoute ()
   FR_Repos :: FrontendRoute (R CrudRoute)
-  FR_Accounts :: FrontendRoute ()
+  FR_Accounts :: FrontendRoute (R CrudRoute)
 
 type FullRoute = Sum BackendRoute (ObeliskRoute FrontendRoute)
 
@@ -81,7 +81,7 @@ backendRouteEncoder =
       FR_Home -> PathEnd $ unitEncoder mempty
       FR_Jobs -> PathSegment "jobs" $ unitEncoder mempty
       FR_Repos -> PathSegment "repos" crudRouteEncoder
-      FR_Accounts -> PathSegment "accounts" $ unitEncoder mempty
+      FR_Accounts -> PathSegment "accounts" crudRouteEncoder
 
 concat <$> mapM deriveRouteComponent
   [ ''BackendRoute
@@ -112,4 +112,4 @@ tabHomepage (Some.This sec) = sec :/ case sec of
   FR_Home -> ()
   FR_Jobs -> ()
   FR_Repos -> Crud_List :/ ()
-  FR_Accounts -> ()
+  FR_Accounts -> Crud_List :/ ()
