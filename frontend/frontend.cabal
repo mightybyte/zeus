@@ -26,6 +26,7 @@ library
     , text
     , time
     , transformers
+    , witherable
   exposed-modules:
     Frontend
     Frontend.App
