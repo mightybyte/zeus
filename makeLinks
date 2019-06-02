@@ -1,0 +1,6 @@
+#!/bin/sh
+
+rm frontend.jsexe.assets
+rm static.assets
+ln -s result-exe/frontend.jsexe.assets .
+ln -s result-exe/static.assets .
