@@ -1,5 +1,6 @@
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE FlexibleInstances #-}
+{-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE RankNTypes #-}
@@ -14,15 +15,22 @@ module Frontend.Widgets.Repos where
 ------------------------------------------------------------------------------
 import           Control.Monad.Reader
 import           Data.Bool
+import           Data.Map (Map)
 import qualified Data.Map as M
 import           Data.Maybe
+import           Data.Readable
 import           Data.Text (Text)
 import           Database.Beam
+import           Obelisk.Route
+import           Obelisk.Route.Frontend
 import           Reflex.Dom.Contrib.CssClass
+import           Reflex.Dom.Contrib.Utils
 import           Reflex.Dom.Core
-import           Reflex.Dom.SemanticUI
 import qualified Reflex.Dom.SemanticUI as SemUI
+import           Reflex.Network
 ------------------------------------------------------------------------------
+import           Common.Route
+import           Common.Types.BuildJob
 import           Common.Types.ConnectedAccount
 import           Common.Types.Repo
 import           Frontend.App
@@ -32,58 +40,47 @@ import           Frontend.Widgets.Common
 import           Frontend.Widgets.Form
 ------------------------------------------------------------------------------
 
-reposWidget :: MonadApp t m => m ()
+reposWidget
+  :: (MonadAppIO (R CrudRoute) t m, Prerender js t m)
+  => RoutedT t (R CrudRoute) m ()
 reposWidget = mdo
+  pb <- getPostBuild
+  trigger trigger_getRepos pb
   as <- ask
-  let listToState = bool ListTable EmptyPlaceholder . null
-  listState <- holdDyn EmptyPlaceholder $ leftmost
-    [ listToState <$> leftmost
-        [ updated (_as_accounts as)
-        , tag (current $ _as_accounts as) showList]
-    , AddForm <$ showForm
-    ]
-  let repoMap = _as_repos as
-  let widget s = case s of
-        EmptyPlaceholder -> genericPlaceholder "Not watching any repos" >> return def
-        AddForm -> addRepo
-        ListTable -> reposList repoMap
-  ee <- dyn (widget <$> listState)
-  showForm <- switch <$> hold never (tableAction_showAddForm <$> ee)
-  showList <- switch <$> hold never (tableAction_showList <$> ee)
+  subRoute_ $ \case
+    Crud_List -> reposList (_as_repos as)
+    Crud_Create -> addRepo
   return ()
 
 textDynColumn
-  :: MonadWidget t m
+  :: MonadApp r t m
   => (a f -> Text)
   -> PrimaryKey a f
   -> Dynamic t (a f)
-  -> m ()
+  -> m (Event t ())
 textDynColumn f _ v = el "td" $ do
   dynText (f <$> v)
-  return ()
+  return never
 
 reposList
-  :: MonadApp t m
+  :: MonadAppIO r t m
   => Dynamic t (BeamMap Identity RepoT)
-  -> m (TableAction t (RepoT Maybe))
+  -> m ()
 reposList as = do
   add <- SemUI.button def $ text "Add Repository"
-  del <- genericRemovableTable as
+  setRoute $ (FR_Repos :/ Crud_Create :/ ()) <$ add
+
+  del <- genericTableG def as
     [ ("ID", textDynColumn (tshow . _repo_id))
-    --, ("Owner", textDynColumn _repo_owner)
     , ("Full Name", textDynColumn $ _repo_fullName)
     , ("Clone Method", textDynColumn $ tshow . _repo_cloneMethod)
     , ("Nix File", textDynColumn $ _repo_buildNixFile)
     , ("Timeout", textDynColumn (tshow . _repo_timeout))
-    --, ("Build Command", \_ v -> el "td" (commitWidget v) >> return never)
-    --, ("", (\k v -> elClass "td" "right aligned collapsing" $ cancelButton k v))
+    , ("", \k _ -> deleteColumn trigger_delRepos k)
     ]
-  triggerBatch trigger_delRepos $ M.keys <$> del
-  return $ TableAction add never
+  return ()
 
-addRepo
-  :: MonadApp t m
-  => m (TableAction t (RepoT Maybe))
+addRepo :: (MonadAppIO r t m, Prerender js t m) => m ()
 addRepo = do
   semuiForm $ do
     dr <- newRepoForm unfilledRepo never
@@ -93,23 +90,22 @@ addRepo = do
       (e1,_) <- elDynKlass' "button" as $ text "Add Repo"
       (e2,_) <- elAttr' "button" ("class" =: "ui button") $ text "Cancel"
       trigger trigger_addRepo $ tag (current dr) (domEvent Click e1)
-      return $ TableAction never (leftmost [domEvent Click e1, domEvent Click e2])
+      setRoute $ (FR_Repos :/ Crud_List :/ ()) <$ leftmost
+        [domEvent Click e1, domEvent Click e2]
+      return ()
 
 unfilledRepo :: RepoT Maybe
 unfilledRepo = Repo Nothing Nothing (ConnectedAccountId Nothing) Nothing Nothing Nothing Nothing Nothing Nothing
 
 newRepoForm
-  :: MonadApp t m
+  :: (MonadAppIO r t m, Prerender js t m)
   => RepoT Maybe
   -> Event t (RepoT Maybe)
   -> m (Dynamic t (RepoT Maybe))
 newRepoForm iv sv = do
     accounts <- asks _as_accounts
     dmca <- labelledAs "Owning Account" $
-      SemUI.dropdown def Nothing never $
-        -- (maybe (head accounts) _connectedAccount_name $ _repo_owner =<< iv)
-        -- (fmap join $ _repo_owner <$$> sv) $
-        TaggedDynamic $ text . accountText <$$> accounts
+      accountDropdown accounts Nothing never
     dn <- labelledAs "Repo name" $ textField
       (fromMaybe "" $ _repo_name iv)
       (fromMaybe "" . _repo_name <$> sv)
@@ -140,8 +136,8 @@ newRepoForm iv sv = do
         t <- dt
         np <- dnp
         accountMap <- accounts
-        mca <- value dmca
-        pure $ case flip M.lookup accountMap =<< mca of
+        mca <- dmca
+        pure $ case mca of
           Nothing -> unfilledRepo
           Just a -> do
             let aid = _connectedAccount_id a
@@ -150,11 +146,46 @@ newRepoForm iv sv = do
                 fn = mkFullName (_connectedAccount_provider a) ownerName n
              in Repo Nothing (Just fn) maid (Just n) (Just cm) (Just nf) (Just np) t Nothing
   where
-    --showAccount a =
-    --  (fromJust $ _connectedAccount_id a, accountText a)
     accountText a =
-       providerUrl (_connectedAccount_provider a) <> "/" <>
-              (_connectedAccount_name a)
+       providerUrl (_connectedAccount_provider a) <> "/" <> (_connectedAccount_name a)
+
+accountDropdown
+  :: forall r t m. MonadApp r t m
+  => Dynamic t (BeamMap Identity ConnectedAccountT)
+  -> Maybe ConnectedAccount
+  -> Event t (Maybe ConnectedAccount)
+  -> m (Dynamic t (Maybe ConnectedAccount))
+accountDropdown accounts iv sv = do
+  let vals = M.fromList . map mkPair . (Nothing:) . map Just . M.elems <$> accounts
+      mkPair Nothing = (Nothing,"")
+      mkPair (Just a) = (Just a, providerUrl (_connectedAccount_provider a) <> "/" <> _connectedAccount_name a)
+  d <- dropdown iv vals $ def
+         & setValue .~ sv
+         & attributes .~ constDyn ("class" =: "ui dropdown selection")
+
+  return $ value d
+
+--accountDropdown
+--  :: MonadApp r t m
+--  => Dynamic t (BeamMap Identity ConnectedAccountT)
+--  -> PrimaryKey ConnectedAccountT Maybe
+--  -> Event t (PrimaryKey ConnectedAccountT Maybe)
+--  -> m (Dynamic t (Maybe ConnectedAccount))
+--accountDropdown accounts iv sv = do
+--  ed <- networkView $ ffor accounts $ \as -> do
+--    let scfg = SelectElementConfig
+--                 (maybe "" tshow $ caKeyMaybeToId iv)
+--                 (Just $ tshow . caKeyToInt <$> fmapMaybe caKeyMaybeToId sv)
+--                 def
+--    (se,_) <- selectElement scfg $ do
+--      forM_ (M.toList as) $ \(k,a) -> do
+--        let cfg = def
+--                  & elementConfig_initialAttributes .~ (AttributeName Nothing "value" =: tshow k)
+--        element "option" cfg $ text $ providerUrl (_connectedAccount_provider a) <> "/" <> _connectedAccount_name a
+--    return $ join . fmap ((\aid -> M.lookup aid as)  . intToCaKey) . fromText <$> _selectElement_value se
+--  dyndyn <- holdDyn (constDyn Nothing) ed
+--  return $ join dyndyn
+
 
 mkFullName :: AccountProvider -> Text -> Text -> Text
 mkFullName GitHub owner name = owner <> "/" <> name

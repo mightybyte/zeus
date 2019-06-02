@@ -9,23 +9,48 @@ module Frontend.App where
 
 ------------------------------------------------------------------------------
 import           Control.Monad.Reader
+import           Control.Monad.Ref
+import           Data.Text (Text)
 import           Reflex
 import           Reflex.Dom
+import           Obelisk.Route.Frontend
 ------------------------------------------------------------------------------
+import           Common.Route
 import           Frontend.AppState
 ------------------------------------------------------------------------------
 
 
-type MonadApp t m = (MonadWidget t m,
-                     MonadReader (AppState t) m,
-                     EventWriter t AppTriggers m
-                    )
+type MonadApp r t m =
+  ( DomBuilder t m
+  , PostBuild t m
+  , MonadFix m
+  , MonadHold t m
+  , MonadSample t (Performable m)
+  , MonadRef m
+  , PerformEvent t m
+  , TriggerEvent t m
+  , MonadReader (AppState t) m
+  , EventWriter t AppTriggers m
+  , SetRoute t (R FrontendRoute) m
+  , RouteToUrl (R FrontendRoute) m
+  )
 
-type App t m a =
-    ReaderT (AppState t) (EventWriterT t AppTriggers m) a
+type MonadAppIO r t m =
+  ( MonadApp r t m
+  , MonadIO m
+  , MonadIO (Performable m)
+  )
 
-runApp :: MonadWidget t m => App t m a -> m a
-runApp m = mdo
-    as <- stateManager triggers
-    (res, triggers) <- runEventWriterT (runReaderT m as)
+type App r t m a =
+    RoutedT t r (ReaderT (AppState t) (EventWriterT t AppTriggers m)) a
+
+runApp
+  :: (DomBuilder t m, Routed t (R FrontendRoute) m, MonadHold t m, MonadFix m, Prerender js t m)
+  => Text
+  -> RoutedT t (R FrontendRoute) (ReaderT (AppState t) (EventWriterT t AppTriggers m)) a
+  -> m a
+runApp publicUrl m = mdo
+    r <- askRoute
+    as <- stateManager publicUrl triggers
+    (res, triggers) <- runEventWriterT (runReaderT (runRoutedT m r) as)
     return res

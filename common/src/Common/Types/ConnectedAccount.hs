@@ -95,10 +95,12 @@ deriving instance Eq (PrimaryKey ConnectedAccountT Identity)
 deriving instance Eq (PrimaryKey ConnectedAccountT Maybe)
 deriving instance Eq ConnectedAccount
 deriving instance Show (PrimaryKey ConnectedAccountT Identity)
+deriving instance Show (PrimaryKey ConnectedAccountT Maybe)
 deriving instance Show ConnectedAccount
 deriving instance Show (ConnectedAccountT Maybe)
 deriving instance Default (ConnectedAccountT Maybe)
 
+deriving instance Ord ConnectedAccount
 deriving instance Ord (PrimaryKey ConnectedAccountT Identity)
 deriving instance Ord (PrimaryKey ConnectedAccountT Maybe)
 
@@ -131,6 +133,9 @@ instance Table ConnectedAccountT where
 
 caKeyToInt :: PrimaryKey ConnectedAccountT Identity -> Int
 caKeyToInt (ConnectedAccountId k) = k
+
+intToCaKey :: Int -> PrimaryKey ConnectedAccountT Identity
+intToCaKey k = ConnectedAccountId k
 
 caKeyIdToMaybe :: PrimaryKey ConnectedAccountT Identity -> PrimaryKey ConnectedAccountT Maybe
 caKeyIdToMaybe (ConnectedAccountId k) = ConnectedAccountId (Just k)

@@ -28,9 +28,10 @@ library
     , transformers
   exposed-modules:
     Frontend
-    Frontend.Common
     Frontend.App
     Frontend.AppState
+    Frontend.Common
+    Frontend.Nav
     Frontend.Widgets.Accounts
     Frontend.Widgets.Common
     Frontend.Widgets.Jobs

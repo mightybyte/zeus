@@ -1,6 +1,7 @@
 {-# LANGUAGE DataKinds #-}
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE FlexibleInstances #-}
+{-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE RankNTypes #-}
@@ -12,15 +13,23 @@
 module Frontend where
 
 ------------------------------------------------------------------------------
+import           Control.Monad.Identity
 import           Control.Monad.Reader
+import           Control.Monad.Ref
 import           Data.Map (Map)
+import qualified Data.Map as M
 import           Data.Maybe
 import           Data.Text (Text)
+import qualified Data.Text as T
+import qualified GHCJS.DOM.Types as DOM
 import           Obelisk.Frontend
 import           Obelisk.Generated.Static
 import           Obelisk.Route
+import           Obelisk.Route.Frontend
+import           Reflex.Network
 import           Reflex.Dom.Core
 import           Reflex.Dom.Contrib.CssClass
+import           Reflex.Dom.Contrib.Utils
 import           Reflex.Dom.Contrib.Widgets.DynTabs
 import qualified Reflex.Dom.SemanticUI as SemUI
 ------------------------------------------------------------------------------
@@ -29,6 +38,7 @@ import           Humanizable
 import           Frontend.App
 import           Frontend.AppState
 import           Frontend.Common
+import           Frontend.Nav
 import           Frontend.Widgets.Accounts
 import           Frontend.Widgets.Jobs
 import           Frontend.Widgets.Repos
@@ -37,8 +47,10 @@ import           Frontend.Widgets.Repos
 
 frontend :: Frontend (R FrontendRoute)
 frontend = Frontend
-  { _frontend_head = prerender_ blank appHead
-  , _frontend_body = prerender_ (text "Loading...") $ runApp appBody
+  { _frontend_head = appHead
+  , _frontend_body = do
+      route <- liftIO getAppRoute
+      runApp route appBody
   }
 
 
@@ -57,27 +69,56 @@ css url = elAttr "link" ("rel" =: "stylesheet" <> "type" =: "text/css" <> "href"
 jsScript :: DomBuilder t m => Text -> m ()
 jsScript url = elAttr "script" ("src" =: url <> "type" =: "text/javascript") blank
 
-script :: MonadWidget t m =>  Text -> m ()
+script :: DomBuilder t m =>  Text -> m ()
 script code = elAttr "script" ("type" =: "text/javascript") $ text code
 
-appBody :: MonadApp t m => m ()
-appBody = mdo
+--pr :: PostBuild t n => m a -> n a -> m (Dynamic t a)
+--pr a = prerender a a
+
+-- TODO Remove prerender constraint after updating reflex-dom-contrib
+appBody
+  :: forall js t m. (PostBuild t m, DomBuilder t m, MonadHold t m, MonadFix m,
+      TriggerEvent t m, PerformEvent t m, MonadRef m,
+      MonadSample t (Performable m), RouteToUrl (R FrontendRoute) m,
+      SetRoute t (R FrontendRoute) m, MonadIO m, MonadIO (Performable m),
+      Prerender js t m
+     )
+  => App (R FrontendRoute) t m ()
+appBody = do
+  --dpb <- prerender (pure never) (getPostBuild)
+  --let pb = switch $ current pb
+  --pb <- switch . current <$> prerender (DOM.liftJSM getPostBuild) getPostBuild
   pb <- getPostBuild
-  trigger trigger_getAccounts pb
-  trigger trigger_getJobs pb
-  trigger trigger_getRepos pb
-  tabs <- divClass "ui fixed menu" $ do
+  --performEvent_ (liftIO (putStrLn "appBody postBuild") <$ pb)
+  --trigger trigger_getAccounts $ traceEvent "---postbuild---" pb
+  --trigger trigger_getJobs pb
+  --trigger trigger_getRepos pb
+  divClass "ui fixed menu" $ do
     elAttr "div" ("class" =: "inverted header item") $ text "Zeus CI"
-    tabBar def
-  let staticAttrs = "class" =: "ui tab"
+    nav
   divClass "ui main container" $ do
-    myTabPane staticAttrs (_tabBar_curTab tabs) JobsTab $ jobsWidget
-    --myTabPane staticAttrs (_tabBar_curTab tabs) BuildersTab $ text "Builders"
-    myTabPane staticAttrs (_tabBar_curTab tabs) ReposTab $ reposWidget
-    myTabPane staticAttrs (_tabBar_curTab tabs) AccountsTab $ accountsWidget
+    subRoute_ $ \case
+      FR_Home -> text "Wizard" >> setRoute ((FR_Accounts :/ Crud_List :/ ()) <$ pb)
+      FR_Jobs -> jobsWidget
+      FR_Repos -> reposWidget
+      FR_Accounts -> accountsWidget
   serverAlert <- asks _as_serverAlert
   modalExample serverAlert
   return ()
+
+--wizard :: (MonadApp r t m, SetRoute t (R FrontendRoute) m) => m ()
+--wizard = do
+--  repos <- asks _as_repos
+--  accounts <- asks _as_accounts
+--  pb <- getPostBuild
+--  let action = ffor ((,) <$> accounts <*> repos) $ \(as,rs) -> return $
+--        if M.null as
+--          then setRoute $ (FR_Accounts :/ ()) <$ pb
+--          else if M.null rs
+--                 then setRoute $ (FR_Repos :/ ()) <$ pb
+--                 else setRoute $ (FR_Jobs :/ ()) <$ pb
+--  _ <- networkView action
+--  return ()
 
 data MainTabs
   = JobsTab
@@ -92,25 +133,8 @@ instance Humanizable MainTabs where
   humanize ReposTab = "Repos"
   humanize AccountsTab = "Accounts"
 
-instance MonadApp t m => Tab t m MainTabs where
-  tabIndicator tab activeDyn = do
-    let attrs = addClassWhen "active" activeDyn (singleClass "item")
-    (e,_) <- elDynKlass' "div" attrs $ text $ humanize tab
-    return $ domEvent Click e
-
-myTabPane
-    :: (MonadWidget t m, Eq tab)
-    => Map Text Text
-    -> Dynamic t tab
-    -> tab
-    -> m a
-    -> m a
-myTabPane staticAttrs currentTab t child = do
-    let attrs = addActiveClass ((==t) <$> currentTab) (constDyn staticAttrs)
-    elDynAttr "div" attrs child
-
 modal
-  :: MonadWidget t m
+  :: MonadApp r t m
   => Dynamic t Bool
   -> m a
   -> m a
@@ -119,7 +143,7 @@ modal isActive m = do
   elDynKlass "div" dclass m
 
 modalExample
-  :: MonadWidget t m
+  :: MonadApp r t m
   => Event t Text
   -> m ()
 modalExample showEvent = mdo
@@ -133,5 +157,8 @@ modalExample showEvent = mdo
     divClass "scrolling content" $
       el "p" $ dynText (fromMaybe "" <$> modalMsg)
     divClass "actions" $ do
-      SemUI.button def $ text "OK"
+      (e,_) <- el' "button" $ text "OK"
+      return $ domEvent Click e
+      -- TODO Deal with this
+      --SemUI.button def $ text "OK"
   return ()

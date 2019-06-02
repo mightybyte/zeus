@@ -1,5 +1,6 @@
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE FlexibleInstances #-}
+{-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE RankNTypes #-}
@@ -18,10 +19,13 @@ import           Data.Bool
 import qualified Data.Map as M
 import           Data.Maybe
 import           Database.Beam
+import           Obelisk.Route
+import           Obelisk.Route.Frontend
 import           Reflex.Dom.Core
 import           Reflex.Dom.SemanticUI
 import qualified Reflex.Dom.SemanticUI as SemUI
 ------------------------------------------------------------------------------
+import           Common.Route
 import           Common.Types.ConnectedAccount
 import           Frontend.App
 import           Frontend.AppState
@@ -30,28 +34,21 @@ import           Frontend.Widgets.Common
 import           Frontend.Widgets.Form
 ------------------------------------------------------------------------------
 
-accountsWidget :: MonadApp t m => m ()
+accountsWidget
+  :: (MonadAppIO r t m, Prerender js t m)
+  => RoutedT t (R CrudRoute) m ()
 accountsWidget = mdo
+  pb <- getPostBuild
+  trigger trigger_getAccounts pb
   as <- ask
-  let listToState = bool ListTable EmptyPlaceholder . null
-  listState <- holdDyn EmptyPlaceholder $ leftmost
-    [ listToState <$> leftmost
-        [ updated (_as_accounts as)
-        , tag (current $ _as_accounts as) showList]
-    , AddForm <$ showForm
-    ]
-  let widget s = case s of
-        EmptyPlaceholder -> accountPlaceholder
-        AddForm -> addAccount
-        ListTable -> accountsList (_as_accounts as)
-  ee <- dyn (widget <$> listState)
-  showForm <- switch <$> hold never (tableAction_showAddForm <$> ee)
-  showList <- switch <$> hold never (tableAction_showList <$> ee)
+  subRoute_ $ \case
+    Crud_List -> accountsList (_as_accounts as)
+    Crud_Create -> addAccount
   return ()
 
 addAccount
-  :: MonadApp t m
-  => m (TableAction t (ConnectedAccountT Maybe))
+  :: (MonadApp r t m, Prerender js t m)
+  => m ()
 addAccount = do
   semuiForm $ do
     da <- newAccountForm Nothing never
@@ -59,35 +56,43 @@ addAccount = do
       (e1,_) <- elAttr' "button" ("class" =: "ui button") $ text "Connect Account"
       (e2,_) <- elAttr' "button" ("class" =: "ui button") $ text "Cancel"
       trigger trigger_connectAccount $ fmapMaybe id $ tag (current da) (domEvent Click e1)
-      return $ TableAction never (domEvent Click e2)
+      setRoute $ (FR_Accounts :/ Crud_List :/ ()) <$ leftmost
+        [domEvent Click e1, domEvent Click e2]
+      return ()
 
 accountsList
-  :: MonadApp t m
+  :: MonadAppIO r t m
   => Dynamic t (BeamMap Identity ConnectedAccountT)
-  -> m (TableAction t (ConnectedAccountT Maybe))
+  -> m ()
 accountsList as = do
-    add <- SemUI.button def $ text "Add Account"
-    let mkField f _ v = el "td" $ dynText (f <$> v) >> return ()
-    del <- genericRemovableTable as
-      [ ("ID", mkField $ tshow . _connectedAccount_id)
-      , ("Name", mkField $ _connectedAccount_name)
-      , ("Provider", mkField $ tshow . _connectedAccount_provider)
-      --, ("", (\_ _ -> elClass "td" "right aligned collapsing" deleteButton))
-      ]
-    triggerBatch trigger_delAccounts $ M.keys <$> del
-    return $ TableAction add never
+    let mkField f _ v = el "td" $ dynText (f <$> v) >> return never
+        widget accountMap =
+          if M.null accountMap
+            then accountPlaceholder
+            else do
+              add <- SemUI.button def $ text "Add Account"
+              setRoute $ (FR_Accounts :/ Crud_Create :/ ()) <$ add
+              del <- genericTableG def (constDyn accountMap)
+                [ ("ID", mkField $ tshow . _connectedAccount_id)
+                , ("Name", mkField $ _connectedAccount_name)
+                , ("Provider", mkField $ tshow . _connectedAccount_provider)
+                , ("", (\k _ -> deleteColumn trigger_delAccounts k))
+                ]
+              triggerBatch trigger_delAccounts $ M.keys <$> del
+    dyn (widget <$> as)
+    return ()
 
-accountPlaceholder :: MonadApp t m => m (TableAction t (ConnectedAccountT Maybe))
+accountPlaceholder :: MonadApp r t m => m ()
 accountPlaceholder = mdo
   divClass "ui placeholder segment" $ do
     divClass "ui icon header" $ do
       elClass "i" "dont icon" blank
       text "You haven't connected any accounts yet"
     (e,_) <- elAttr' "div" ("class" =: "ui primary button") $ text "Connect Account"
-    return $ TableAction (domEvent Click e) never
+    setRoute $ (FR_Accounts :/ Crud_Create :/ ()) <$ domEvent Click e
 
 newAccountForm
-  :: MonadApp t m
+  :: (MonadApp r t m, Prerender js t m)
   => Maybe (ConnectedAccountT Maybe)
   -> Event t (Maybe (ConnectedAccountT Maybe))
   -> m (Dynamic t (Maybe (ConnectedAccountT Maybe)))

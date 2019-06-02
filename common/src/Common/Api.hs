@@ -32,7 +32,7 @@ data Up
   | Up_GetJobs
   | Up_CancelJobs (Batch BuildJobId)
   | Up_RerunJobs (Batch BuildJobId)
-  deriving (Generic)
+  deriving (Show,Generic)
 
 data Down
   = Down_Alert Text

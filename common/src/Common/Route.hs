@@ -19,6 +19,9 @@ import Control.Category
 
 ------------------------------------------------------------------------------
 import           Control.Monad.Except
+import           Data.Dependent.Sum (DSum (..))
+import           Data.Some (Some)
+import qualified Data.Some as Some
 import           Data.Text (Text)
 import qualified Data.Text as T
 import           Data.Functor.Identity
@@ -41,19 +44,32 @@ data BackendRoute :: * -> * where
   BackendRoute_Websocket :: BackendRoute ()
 
 data FrontendRoute :: * -> * where
-  FrontendRoute_Main :: FrontendRoute ()
-  FrontendRoute_Jobs :: FrontendRoute ()
-  FrontendRoute_Repos :: FrontendRoute ()
-  --FrontendRoute_Repos :: FrontendRoute (R CrudRoute)
-  FrontendRoute_Accounts :: FrontendRoute ()
-  -- This type is used to define frontend routes, i.e. ones for which the backend will serve the frontend.
+  FR_Home :: FrontendRoute ()
+  FR_Jobs :: FrontendRoute ()
+  --FR_Repos :: FrontendRoute ()
+  FR_Repos :: FrontendRoute (R CrudRoute)
+  FR_Accounts :: FrontendRoute (R CrudRoute)
 
 type FullRoute = Sum BackendRoute (ObeliskRoute FrontendRoute)
 
+data CrudRoute :: * -> * where
+  Crud_List :: CrudRoute ()
+  Crud_Create :: CrudRoute ()
+  --Crud_Update :: CrudRoute Int
+  --Crud_Delete :: CrudRoute Int
+
+deriveRouteComponent ''CrudRoute
+
+crudRouteEncoder
+  :: Encoder (Either Text) (Either Text) (R CrudRoute) PageName
+crudRouteEncoder = pathComponentEncoder $ \case
+  Crud_List -> PathEnd $ unitEncoder mempty
+  Crud_Create -> PathSegment "new" $ unitEncoder mempty
+
 backendRouteEncoder
   :: Encoder (Either Text) Identity (R FullRoute) PageName
-backendRouteEncoder = handleEncoder (const (InL BackendRoute_Missing :/ ())) $
-  pathComponentEncoder $ \case
+backendRouteEncoder =
+  handleEncoder (\_ -> InR (ObeliskRoute_App FR_Home) :/ ()) $ pathComponentEncoder $ \case
     InL backendRoute -> case backendRoute of
       BackendRoute_Missing -> PathSegment "missing" $ unitEncoder mempty
       BackendRoute_GithubHook -> PathSegment "hook" $ unitEncoder (["github"], mempty)
@@ -62,18 +78,10 @@ backendRouteEncoder = handleEncoder (const (InL BackendRoute_Missing :/ ())) $
     InR obeliskRoute -> obeliskRouteSegment obeliskRoute $ \case
       -- The encoder given to PathEnd determines how to parse query parameters,
       -- in this example, we have none, so we insist on it.
-      FrontendRoute_Main -> PathEnd $ unitEncoder mempty
-      FrontendRoute_Jobs -> PathSegment "jobs" $ unitEncoder mempty
-      FrontendRoute_Repos -> PathSegment "repos" $ unitEncoder mempty
-      FrontendRoute_Accounts -> PathSegment "accounts" $ unitEncoder mempty
-
--- | Stolen from Obelisk as it is not exported. (Probably for a reason, but it
--- seems to do what we want right now.
-pathOnlyEncoderIgnoringQuery :: (Applicative check, MonadError Text parse) => Encoder check parse [Text] PageName
-pathOnlyEncoderIgnoringQuery = unsafeMkEncoder $ EncoderImpl
-  { _encoderImpl_decode = \(path, _query) -> pure path
-  , _encoderImpl_encode = \path -> (path, mempty)
-  }
+      FR_Home -> PathEnd $ unitEncoder mempty
+      FR_Jobs -> PathSegment "jobs" $ unitEncoder mempty
+      FR_Repos -> PathSegment "repos" crudRouteEncoder
+      FR_Accounts -> PathSegment "accounts" crudRouteEncoder
 
 concat <$> mapM deriveRouteComponent
   [ ''BackendRoute
@@ -86,3 +94,22 @@ getAppRoute = do
     case mroute of
       Nothing -> fail "Error getAppRoute: config/common/route not defined"
       Just r -> return $ T.dropWhileEnd (== '/') $ T.strip r
+
+-- | Provide a human-readable name for a given section
+tabTitle :: Some FrontendRoute -> Text
+tabTitle (Some.This sec) = case sec of
+  FR_Home -> "Home"
+  FR_Jobs -> "Jobs"
+  FR_Repos -> "Repos"
+  FR_Accounts -> "Accounts"
+
+-- | Provide a human-readable name for a route
+frToText :: R FrontendRoute -> Text
+frToText (sec :=> _) = tabTitle $ Some.This sec
+
+tabHomepage :: Some FrontendRoute -> R FrontendRoute
+tabHomepage (Some.This sec) = sec :/ case sec of
+  FR_Home -> ()
+  FR_Jobs -> ()
+  FR_Repos -> Crud_List :/ ()
+  FR_Accounts -> Crud_List :/ ()
