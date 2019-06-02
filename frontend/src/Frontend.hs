@@ -58,6 +58,11 @@ frontend = Frontend
 appHead :: DomBuilder t m => m ()
 appHead = do
     el "title" $ text "Zeus CI"
+    elAttr "link" ("rel" =: "shortcut icon" <>
+                   "href" =: "/static/favicon.svg" <>
+                   "type" =: "image/svg+xml"
+                  ) blank
+
     --jsScript "https://cdnjs.cloudflare.com/ajax/libs/jquery/2.2.3/jquery.min.js"
     jsScript (static @"jquery-3.1.1.min.js")
     jsScript (static @"semantic.min.js")
