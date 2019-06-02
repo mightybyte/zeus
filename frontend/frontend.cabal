@@ -19,6 +19,7 @@ library
     , obelisk-generated-static
     , obelisk-route
     , readable
+    , ref-tf
     , reflex
     , reflex-dom
     , reflex-dom-contrib
