@@ -13,6 +13,8 @@ library
     , containers
     , data-default
     , dependent-sum
+    , ghcjs-dom
+    , jsaddle
     , lens
     , lens-aeson
     , mtl
