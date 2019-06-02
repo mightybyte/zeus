@@ -115,11 +115,11 @@ stateManager route ft = do
           , Up_ConnectAccount <$> squash _trigger_connectAccount ft
           , Up_DelAccounts <$> squash _trigger_delAccounts ft
           , Up_ListRepos <$ fmapMaybe (listToMaybe . _trigger_getRepos) ft
-          , Up_AddRepo . _trigger_addRepo <$> ft
-          , Up_DelRepos . _trigger_delRepos <$> ft
+          , Up_AddRepo <$> squash _trigger_addRepo ft
+          , Up_DelRepos <$> squash _trigger_delRepos ft
           , Up_GetJobs <$ fmapMaybe (listToMaybe . _trigger_getJobs) ft
-          , Up_CancelJobs . _trigger_cancelJobs <$> ft
-          , Up_RerunJobs . _trigger_rerunJobs <$> ft
+          , Up_CancelJobs <$> squash _trigger_cancelJobs ft
+          , Up_RerunJobs <$> squash _trigger_rerunJobs ft
           ]
     let cfg = WebSocketConfig upEvent never True []
     ws <- startWebsocket route cfg
