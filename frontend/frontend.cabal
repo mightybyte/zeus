@@ -12,6 +12,7 @@ library
     , common
     , containers
     , data-default
+    , dependent-sum
     , lens
     , lens-aeson
     , mtl
@@ -27,6 +28,7 @@ library
     , text
     , time
     , transformers
+    , universe
     , witherable
   exposed-modules:
     Frontend
