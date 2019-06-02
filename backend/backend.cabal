@@ -53,6 +53,9 @@ library
     Backend.Build
     Backend.Db
     Backend.Github
+    Backend.Gitlab
+    Backend.Gitlab.Request
+    Backend.Gitlab.Schema
     Backend.Types.ConnRepo
     Backend.Types.ServerEnv
     Backend.WsCmds
