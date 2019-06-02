@@ -10,6 +10,7 @@ library
     , base
     , beam-core
     , beam-migrate
+    , dependent-sum
     , bytestring
     , data-default
     , lens
