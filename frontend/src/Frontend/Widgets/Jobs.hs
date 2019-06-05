@@ -121,8 +121,9 @@ authorWidget
   -> m ()
 authorWidget dj = do
   let mkAvatar Nothing = blank
-  let mkAvatar (Just url) = elAttr "img" ("src" =: url) blank
+  let mkAvatar (Just url) = elAttr "img" ("src" =: url <> "class" =: "avatar") blank
   _ <- networkView $ mkAvatar . _rbi_pushAvatar . _buildJob_repoBuildInfo <$> dj
+  text " "
   dynText $ _rbi_pushUser . _buildJob_repoBuildInfo <$> dj
 
 commitWidget

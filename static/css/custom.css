@@ -22,3 +22,8 @@ body {
 .clickable {
     cursor: pointer;
 }
+
+.avatar {
+    width: 16px;
+    height: 16px;
+}
