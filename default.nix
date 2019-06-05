@@ -73,5 +73,7 @@ project ./. ({ pkgs, ... }: {
         rev = "dad24ba290126b1b93da32ef6019393329b54ed3";
         sha256 = "0fzbvysq6qkbjd39bphbirzd2xaalm3jaxrs91g04ya17nqdaz1i";
     }) {});
+    zeus = addBuildDepends super.zeus [ pkgs.git ];
+
   };
 })
