@@ -68,7 +68,10 @@ populateDb conn = do
   now <- getCurrentTime
 --  let accounts =
 --        [ ConnectedAccount default_ (val_ "mightybyte") (val_ "0000000000000000000000000000000000000000") ]
-  let rbi = RepoBuildInfo "dummy" "mightybyte/dummy" RepoPush "ssh://..." "https://..." "1234" "a8cd23"
+  let rbi = RepoBuildInfo
+              "dummy" "mightybyte/dummy" RepoPush "ssh://..." "https://..." "1234"
+              "a8cd23" "Dummy commit" "Alice Coder"
+              (Just "https://secure.gravatar.com/avatar/0cece5abd2f9ad9056f5ac3830ac0bfe?s=80&d=identicon")
       start = addUTCTime (-82) now
   runBeamSqliteDebug putStrLn conn $ do
     runInsert $ insert (_ciDb_buildJobs ciDb) $ insertExpressions

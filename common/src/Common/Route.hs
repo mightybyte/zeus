@@ -36,10 +36,27 @@ import           Obelisk.Route.TH
 githubHookPath :: Text
 githubHookPath = "hook/github"
 
+gitlabHookPath :: Text
+gitlabHookPath = "hook/gitlab"
+
+data HookRoute :: * -> * where
+  Hook_GitHub :: HookRoute ()
+  Hook_GitLab :: HookRoute ()
+
+deriveRouteComponent ''HookRoute
+
+data CrudRoute :: * -> * where
+  Crud_List :: CrudRoute ()
+  Crud_Create :: CrudRoute ()
+  --Crud_Update :: CrudRoute Int
+  --Crud_Delete :: CrudRoute Int
+
+deriveRouteComponent ''CrudRoute
+
 data BackendRoute :: * -> * where
   -- | Used to handle unparseable routes.
   BackendRoute_Missing :: BackendRoute ()
-  BackendRoute_GithubHook :: BackendRoute ()
+  BackendRoute_Hook :: BackendRoute (R HookRoute)
   BackendRoute_Ping :: BackendRoute ()
   BackendRoute_Websocket :: BackendRoute ()
 
@@ -52,19 +69,17 @@ data FrontendRoute :: * -> * where
 
 type FullRoute = Sum BackendRoute (ObeliskRoute FrontendRoute)
 
-data CrudRoute :: * -> * where
-  Crud_List :: CrudRoute ()
-  Crud_Create :: CrudRoute ()
-  --Crud_Update :: CrudRoute Int
-  --Crud_Delete :: CrudRoute Int
-
-deriveRouteComponent ''CrudRoute
-
 crudRouteEncoder
   :: Encoder (Either Text) (Either Text) (R CrudRoute) PageName
 crudRouteEncoder = pathComponentEncoder $ \case
   Crud_List -> PathEnd $ unitEncoder mempty
   Crud_Create -> PathSegment "new" $ unitEncoder mempty
+
+hookRouteEncoder
+  :: Encoder (Either Text) (Either Text) (R HookRoute) PageName
+hookRouteEncoder = pathComponentEncoder $ \case
+  Hook_GitHub -> PathSegment "github" $ unitEncoder mempty
+  Hook_GitLab -> PathSegment "gitlab" $ unitEncoder mempty
 
 backendRouteEncoder
   :: Encoder (Either Text) Identity (R FullRoute) PageName
@@ -72,7 +87,7 @@ backendRouteEncoder =
   handleEncoder (\_ -> InR (ObeliskRoute_App FR_Home) :/ ()) $ pathComponentEncoder $ \case
     InL backendRoute -> case backendRoute of
       BackendRoute_Missing -> PathSegment "missing" $ unitEncoder mempty
-      BackendRoute_GithubHook -> PathSegment "hook" $ unitEncoder (["github"], mempty)
+      BackendRoute_Hook -> PathSegment "hook" hookRouteEncoder
       BackendRoute_Ping -> PathSegment "ping" $ unitEncoder mempty
       BackendRoute_Websocket -> PathSegment "ws" $ unitEncoder mempty
     InR obeliskRoute -> obeliskRouteSegment obeliskRoute $ \case

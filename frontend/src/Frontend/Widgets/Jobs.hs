@@ -68,6 +68,7 @@ jobsList as = do
     , ("Repository", \_ v -> el "td" (repoColumnWidget v) >> return never)
     , ("Git Ref", mkField $ dynText . fmap (_rbi_gitRef . _buildJob_repoBuildInfo))
     , ("Commit Hash", \_ v -> el "td" (commitWidget v) >> return never)
+    , ("Author", \_ v -> el "td" (authorWidget v) >> return never)
     , ("Time", mkField dynJobTimeWidget)
     , ("", (\(Down k) v -> elClass "td" "right aligned collapsing" $
              cancelOrRerun k (_buildJob_status <$> v)))
@@ -113,6 +114,16 @@ repoColumnWidget dj = do
   let drbi = _buildJob_repoBuildInfo <$> dj
   let mkAttrs rbi = ("href" =: rbiRepoLink rbi <> "target" =: "_blank")
   elDynAttr "a" (mkAttrs <$> drbi) $ dynText (_rbi_repoFullName <$> drbi)
+
+authorWidget
+  :: (DomBuilder t m, PostBuild t m)
+  => Dynamic t BuildJob
+  -> m ()
+authorWidget dj = do
+  let mkAvatar Nothing = blank
+  let mkAvatar (Just url) = elAttr "img" ("src" =: url) blank
+  _ <- networkView $ mkAvatar . _rbi_pushAvatar . _buildJob_repoBuildInfo <$> dj
+  dynText $ _rbi_pushUser . _buildJob_repoBuildInfo <$> dj
 
 commitWidget
   :: (DomBuilder t m, PostBuild t m)

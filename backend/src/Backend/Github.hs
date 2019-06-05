@@ -34,6 +34,7 @@ import           Snap.Core
 import           Text.Printf
 ------------------------------------------------------------------------------
 import           Backend.Db
+import           Backend.Schedule
 import           Backend.Types.ServerEnv
 import           Common.Route
 import           Common.Types.BuildJob
@@ -42,8 +43,8 @@ import           Common.Types.JobStatus
 import           Common.Types.RepoBuildInfo
 ------------------------------------------------------------------------------
 
-hookHandler :: ServerEnv -> Snap ()
-hookHandler env = do
+githubHandler :: ServerEnv -> Snap ()
+githubHandler env = do
     req <- getRequest
     body <- readRequestBody 1000000
     let event = getHeader "X-GitHub-Event" req
@@ -69,13 +70,7 @@ handleValidatedHook env event body = do
       Just "push" -> mkPushRBI =<< eitherDecodeStrict (toS body)
       _ -> Left "Event not supported"
 
-    t <- liftIO getCurrentTime
-    jobs <- liftIO $ runBeamSqliteDebug putStrLn (_serverEnv_db env) $ do
-      runInsertReturningList $ insert (_ciDb_buildJobs ciDb) $ insertExpressions
-        [ BuildJob default_ (val_ rbi) (val_ t) (val_ Nothing) (val_ Nothing) (val_ JobPending) ]
-    case jobs of
-      [j] -> void $ lift $ atomically $ writeTQueue (_serverEnv_buildQueue env) (BuildMsg (_buildJob_id j) rbi)
-      _ -> throwE $ "Insert into jobs table returned unexpected number of entries: %s" ++ show jobs
+    ExceptT $ scheduleBuild env rbi
   case res of
     Left e -> putStrLn e
     Right _ -> return ()
@@ -87,6 +82,9 @@ handlePR pre = do
       (GW.getUrl $ GW.whRepoCloneUrl repo)
       (GW.whPullReqTargetRef prHead)
       (GW.whPullReqTargetSha prHead)
+      "" -- TODO Haven't found how to get the commit message from github yet
+      (GW.whUserLogin $ GW.evPullReqSender pre)
+      (Just $ GW.getUrl $ GW.whUserAvatarUrl $ GW.evPullReqSender pre)
   where
     pr = GW.evPullReqPayload pre
     repo = GW.evPullReqRepo pre
@@ -103,6 +101,9 @@ mkPushRBI pe = do
       (GW.getUrl $ GW.whRepoCloneUrl repo)
       (GW.evPushRef pe)
       sha
+      "" -- TODO Haven't found how to get the commit message from github yet
+      (GW.whUserLogin $ GW.evPushSender pe)
+      (Just $ GW.getUrl $ GW.whUserAvatarUrl $ GW.evPushSender pe)
   where
     repo = GW.evPushRepository pe
 
@@ -116,7 +117,7 @@ data SslSettings
 ------------------------------------------------------------------------------
 -- | Adds the GitHub webhook necessary for allowing this server to do CI for a
 -- particular repo.
-setupWebhook
+setupGithubWebhook
   :: String
     -- ^ Domain (optionally with port) that your hook will be served on
   -> Auth
@@ -131,7 +132,7 @@ setupWebhook
     -- ^ Secret that github will use to authenticate with this CI server
   -> SslSettings
   -> IO (Either Error RepoWebhook)
-setupWebhook domain auth owner repo secret sslSettings = do
+setupGithubWebhook domain auth owner repo secret sslSettings = do
     let url = toS domain <> "/" <> githubHookPath
     let cfg = M.fromList
           [ ("url", url)

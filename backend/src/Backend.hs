@@ -47,6 +47,7 @@ import           Text.Printf
 import           Backend.Build
 import           Backend.Db
 import           Backend.Github
+import           Backend.Gitlab
 import           Backend.Types.ConnRepo
 import           Backend.Types.ServerEnv
 import           Backend.WsCmds
@@ -105,7 +106,9 @@ backend = Backend
 -- | Serve our dynconfigs file.
 serveBackendRoute :: ServerEnv -> R BackendRoute -> Snap ()
 serveBackendRoute env = \case
-  BackendRoute_GithubHook :=> _ -> hookHandler env
+  BackendRoute_Hook :=> Identity hr -> case hr of
+    Hook_GitHub :=> _ -> githubHandler env
+    Hook_GitLab :=> _ -> gitlabHandler env
   BackendRoute_Ping :=> _ -> writeText "PONG\nPONG\nPONG\n"
   BackendRoute_Websocket :=> _ -> wsHandler $ \conn -> do
       cid <- addConnection conn (_serverEnv_connRepo env)
@@ -250,34 +253,46 @@ addRepo env wsConn
       account <- all_ (ciDb ^. ciDb_connectedAccounts)
       guard_ (account ^. connectedAccount_id ==. (val_ o))
       return account
+  let insertRepo hid = do
+        putStrLn "Repository hook setup successful"
+        beamQuery env $ do
+          runInsert $ insert (_ciDb_repos ciDb) $ insertExpressions
+            [Repo default_
+                  (val_ fn)
+                  (ConnectedAccountId $ val_ o)
+                  (val_ n)
+                  (val_ c)
+                  (val_ nf)
+                  (val_ np)
+                  (val_ t)
+                  (val_ hid)
+            ]
   case mca of
     Nothing -> return ()
     Just ca -> do
       putStrLn $ "Setting up new webhook for " <> show ca
-      erw <- setupWebhook
-        (toS $ _serverEnv_webhookBaseUrl env)
-        (OAuth $ toS $ _connectedAccount_accessToken ca)
-        (_connectedAccount_name ca) n (_serverEnv_secretToken env) AllowInsecure
-      case erw of
-        Left e -> wsSend wsConn $ Down_Alert $ "Error setting up webhook: " <> (T.pack $ show e)
-        Right rw -> do
-          let Id hid = repoWebhookId rw
-          putStrLn "Repository hook setup successful"
-          beamQuery env $ do
-            runInsert $ insert (_ciDb_repos ciDb) $ insertExpressions
-              [Repo default_
-                    (val_ fn)
-                    (ConnectedAccountId $ val_ o)
-                    (val_ n)
-                    (val_ c)
-                    (val_ nf)
-                    (val_ np)
-                    (val_ t)
-                    (val_ hid)
-              ]
-          as <- beamQuery env $ do
-            runSelectReturningList $ select $ all_ (_ciDb_repos ciDb)
-          broadcast (_serverEnv_connRepo env) $ Down_Repos as
+      case _connectedAccount_provider ca of
+        GitHub -> do
+          erw <- setupGithubWebhook
+            (toS $ _serverEnv_webhookBaseUrl env)
+            (OAuth $ toS $ _connectedAccount_accessToken ca)
+            (_connectedAccount_name ca) n (_serverEnv_secretToken env) AllowInsecure
+          case erw of
+            Left e -> wsSend wsConn $ Down_Alert $ "Error setting up webhook: " <> (T.pack $ show e)
+            Right rw -> do
+              let Id hid = repoWebhookId rw
+              insertRepo hid
+        GitLab -> do
+          mhid <- setupGitlabWebhook
+            (toS $ _serverEnv_webhookBaseUrl env)
+            0
+            (_serverEnv_secretToken env)
+          case mhid of
+            Nothing -> putStrLn "Didn't get a hook ID"
+            Just hid -> insertRepo $ fromIntegral hid
+      as <- beamQuery env $ do
+        runSelectReturningList $ select $ all_ (_ciDb_repos ciDb)
+      broadcast (_serverEnv_connRepo env) $ Down_Repos as
 addRepo _ _ _ = putStrLn "AddRepo got bad argument"
 
 deleteRepo :: ServerEnv -> RepoId -> IO ()

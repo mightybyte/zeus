@@ -25,6 +25,9 @@ library
     , frontend
     , github                  >= 0.21    && < 0.22
     , github-webhooks         >= 0.10    && < 0.11
+    , http-client             >= 0.5.13  && < 0.6
+    , http-client-tls         >= 0.3.5   && < 0.4
+    , http-types              >= 0.12.1  && < 0.13
     , lens
     , lens-aeson              >= 1.0.2   && < 1.1
     , mtl                     >= 2.2.2   && < 2.3
@@ -45,17 +48,20 @@ library
     , text                    >= 1.2.3   && < 1.3
     , time                    >= 1.8.0   && < 1.9
     , transformers            >= 0.5.2   && < 0.6
+    , uri-bytestring          >= 0.3     && < 0.4
     , vector                  >= 0.12.0  && < 0.13
     , websockets
     , websockets-snap
   exposed-modules:
     Backend
     Backend.Build
+    Backend.Common
     Backend.Db
     Backend.Github
     Backend.Gitlab
-    Backend.Gitlab.Request
+    -- Backend.Gitlab.Request
     Backend.Gitlab.Schema
+    Backend.Schedule
     Backend.Types.ConnRepo
     Backend.Types.ServerEnv
     Backend.WsCmds

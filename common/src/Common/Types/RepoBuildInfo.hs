@@ -52,6 +52,9 @@ data RepoBuildInfoT f = RepoBuildInfo
   , _rbi_cloneUrlHttp :: C f Text
   , _rbi_gitRef :: C f Text
   , _rbi_commitHash :: C f Text
+  , _rbi_commitMsg :: C f Text
+  , _rbi_pushUser :: C f Text
+  , _rbi_pushAvatar :: C f (Maybe Text)
   } deriving (Generic)
 
 -- TODO Handle links appropriately for github and gitlab
@@ -72,6 +75,9 @@ RepoBuildInfo
   (LensFor rbi_cloneUrlHttp)
   (LensFor rbi_gitRef)
   (LensFor rbi_commitHash)
+  (LensFor rbi_commitMsg)
+  (LensFor rbi_pushUser)
+  (LensFor rbi_pushAvatar)
   = tableLenses
 
 type RepoBuildInfo = RepoBuildInfoT Identity
