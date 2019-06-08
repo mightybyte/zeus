@@ -5,7 +5,6 @@
 {-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE TemplateHaskell #-}
 {-# LANGUAGE KindSignatures #-}
-{-# LANGUAGE EmptyCase #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE OverloadedStrings #-}
@@ -18,12 +17,14 @@ import Control.Category
 -}
 
 ------------------------------------------------------------------------------
+import           Prelude hiding (id, (.))
+import           Control.Category
+import           Control.Lens
 import           Data.Dependent.Sum (DSum (..))
 import           Data.Some (Some)
 import qualified Data.Some as Some
 import           Data.Text (Text)
 import qualified Data.Text as T
-import           Data.Functor.Identity
 import           Data.Functor.Sum
 import qualified Obelisk.ExecutableConfig as ObConfig
 import           Obelisk.Route
@@ -52,6 +53,12 @@ data CrudRoute :: * -> * where
 
 deriveRouteComponent ''CrudRoute
 
+data JobRoute :: * -> * where
+  Job_List :: JobRoute ()
+  Job_Output :: JobRoute Int
+
+deriveRouteComponent ''JobRoute
+
 data BackendRoute :: * -> * where
   -- | Used to handle unparseable routes.
   BackendRoute_Missing :: BackendRoute ()
@@ -61,12 +68,17 @@ data BackendRoute :: * -> * where
 
 data FrontendRoute :: * -> * where
   FR_Home :: FrontendRoute ()
-  FR_Jobs :: FrontendRoute ()
-  --FR_Repos :: FrontendRoute ()
+  FR_Jobs :: FrontendRoute (R JobRoute)
   FR_Repos :: FrontendRoute (R CrudRoute)
   FR_Accounts :: FrontendRoute (R CrudRoute)
 
 type FullRoute = Sum BackendRoute (ObeliskRoute FrontendRoute)
+
+hookRouteEncoder
+  :: Encoder (Either Text) (Either Text) (R HookRoute) PageName
+hookRouteEncoder = pathComponentEncoder $ \case
+  Hook_GitHub -> PathSegment "github" $ unitEncoder mempty
+  Hook_GitLab -> PathSegment "gitlab" $ unitEncoder mempty
 
 crudRouteEncoder
   :: Encoder (Either Text) (Either Text) (R CrudRoute) PageName
@@ -74,11 +86,11 @@ crudRouteEncoder = pathComponentEncoder $ \case
   Crud_List -> PathEnd $ unitEncoder mempty
   Crud_Create -> PathSegment "new" $ unitEncoder mempty
 
-hookRouteEncoder
-  :: Encoder (Either Text) (Either Text) (R HookRoute) PageName
-hookRouteEncoder = pathComponentEncoder $ \case
-  Hook_GitHub -> PathSegment "github" $ unitEncoder mempty
-  Hook_GitLab -> PathSegment "gitlab" $ unitEncoder mempty
+jobRouteEncoder
+  :: Encoder (Either Text) (Either Text) (R JobRoute) PageName
+jobRouteEncoder = pathComponentEncoder $ \case
+  Job_List -> PathEnd $ unitEncoder mempty
+  Job_Output -> PathSegment "output" (singlePathSegmentEncoder . unsafeTshowEncoder)
 
 backendRouteEncoder
   :: Encoder (Either Text) Identity (R FullRoute) PageName
@@ -93,7 +105,7 @@ backendRouteEncoder =
       -- The encoder given to PathEnd determines how to parse query parameters,
       -- in this example, we have none, so we insist on it.
       FR_Home -> PathEnd $ unitEncoder mempty
-      FR_Jobs -> PathSegment "jobs" $ unitEncoder mempty
+      FR_Jobs -> PathSegment "jobs" jobRouteEncoder
       FR_Repos -> PathSegment "repos" crudRouteEncoder
       FR_Accounts -> PathSegment "accounts" crudRouteEncoder
 
@@ -124,6 +136,6 @@ frToText (sec :=> _) = tabTitle $ Some.This sec
 tabHomepage :: Some FrontendRoute -> R FrontendRoute
 tabHomepage (Some.This sec) = sec :/ case sec of
   FR_Home -> ()
-  FR_Jobs -> ()
+  FR_Jobs -> Job_List :/ ()
   FR_Repos -> Crud_List :/ ()
   FR_Accounts -> Crud_List :/ ()

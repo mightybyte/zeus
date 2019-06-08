@@ -1,5 +1,6 @@
 {-# LANGUAGE BangPatterns #-}
 {-# LANGUAGE FlexibleContexts #-}
+{-# LANGUAGE MultiWayIf #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE TemplateHaskell #-}
 {-# LANGUAGE TypeFamilies #-}
@@ -8,10 +9,12 @@ module Backend.Build where
 ------------------------------------------------------------------------------
 import           Control.Concurrent
 import           Control.Concurrent.STM
+import           Control.Error
 import qualified Control.Exception as C
 import           Control.Lens
 import           Control.Monad
 import           Data.IORef
+import           Data.List
 import           Data.Map (Map)
 import qualified Data.Map as M
 import           Data.RNG
@@ -149,6 +152,21 @@ gitBinary = $(staticWhich "git")
 nixBuildBinary :: String
 nixBuildBinary = $(staticWhich "nix-build")
 
+microsSince :: UTCTime -> IO Int
+microsSince start = do
+    -- Calculates how much to delay to get to the timeout
+    now <- getCurrentTime
+    return $ round $ realToFrac (diffUTCTime now start) * (1000000 :: Double)
+
+microsToDelay
+  :: Int
+  -- ^ Timeout in seconds
+  -> UTCTime
+  -> IO Int
+microsToDelay timeout start = do
+    micros <- microsSince start
+    return $ timeout * 1000000 - micros
+
 buildThread
   :: MVar ExitCode
   -> RNG
@@ -175,19 +193,43 @@ buildThread ecMVar rng repo msg = do
     logWithTimestamp lh cloneCmd
 
     logWithTimestamp lh $ printf "Cloning %s to %s" (_repo_fullName repo) cloneDir
-    _ <- runInDirWithEnv lh cloneCmd cloneDir Nothing
-    let repoDir = cloneDir </> toS (_repo_name repo)
-    let checkout = printf "%s checkout %s" gitBinary (_rbi_commitHash rbi)
-    _ <- runInDirWithEnv lh checkout repoDir Nothing
-    let buildCmd = printf "%s --show-trace %s" nixBuildBinary (_repo_buildNixFile repo)
-    e <- getEnvironment
-    let buildEnv = M.toList $ M.insert "NIX_PATH" (toS $ _repo_nixPath repo) $ M.fromList e
-    exitCode <- runInDirWithEnv lh buildCmd repoDir (Just buildEnv)
-    end <- getCurrentTime
-    let finishMsg = printf "Build finished in %.3f seconds with exit code %s" (realToFrac (diffUTCTime end start) :: Double) (show exitCode)
-    logWithTimestamp lh (finishMsg ++ "\n")
-    putStrLn finishMsg
-    putMVar ecMVar exitCode
+    let handleCloneOutput inH pm@(ProcMsg _ _ m) = do
+          if
+            | "Username" `isPrefixOf` m -> do
+              logWithTimestamp lh $ printf "Got login prompt: %s" m
+              hPutStrLn inH "mightybyte" -- TODO Replace with correct username
+            | "Password" `isPrefixOf` m -> do
+              logWithTimestamp lh $ printf "Got password prompt: %s" m
+              hPutStrLn inH "blah" -- TODO Replace with correct password
+            | otherwise -> return ()
+          logWithTimestamp lh (prettyProcMsg pm)
+    let handleBuildOutput :: Handle -> ProcMsg -> IO ()
+        handleBuildOutput _ pm = do
+          hPutStrLn lh (prettyProcMsg pm)
+          return ()
+    res <- runExceptT $ do
+      _ <- runCmd (microsToDelay 3600 start) cloneCmd cloneDir Nothing handleCloneOutput
+      let repoDir = cloneDir </> toS (_repo_name repo)
+      let checkout = printf "%s checkout %s" gitBinary (_rbi_commitHash rbi)
+      _ <- runCmd (microsToDelay 3600 start) checkout repoDir Nothing handleBuildOutput
+      let buildCmd = printf "%s --show-trace %s" nixBuildBinary (_repo_buildNixFile repo)
+      e <- liftIO getEnvironment
+      let buildEnv = M.toList $ M.insert "NIX_PATH" (toS $ _repo_nixPath repo) $ M.fromList e
+      _ <- runCmd (microsToDelay 3600 start) buildCmd repoDir (Just buildEnv) handleBuildOutput
+      end <- liftIO getCurrentTime
+      let finishMsg = printf "Build finished in %.3f seconds" (realToFrac (diffUTCTime end start) :: Double)
+      liftIO $ logWithTimestamp lh (finishMsg ++ "\n")
+      liftIO $ putStrLn finishMsg
+      return ExitSuccess
+    case res of
+      Left ec -> do
+        liftIO $ printf "Build failed with code %s\n" (show ec)
+        putMVar ecMVar ec
+      Right ec -> do
+        liftIO $ printf "Build succeeded with %s\n" (show ec)
+        putMVar ecMVar ec
+
+data GitMsgType = UsernameMessage String | PasswordMessage String | OtherMessage
 
 exitCodeToStatus :: ExitCode -> JobStatus
 exitCodeToStatus ExitSuccess = JobSucceeded
@@ -201,7 +243,7 @@ withLogHandle fp action = withFile fp AppendMode $ \h -> do
 logWithTimestamp :: Handle -> String -> IO ()
 logWithTimestamp lh msg = do
   !t <- getCurrentTime
-  hPutStrLn lh $! "TIMESTAMP " <> show t <> ", " <> msg
+  hPutStrLn lh $! "[" <> show t <> "] " <> msg
 
 withCreateProcess_
   :: String
@@ -215,24 +257,132 @@ withCreateProcess_ fun c action =
     cleanup (_, _, _, ph) = terminateProcess ph
 
 
-runInDirWithEnv :: Handle -> String -> FilePath -> Maybe [(String, String)] -> IO ExitCode
-runInDirWithEnv lh cmd dir e = do
+--runInDirWithEnv :: Handle -> String -> FilePath -> Maybe [(String, String)] -> IO ExitCode
+--runInDirWithEnv lh cmd dir e = do
+--  let cp = (shell cmd)
+--        { cwd = Just dir
+--        , env = e
+--        , std_out = UseHandle lh
+--        , std_err = UseHandle lh
+--        }
+--  hPutStrLn lh $ printf "Executing command from %s:" (show $ cwd cp)
+--  logWithTimestamp lh $ getCommand cp
+--  exitCode <- withCreateProcess_ "runInDirWithEnv" cp $ \inh outh errh ph -> do
+--    -- TODO Properly handle stdout and stderr
+--    ec <- waitForProcess ph
+--    -- TODO Terminate process if it runs too long
+--    return ec
+--
+--  hPutStrLn lh $ "Exited with: " ++ show exitCode
+--  return exitCode
+
+data ProcMsgSource = StdoutMsg | StderrMsg
+  deriving (Eq,Ord,Show,Read,Enum,Bounded)
+
+prettyProcMsgSource :: ProcMsgSource -> String
+prettyProcMsgSource StdoutMsg = "OUT"
+prettyProcMsgSource StderrMsg = "ERR"
+
+data ProcMsg = ProcMsg
+  { _procMsg_timestamp :: UTCTime
+  , _procMsg_source :: ProcMsgSource
+  , _procMsg_msg :: String
+  } deriving (Eq,Ord,Show,Read)
+
+prettyProcMsg :: ProcMsg -> String
+prettyProcMsg (ProcMsg t s m) =
+  printf "%s [%s] %s" (prettyProcMsgSource s) (show t) m
+
+runCmd
+  :: IO Int
+  -- ^ Timeout in seconds
+  -> String
+  -> FilePath
+  -> Maybe [(String, String)]
+  -> (Handle
+     -- ^ File handle for sending to the stdin for the process
+   -> ProcMsg
+     -- ^ A message the process printed to stdout or stderr
+   -> IO ())
+  -> ExceptT ExitCode IO ExitCode
+runCmd calcDelay cmd dir e action = do
+  start <- liftIO getCurrentTime
   let cp = (shell cmd)
         { cwd = Just dir
         , env = e
-        , std_out = UseHandle lh
-        , std_err = UseHandle lh
+        , std_in = CreatePipe
+        , std_out = CreatePipe
+        , std_err = CreatePipe
         }
-  hPutStrLn lh $ printf "Executing command from %s:" (show $ cwd cp)
-  logWithTimestamp lh $ getCommand cp
-  exitCode <- withCreateProcess_ "runInDirWithEnv" cp $ \_ _ _ ph -> do
-    -- TODO Properly handle stdout and stderr
-    ec <- waitForProcess ph
-    -- TODO Terminate process if it runs too long
-    return ec
+  exitCode <- liftIO $ withCreateProcess_ "runCmd" cp (collectOutput calcDelay action)
+  case exitCode of
+    ExitFailure _ -> hoistEither $ Left exitCode
+    ExitSuccess -> do
+      t <- liftIO $ getCurrentTime
+      liftIO $ printf "ExitSuccess in %.2f seconds" (realToFrac (diffUTCTime t start) :: Double)
+      hoistEither $ Right exitCode
 
-  hPutStrLn lh $ "Exited with: " ++ show exitCode
-  return exitCode
+data ThreadType = TimerThread | ProcessThread
+
+catchEOF :: C.SomeException -> IO ()
+catchEOF _ = return ()
+
+collectOutput
+  :: (IO Int)
+  -- ^ Function that calculates the number of microseconds to delay
+  -> (Handle -> ProcMsg -> IO ())
+  -> Maybe Handle
+  -> Maybe Handle
+  -> Maybe Handle
+  -> ProcessHandle
+  -> IO ExitCode
+collectOutput calcDelay action (Just hIn) (Just hOut) (Just hErr) ph = do
+    msgQueue <- atomically newTQueue
+    let watchForOutput src h = do
+          hSetBuffering h LineBuffering
+          _ <- C.catch (void $ hWaitForInput h (-1)) catchEOF
+          t <- getCurrentTime
+          msg <- C.handle (\e -> catchEOF e >> return "") $ hGetLine h
+          atomically $ writeTQueue msgQueue $ ProcMsg t src msg
+          watchForOutput src h
+        handleOutput = do
+          procMsg <- atomically (readTQueue msgQueue)
+          action hIn procMsg
+          handleOutput
+    otid <- forkIO $ watchForOutput StdoutMsg hOut
+    etid <- forkIO $ watchForOutput StderrMsg hErr
+    atid <- forkIO handleOutput
+
+    ecMVar <- newEmptyMVar
+    ttid <- forkIO $ do
+      d <- calcDelay
+      threadDelay d
+      putMVar ecMVar Nothing
+    ptid <- forkIO $ do
+      ec <- waitForProcess ph
+      putMVar ecMVar $ Just ec
+
+    mec <- takeMVar ecMVar
+    ec <- case mec of
+      Nothing -> do
+        -- Timeout exceeded
+        killThread ptid
+        terminateProcess ph
+        return $ ExitFailure 99
+      Just ec -> do
+        -- Process finished
+        killThread ttid
+        return ec
+    threadDelay 1000000
+
+    killThread otid
+    killThread etid
+    killThread atid
+    return ec
+collectOutput _ _ _ _ _ _ = do
+  putStrLn "WARN: collectOutput file descriptors are wonky!"
+  return $ ExitFailure 101
+
 
 getCommand :: CreateProcess -> String
 getCommand cp =
