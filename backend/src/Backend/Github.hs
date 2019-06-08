@@ -9,9 +9,7 @@
 module Backend.Github where
 
 ------------------------------------------------------------------------------
-import           Control.Concurrent.STM
 import           Control.Error
-import           Control.Monad
 import           Control.Monad.Trans
 import           Data.Aeson
 import           Data.ByteString (ByteString)
@@ -20,10 +18,7 @@ import qualified Data.Map as M
 import           Data.String.Conv
 import           Data.Text (Text)
 import           Data.Text.Encoding
-import           Data.Time
 import qualified Data.Vector as V
-import           Database.Beam
-import           Database.Beam.Sqlite
 import           GitHub.Data
 import           GitHub.Data.Name
 import qualified GitHub.Data.Webhooks.Events as GW
@@ -33,13 +28,9 @@ import           GitHub.Endpoints.Repos.Webhooks
 import           Snap.Core
 import           Text.Printf
 ------------------------------------------------------------------------------
-import           Backend.Db
 import           Backend.Schedule
 import           Backend.Types.ServerEnv
 import           Common.Route
-import           Common.Types.BuildJob
-import           Common.Types.BuildMsg
-import           Common.Types.JobStatus
 import           Common.Types.RepoBuildInfo
 ------------------------------------------------------------------------------
 

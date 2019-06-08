@@ -62,8 +62,8 @@ data RepoT f = Repo
   } deriving Generic
 
 repoToMaybe :: RepoT Identity -> RepoT Maybe
-repoToMaybe (Repo i f (ConnectedAccountId o) n c bf p t h) = Repo (Just i) (Just f)
-    (ConnectedAccountId $ Just o) (Just n) (Just c) (Just bf) (Just p) (Just t) (Just h)
+repoToMaybe (Repo i f (ConnectedAccountId o) n c bf pa t h) = Repo (Just i) (Just f)
+    (ConnectedAccountId $ Just o) (Just n) (Just c) (Just bf) (Just pa) (Just t) (Just h)
 
 Repo (LensFor repo_id) (LensFor repo_fullName)
      (ConnectedAccountId (LensFor repo_owner))

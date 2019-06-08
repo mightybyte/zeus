@@ -10,7 +10,6 @@ module Frontend.Widgets.Form where
 ------------------------------------------------------------------------------
 import           Control.Lens
 import           Control.Monad
-import           Control.Monad.Fix
 import           Data.Readable
 import qualified Data.Map as M
 import           Data.Text (Text)
@@ -58,15 +57,15 @@ filledDropdown iv sv = do
          map (\a -> (a, text $ humanize a)) [minBound..maxBound]
   return $ join v
 
-filledDropdown2
-  :: (Ord a, Enum a, Bounded a, Humanizable a, DomBuilder t m, PostBuild t m, MonadHold t m, MonadFix m)
-  => a
-  -> Event t a
-  -> m (Dynamic t a)
-filledDropdown2 iv sv = do
-  let pairs = M.fromList $ map (\a -> (a, humanize a)) [minBound..maxBound]
-  v <- dropdown minBound (constDyn pairs) def
-  return $ value v
+--filledDropdown2
+--  :: (Ord a, Enum a, Bounded a, Humanizable a, DomBuilder t m, PostBuild t m, MonadHold t m, MonadFix m)
+--  => a
+--  -> Event t a
+--  -> m (Dynamic t a)
+--filledDropdown2 iv sv = do
+--  let pairs = M.fromList $ map (\a -> (a, humanize a)) [minBound..maxBound]
+--  v <- dropdown minBound (constDyn pairs) def
+--  return $ value v
 
 
 -- newtype Form t m a = Form { unForm :: Event t a -> m (Dynamic t a) }

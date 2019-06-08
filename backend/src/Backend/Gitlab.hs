@@ -10,7 +10,6 @@ import           Control.Monad
 import           Control.Monad.IO.Class
 import           Data.Aeson
 import           Data.Aeson.Lens
-import qualified Data.List.NonEmpty as NE
 import           Data.String.Conv
 import           Data.Text (Text)
 import qualified Data.Text as T
@@ -18,7 +17,6 @@ import qualified Data.Text.Encoding as T
 import           Network.HTTP.Client
 import qualified Network.HTTP.Client as HC
 import           Network.HTTP.Client.TLS
-import           Network.HTTP.Types.Status
 import           Snap.Core
 ------------------------------------------------------------------------------
 import           Backend.Common
@@ -94,7 +92,7 @@ pushMessage p =
         ]) ++ map _commit_url commits
 
 gitlabMergeRequestHandler :: ServerEnv -> Either String MergeRequest -> Snap ()
-gitlabMergeRequestHandler env mmr = liftIO $ putStrLn "Got gitlab merge request"
+gitlabMergeRequestHandler _ _ = liftIO $ putStrLn "Got gitlab merge request"
   --case mmr of
   --  Left parseErr -> error $ "MR: Couldn't parse merge request payload: " <> parseErr
   --  Right mr | mergeRequestIsActionable mr -> do

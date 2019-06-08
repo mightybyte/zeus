@@ -14,11 +14,8 @@ module Frontend.Widgets.Repos where
 
 ------------------------------------------------------------------------------
 import           Control.Monad.Reader
-import           Data.Bool
-import           Data.Map (Map)
 import qualified Data.Map as M
 import           Data.Maybe
-import           Data.Readable
 import           Data.Text (Text)
 import           Database.Beam
 import           Obelisk.Route
@@ -27,10 +24,8 @@ import           Reflex.Dom.Contrib.CssClass
 import           Reflex.Dom.Contrib.Utils
 import           Reflex.Dom.Core
 import qualified Reflex.Dom.SemanticUI as SemUI
-import           Reflex.Network
 ------------------------------------------------------------------------------
 import           Common.Route
-import           Common.Types.BuildJob
 import           Common.Types.ConnectedAccount
 import           Common.Types.Repo
 import           Frontend.App
@@ -70,7 +65,7 @@ reposList as = do
   add <- SemUI.button def $ text "Add Repository"
   setRoute $ (FR_Repos :/ Crud_Create :/ ()) <$ add
 
-  del <- genericTableG def as
+  _ <- genericTableG def as
     [ ("ID", textDynColumn (tshow . _repo_id))
     , ("Full Name", textDynColumn $ _repo_fullName)
     , ("Clone Method", textDynColumn $ tshow . _repo_cloneMethod)
@@ -135,7 +130,6 @@ newRepoForm iv sv = do
         cm <- dcm
         t <- dt
         np <- dnp
-        accountMap <- accounts
         mca <- dmca
         pure $ case mca of
           Nothing -> unfilledRepo
@@ -145,9 +139,6 @@ newRepoForm iv sv = do
                 ownerName = _connectedAccount_name a
                 fn = mkFullName (_connectedAccount_provider a) ownerName n
              in Repo Nothing (Just fn) maid (Just n) (Just cm) (Just nf) (Just np) t Nothing
-  where
-    accountText a =
-       providerUrl (_connectedAccount_provider a) <> "/" <> (_connectedAccount_name a)
 
 accountDropdown
   :: forall r t m. MonadApp r t m

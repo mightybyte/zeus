@@ -15,7 +15,6 @@ module Frontend.Widgets.Accounts where
 ------------------------------------------------------------------------------
 import           Control.Monad
 import           Control.Monad.Reader
-import           Data.Bool
 import qualified Data.Map as M
 import           Data.Maybe
 import           Database.Beam
@@ -79,7 +78,7 @@ accountsList as = do
                 , ("", (\k _ -> deleteColumn trigger_delAccounts k))
                 ]
               triggerBatch trigger_delAccounts $ M.keys <$> del
-    dyn (widget <$> as)
+    _ <- dyn (widget <$> as)
     return ()
 
 accountPlaceholder :: MonadApp r t m => m ()

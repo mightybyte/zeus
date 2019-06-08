@@ -20,7 +20,6 @@ module Frontend.AppState where
 
 ------------------------------------------------------------------------------
 import           Control.Lens
-import           Control.Monad.Trans
 import           Data.Map (Map)
 import qualified Data.Map as M
 import           Data.Maybe
@@ -33,7 +32,6 @@ import           Reflex
 import           Reflex.Dom
 ------------------------------------------------------------------------------
 import           Common.Api
-import           Common.Route
 import           Common.Types.BuildJob
 import           Common.Types.ConnectedAccount
 import           Common.Types.Repo
@@ -102,6 +100,11 @@ data AppState t = AppState
     , _as_serverAlert :: Event t Text
     } deriving Generic
 
+squash
+  :: (W.Filterable f, Foldable t)
+  => (a1 -> t a2)
+  -> f a1
+  -> f (t a2)
 squash f = W.filter (not . null) . fmap f
 
 stateManager

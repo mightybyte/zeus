@@ -8,10 +8,8 @@
 module Frontend.Nav (nav) where
 
 ------------------------------------------------------------------------------
-import           Control.Lens hiding (element, universe)
 import           Control.Monad (forM_)
 import           Data.Dependent.Sum (DSum ((:=>)))
-import           Data.Proxy
 import qualified Data.Some as Some
 import           Data.Universe (universe)
 import           Obelisk.Route

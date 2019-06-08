@@ -17,22 +17,14 @@ module Frontend where
 import           Control.Monad.Identity
 import           Control.Monad.Reader
 import           Control.Monad.Ref
-import           Data.Map (Map)
-import qualified Data.Map as M
 import           Data.Maybe
 import           Data.Text (Text)
-import qualified Data.Text as T
-import qualified GHCJS.DOM.Types as DOM
 import           Obelisk.Frontend
 import           Obelisk.Generated.Static
 import           Obelisk.Route
 import           Obelisk.Route.Frontend
-import           Reflex.Network
 import           Reflex.Dom.Core
 import           Reflex.Dom.Contrib.CssClass
-import           Reflex.Dom.Contrib.Utils
-import           Reflex.Dom.Contrib.Widgets.DynTabs
-import qualified Reflex.Dom.SemanticUI as SemUI
 ------------------------------------------------------------------------------
 import           Common.Route
 import           Humanizable

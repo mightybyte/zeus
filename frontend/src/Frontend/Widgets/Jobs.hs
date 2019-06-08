@@ -62,7 +62,7 @@ jobsList as = do
   let mkField f _ v = el "td" $ do
         _ <- f v
         return never
-  cancel <- genericTableG def (M.mapKeys Down <$> as)
+  _ <- genericTableG def (M.mapKeys Down <$> as)
     [ ("Status", (\_ v -> el "td" $ dynStatusWidget (_buildJob_status <$> v)))
     , ("ID", mkField $ dynText . fmap (tshow . _buildJob_id))
     , ("Repository", \_ v -> el "td" (repoColumnWidget v) >> return never)
@@ -120,11 +120,12 @@ authorWidget
   => Dynamic t BuildJob
   -> m ()
 authorWidget dj = do
-  let mkAvatar Nothing = blank
-  let mkAvatar (Just url) = elAttr "img" ("src" =: url <> "class" =: "avatar") blank
-  _ <- networkView $ mkAvatar . _rbi_pushAvatar . _buildJob_repoBuildInfo <$> dj
-  text " "
-  dynText $ _rbi_pushUser . _buildJob_repoBuildInfo <$> dj
+    _ <- networkView $ mkAvatar . _rbi_pushAvatar . _buildJob_repoBuildInfo <$> dj
+    text " "
+    dynText $ _rbi_pushUser . _buildJob_repoBuildInfo <$> dj
+  where
+    mkAvatar Nothing = blank
+    mkAvatar (Just url) = elAttr "img" ("src" =: url <> "class" =: "avatar") blank
 
 commitWidget
   :: (DomBuilder t m, PostBuild t m)

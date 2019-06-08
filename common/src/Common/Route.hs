@@ -18,7 +18,6 @@ import Control.Category
 -}
 
 ------------------------------------------------------------------------------
-import           Control.Monad.Except
 import           Data.Dependent.Sum (DSum (..))
 import           Data.Some (Some)
 import qualified Data.Some as Some
