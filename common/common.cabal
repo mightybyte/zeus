@@ -10,13 +10,14 @@ library
     , base
     , beam-core
     , beam-migrate
-    , dependent-sum
     , bytestring
     , data-default
+    , dependent-sum
+    , errors
     , lens
+    , mtl
     , obelisk-executable-config
     , obelisk-route
-    , mtl
     , readable
     , scrub
     , text
@@ -32,6 +33,7 @@ library
     Common.Types.BuildMsg
     Common.Types.Builder
     Common.Types.JobStatus
+    Common.Types.ProcMsg
     Common.Types.Repo
     Common.Types.RepoBuildInfo
     Humanizable

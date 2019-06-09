@@ -19,10 +19,13 @@
 module Frontend.AppState where
 
 ------------------------------------------------------------------------------
+import           Control.Error
 import           Control.Lens
+import           Control.Monad.Fix
 import           Data.Map (Map)
 import qualified Data.Map as M
-import           Data.Maybe
+import           Data.Sequence (Seq)
+import qualified Data.Sequence as S
 import           Data.Text (Text)
 import qualified Data.Text as T
 import qualified Data.Witherable as W
@@ -35,6 +38,7 @@ import           Common.Api
 import           Common.Types.BuildJob
 import           Common.Types.ConnectedAccount
 import           Common.Types.Repo
+import           Common.Types.ProcMsg
 import           Frontend.Common ()
 ------------------------------------------------------------------------------
 
@@ -48,10 +52,11 @@ data AppTriggers = AppTriggers
     , _trigger_getJobs :: Batch ()
     , _trigger_cancelJobs :: Batch (PrimaryKey BuildJobT Identity)
     , _trigger_rerunJobs :: Batch (PrimaryKey BuildJobT Identity)
+    , _trigger_subscribeOutput :: Batch BuildJobId
     } deriving Generic
 
 instance Semigroup AppTriggers where
-  (AppTriggers ga1 ca1 da1 gr1 ar1 dr1 gj1 cj1 rj1) <> (AppTriggers ga2 ca2 da2 gr2 ar2 dr2 gj2 cj2 rj2) = AppTriggers
+  (AppTriggers ga1 ca1 da1 gr1 ar1 dr1 gj1 cj1 rj1 so1) <> (AppTriggers ga2 ca2 da2 gr2 ar2 dr2 gj2 cj2 rj2 so2) = AppTriggers
     (ga1 <> ga2)
     (ca1 <> ca2)
     (da1 <> da2)
@@ -61,9 +66,11 @@ instance Semigroup AppTriggers where
     (gj1 <> gj2)
     (cj1 <> cj2)
     (rj1 <> rj2)
+    (so1 <> so2)
 
 instance Monoid AppTriggers where
     mempty = AppTriggers
+      mempty
       mempty
       mempty
       mempty
@@ -98,6 +105,7 @@ data AppState t = AppState
     , _as_jobs :: Dynamic t (BeamMap Identity BuildJobT)
     , _as_repos :: Dynamic t (BeamMap Identity RepoT)
     , _as_serverAlert :: Event t Text
+    , _as_buildOutputs :: Dynamic t (Map BuildJobId (Seq ProcMsg))
     } deriving Generic
 
 squash
@@ -108,7 +116,7 @@ squash
 squash f = W.filter (not . null) . fmap f
 
 stateManager
-    :: (DomBuilder t m, MonadHold t m, Prerender js t m)
+    :: (DomBuilder t m, MonadHold t m, Prerender js t m, MonadFix m)
     => Text
     -> Event t AppTriggers
     -> m (AppState t)
@@ -123,6 +131,7 @@ stateManager route ft = do
           , Up_GetJobs <$ fmapMaybe (listToMaybe . _trigger_getJobs) ft
           , Up_CancelJobs <$> squash _trigger_cancelJobs ft
           , Up_RerunJobs <$> squash _trigger_rerunJobs ft
+          , Up_SubscribeJobOutput <$> squash _trigger_subscribeOutput ft
           ]
     let cfg = WebSocketConfig upEvent never True []
     ws <- startWebsocket route cfg
@@ -132,8 +141,21 @@ stateManager route ft = do
     jobs <- holdDyn mempty $ fmapMaybe (fmap listToBeamMap . preview _Down_Jobs) downEvent
     repos <- holdDyn mempty $ fmapMaybe (fmap listToBeamMap . preview _Down_Repos) downEvent
     let serverAlert = fmapMaybe (preview _Down_Alert) downEvent
+    buildOutput <- foldDyn ($) mempty $ leftmost
+      [ fmapMaybe (fmap startOutput . preview _Down_JobOutput) downEvent
+      , fmapMaybe (fmap addToOutput . preview _Down_JobNewOutput) downEvent
+      ]
 
-    return $ AppState accounts jobs repos serverAlert
+    return $ AppState accounts jobs repos serverAlert buildOutput
+
+startOutput :: (BuildJobId, Text) -> Map BuildJobId (Seq ProcMsg) -> Map BuildJobId (Seq ProcMsg)
+startOutput (jid, msgText) _ = M.singleton jid (parseMessages msgText)
+
+parseMessages :: Text -> Seq ProcMsg
+parseMessages t = S.fromList $ catMaybes $ map (hush . parseProcMsg) $ T.lines t
+
+addToOutput :: (BuildJobId, [ProcMsg]) -> Map BuildJobId (Seq ProcMsg) -> Map BuildJobId (Seq ProcMsg)
+addToOutput (jid, pms) = M.adjust (<> S.fromList pms) jid
 
 listToBeamMap :: (Table a, Ord (PrimaryKey a f)) => [a f] -> BeamMap f a
 listToBeamMap = M.fromList . map (\a -> (primaryKey a, a))

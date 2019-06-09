@@ -13,6 +13,7 @@ library
     , containers
     , data-default
     , dependent-sum
+    , errors
     , ghcjs-dom
     , jsaddle
     , lens

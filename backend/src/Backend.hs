@@ -19,6 +19,7 @@ import           Control.Monad.Trans
 import           Data.Dependent.Sum (DSum ((:=>)))
 import           Data.IORef
 import           Data.RNG
+import qualified Data.Set as S
 import           Data.String.Conv
 import           Data.Text (Text)
 import qualified Data.Text as T
@@ -41,6 +42,7 @@ import           Obelisk.Route
 import           Scrub
 import           Snap.Core
 import           System.Directory
+import           System.FilePath
 import           System.Mem.Weak
 import           Text.Printf
 ------------------------------------------------------------------------------
@@ -97,7 +99,8 @@ backend = Backend
           putStrLn "Found override for webhook-baseurl"
           return $ T.strip hbu
       putStrLn $ "hookBaseUrl set to " <> show hookBaseUrl
-      let env = ServerEnv appRoute hookBaseUrl secretToken dbConn buildQueue connRepo buildThreads
+      listeners <- newIORef mempty
+      let env = ServerEnv appRoute hookBaseUrl secretToken dbConn buildQueue connRepo buildThreads listeners
       _ <- forkIO $ buildManagerThread env
       serve $ serveBackendRoute env
   , _backend_routeEncoder = backendRouteEncoder
@@ -138,6 +141,8 @@ talkClient env cid conn = do
         Right (Up_AddRepo rs) -> mapM_ (addRepo env conn) rs
         Right (Up_DelRepos rs) -> mapM_ (deleteRepo env) rs
         Right Up_GetJobs -> listJobs env conn
+        Right (Up_SubscribeJobOutput jids) -> mapM_ (subscribeJob env cid) jids
+        Right (Up_UnsubscribeJobOutput jids) -> mapM_ (unsubscribeJob env cid) jids
         Right (Up_CancelJobs jids) -> do
           mapM_ (cancelJobAndRemove env) jids
         Right (Up_RerunJobs jids) -> do
@@ -148,10 +153,22 @@ talkClient env cid conn = do
     cleanup _ = do
       removeConnection cid cRepo
 
+subscribeJob :: ServerEnv -> ConnId -> BuildJobId -> IO ()
+subscribeJob env connId jid@(BuildJobId jidInt) = do
+    output <- liftIO $ T.readFile (buildOutputDir </> show jidInt <> ".output")
+    sendToConnId (_serverEnv_connRepo env) connId $ Down_JobOutput (jid, output)
+    atomicModifyIORef' (_serverEnv_buildListeners env) $ \m ->
+      (M.adjust (S.insert connId) jidInt m, ())
+
+unsubscribeJob :: ServerEnv -> ConnId -> BuildJobId -> IO ()
+unsubscribeJob env connId (BuildJobId jidInt) = do
+    atomicModifyIORef' (_serverEnv_buildListeners env) $ \m ->
+      (M.adjust (S.delete connId) jidInt m, ())
+
 rerunJob :: ServerEnv -> BuildJobId -> IO ()
-rerunJob env (BuildJobId jid) = do
-    let dbConn = _serverEnv_db env
-    mjob <- beamQueryConn (_serverEnv_db env) $
+rerunJob se (BuildJobId jid) = do
+    let dbConn = _serverEnv_db se
+    mjob <- beamQueryConn (_serverEnv_db se) $
       runSelectReturningOne $ select $ do
         job <- all_ (_ciDb_buildJobs ciDb)
         guard_ (job ^. buildJob_id ==. (val_ jid))
@@ -171,7 +188,7 @@ rerunJob env (BuildJobId jid) = do
                             , j ^. buildJob_status <-. val_ JobPending ])
                    (\j -> _buildJob_id j ==. val_ jid)
           return ()
-        void $ atomically $ writeTQueue (_serverEnv_buildQueue env) $
+        void $ atomically $ writeTQueue (_serverEnv_buildQueue se) $
           BuildMsg (_buildJob_id job) (_buildJob_repoBuildInfo job)
 
 cancelJobAndRemove :: ServerEnv -> BuildJobId -> IO ()

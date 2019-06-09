@@ -7,6 +7,7 @@ import           Control.Concurrent
 import           Control.Concurrent.STM.TQueue
 import           Data.IORef
 import           Data.Map (Map)
+import           Data.Set (Set)
 import           Data.Text (Text)
 import           Database.Beam.Sqlite
 import           Database.SQLite.Simple
@@ -33,6 +34,7 @@ data ServerEnv = ServerEnv
   , _serverEnv_connRepo :: ConnRepo
   -- ^ Websocket connection repo that allows job updates to be pushed
   , _serverEnv_buildThreads :: IORef (Map Int (Weak ThreadId))
+  , _serverEnv_buildListeners :: IORef (Map Int (Set ConnId))
   }
 
 beamQuery :: ServerEnv -> SqliteM a -> IO a

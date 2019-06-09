@@ -14,11 +14,11 @@ import qualified Control.Exception as C
 import           Control.Lens
 import           Control.Monad
 import           Data.IORef
-import           Data.List
 import           Data.Map (Map)
 import qualified Data.Map as M
 import           Data.RNG
 import           Data.String.Conv
+import qualified Data.Text as T
 import           Data.Time
 import           Database.Beam
 import           Database.Beam.Sqlite
@@ -34,10 +34,13 @@ import           Text.Printf
 import           Backend.Db
 import           Backend.Types.ServerEnv
 import           Backend.WsCmds
+import           Common.Api
 import           Common.Types.ConnectedAccount
+import           Backend.Types.ConnRepo
 import           Common.Types.BuildJob
 import           Common.Types.BuildMsg
 import           Common.Types.JobStatus
+import           Common.Types.ProcMsg
 import           Common.Types.Repo
 import           Common.Types.RepoBuildInfo
 import           Which
@@ -93,7 +96,7 @@ runBuild se rng repo msg = do
   broadcastJobs dbConn connRepo
 
   ecMVar <- newEmptyMVar
-  wtid <- mkWeakThreadId =<< forkIO (buildThread ecMVar rng repo msg)
+  wtid <- mkWeakThreadId =<< forkIO (buildThread se ecMVar rng repo msg)
   let jobId = fromIntegral $ _buildMsg_jobId msg
   atomicModifyIORef (_serverEnv_buildThreads se) $ \m ->
     (M.insert jobId wtid m, ())
@@ -167,15 +170,28 @@ microsToDelay timeout start = do
     micros <- microsSince start
     return $ timeout * 1000000 - micros
 
+buildOutputDir :: String
+buildOutputDir = "log/builds"
+
+sendOutput :: ServerEnv -> Int -> ProcMsg -> IO ()
+sendOutput se jid msg = do
+    listeners <- readIORef (_serverEnv_buildListeners se)
+    case M.lookup jid listeners of
+      Nothing -> return ()
+      Just connIds -> do
+        forM_ connIds $ \connId ->
+          sendToConnId (_serverEnv_connRepo se) connId (Down_JobNewOutput $ (BuildJobId jid, [msg]))
+
 buildThread
-  :: MVar ExitCode
+  :: ServerEnv
+  -> MVar ExitCode
   -> RNG
   -> Repo
   -> BuildMsg
   -> IO ()
-buildThread ecMVar rng repo msg = do
+buildThread se ecMVar rng repo bm = do
   start <- getCurrentTime
-  let rbi = _buildMsg_repoBuildInfo msg
+  let rbi = _buildMsg_repoBuildInfo bm
   tok <- randomToken 8 rng
   let url = case _repo_cloneMethod repo of
               SshClone -> _rbi_cloneUrlSsh rbi
@@ -184,28 +200,33 @@ buildThread ecMVar rng repo msg = do
   let buildId = printf "build-%s-%s" timeStr (toS tok :: String) :: String
   let cloneDir = printf "/tmp/zeus-builds/%s" buildId :: String
   createDirectoryIfMissing True cloneDir
-  let outputDir = "log/builds"
-  createDirectoryIfMissing True outputDir
-  let outputFile = printf "%s/%s.output" outputDir buildId
+  createDirectoryIfMissing True buildOutputDir
+  let outputFile = printf "%d.output" (_buildMsg_jobId bm)
   printf "Writing build output to %s\n" outputFile
   withLogHandle outputFile $ \lh  -> do
     let cloneCmd = printf "%s clone %s" gitBinary url
-    logWithTimestamp lh cloneCmd
+        saveAndSend msg = do
+          !t <- getCurrentTime
+          let pm = ProcMsg t CiMsg $ T.pack msg
+          hPutStrLn lh $! prettyProcMsg pm
 
-    logWithTimestamp lh $ printf "Cloning %s to %s" (_repo_fullName repo) cloneDir
+          sendOutput se (_buildMsg_jobId bm) pm
+    saveAndSend cloneCmd
+
+    saveAndSend $ printf "Cloning %s to %s" (_repo_fullName repo) cloneDir
     let handleCloneOutput inH pm@(ProcMsg _ _ m) = do
           if
-            | "Username" `isPrefixOf` m -> do
-              logWithTimestamp lh $ printf "Got login prompt: %s" m
+            | "Username" `T.isPrefixOf` m -> do
+              saveAndSend $ printf "Got login prompt: %s" m
               hPutStrLn inH "mightybyte" -- TODO Replace with correct username
-            | "Password" `isPrefixOf` m -> do
-              logWithTimestamp lh $ printf "Got password prompt: %s" m
+            | "Password" `T.isPrefixOf` m -> do
+              saveAndSend $ printf "Got password prompt: %s" m
               hPutStrLn inH "blah" -- TODO Replace with correct password
             | otherwise -> return ()
-          logWithTimestamp lh (prettyProcMsg pm)
+          saveAndSend (prettyProcMsg pm)
     let handleBuildOutput :: Handle -> ProcMsg -> IO ()
         handleBuildOutput _ pm = do
-          hPutStrLn lh (prettyProcMsg pm)
+          saveAndSend (prettyProcMsg pm)
           return ()
     res <- runExceptT $ do
       _ <- runCmd (microsToDelay 3600 start) cloneCmd cloneDir Nothing handleCloneOutput
@@ -218,7 +239,7 @@ buildThread ecMVar rng repo msg = do
       _ <- runCmd (microsToDelay 3600 start) buildCmd repoDir (Just buildEnv) handleBuildOutput
       end <- liftIO getCurrentTime
       let finishMsg = printf "Build finished in %.3f seconds" (realToFrac (diffUTCTime end start) :: Double)
-      liftIO $ logWithTimestamp lh (finishMsg ++ "\n")
+      liftIO $ saveAndSend (finishMsg ++ "\n")
       liftIO $ putStrLn finishMsg
       return ExitSuccess
     case res of
@@ -239,11 +260,6 @@ withLogHandle :: FilePath -> (Handle -> IO a) -> IO a
 withLogHandle fp action = withFile fp AppendMode $ \h -> do
   hSetBuffering h NoBuffering
   action h
-
-logWithTimestamp :: Handle -> String -> IO ()
-logWithTimestamp lh msg = do
-  !t <- getCurrentTime
-  hPutStrLn lh $! "[" <> show t <> "] " <> msg
 
 withCreateProcess_
   :: String
@@ -275,23 +291,6 @@ withCreateProcess_ fun c action =
 --
 --  hPutStrLn lh $ "Exited with: " ++ show exitCode
 --  return exitCode
-
-data ProcMsgSource = StdoutMsg | StderrMsg
-  deriving (Eq,Ord,Show,Read,Enum,Bounded)
-
-prettyProcMsgSource :: ProcMsgSource -> String
-prettyProcMsgSource StdoutMsg = "OUT"
-prettyProcMsgSource StderrMsg = "ERR"
-
-data ProcMsg = ProcMsg
-  { _procMsg_timestamp :: UTCTime
-  , _procMsg_source :: ProcMsgSource
-  , _procMsg_msg :: String
-  } deriving (Eq,Ord,Show,Read)
-
-prettyProcMsg :: ProcMsg -> String
-prettyProcMsg (ProcMsg t s m) =
-  printf "%s [%s] %s" (prettyProcMsgSource s) (show t) m
 
 runCmd
   :: IO Int
@@ -343,7 +342,7 @@ collectOutput calcDelay action (Just hIn) (Just hOut) (Just hErr) ph = do
           _ <- C.catch (void $ hWaitForInput h (-1)) catchEOF
           t <- getCurrentTime
           msg <- C.handle (\e -> catchEOF e >> return "") $ hGetLine h
-          atomically $ writeTQueue msgQueue $ ProcMsg t src msg
+          atomically $ writeTQueue msgQueue $ ProcMsg t src (T.pack msg)
           watchForOutput src h
         handleOutput = do
           procMsg <- atomically (readTQueue msgQueue)

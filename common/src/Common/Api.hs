@@ -11,6 +11,7 @@ import           Database.Beam
 ------------------------------------------------------------------------------
 import           Common.Types.BuildJob
 import           Common.Types.ConnectedAccount
+import           Common.Types.ProcMsg
 import           Common.Types.Repo
 ------------------------------------------------------------------------------
 
@@ -30,6 +31,8 @@ data Up
   | Up_AddRepo (Batch (RepoT Maybe))
   | Up_DelRepos (Batch RepoId)
   | Up_GetJobs
+  | Up_SubscribeJobOutput (Batch BuildJobId)
+  | Up_UnsubscribeJobOutput (Batch BuildJobId)
   | Up_CancelJobs (Batch BuildJobId)
   | Up_RerunJobs (Batch BuildJobId)
   deriving (Show,Generic)
@@ -39,6 +42,8 @@ data Down
   | Down_ConnectedAccounts [ConnectedAccount]
   | Down_Repos [Repo]
   | Down_Jobs [BuildJob]
+  | Down_JobOutput (BuildJobId, Text)
+  | Down_JobNewOutput (BuildJobId, [ProcMsg])
   deriving (Generic)
 
 instance ToJSON Up where

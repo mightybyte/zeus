@@ -7,6 +7,7 @@ module Backend.Types.ConnRepo
   , addConnection
   , removeConnection
   , broadcast
+  , sendToConnId
   ) where
 
 ------------------------------------------------------------------------------
@@ -15,6 +16,7 @@ import           Data.IORef
 import           Data.Map (Map)
 import qualified Data.Map as M
 import qualified Network.WebSockets as WS
+import           Text.Printf
 ------------------------------------------------------------------------------
 import           Common.Api
 import           Backend.WsUtils
@@ -47,3 +49,10 @@ broadcast (ConnRepo cRef) cmd = do
   (_,conns) <- readIORef cRef
   forM_ (M.elems conns) $ \(conn) -> do
     wsSend conn cmd
+
+sendToConnId :: ConnRepo -> ConnId -> Down -> IO ()
+sendToConnId (ConnRepo cRef) cid@(ConnId cidInt) cmd = do
+  (_,conns) <- readIORef cRef
+  case M.lookup cid conns of
+    Nothing -> printf "WARN: Trying to send to non-existent connection %d\n" cidInt
+    Just conn -> wsSend conn cmd

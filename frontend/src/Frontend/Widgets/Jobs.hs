@@ -16,19 +16,25 @@ module Frontend.Widgets.Jobs where
 import           Control.Lens
 import           Control.Monad
 import           Control.Monad.Reader
+import           Data.Foldable
 import           Data.Ord
 import qualified Data.Map as M
 import           Data.Text (Text)
 import qualified Data.Text as T
 import           Data.Time
+import           Obelisk.Route
+import           Obelisk.Route.Frontend
+import           Reflex
 import           Reflex.Network
 import           Reflex.Dom.Core
 import           Reflex.Dom.SemanticUI
 import qualified Reflex.Dom.SemanticUI as SemUI
 import           Text.Printf
 ------------------------------------------------------------------------------
+import           Common.Route
 import           Common.Types.BuildJob
 import           Common.Types.JobStatus
+import           Common.Types.ProcMsg
 import           Common.Types.RepoBuildInfo
 import           Frontend.App
 import           Frontend.AppState
@@ -36,16 +42,37 @@ import           Frontend.Widgets.Common
 ------------------------------------------------------------------------------
 
 jobsWidget
-  :: MonadAppIO r t m
-  => m ()
+  :: MonadAppIO (R JobRoute) t m
+  => RoutedT t (R JobRoute) m ()
 jobsWidget = mdo
   as <- ask
 
-  let jobMap = _as_jobs as
-  let widget m = if M.null m
-        then genericPlaceholder "Job history empty"
-        else jobsList jobMap
-  _ <- dyn (widget <$> jobMap)
+  subRoute_ $ \case
+    Job_List -> do
+      let jobMap = _as_jobs as
+      let widget m = if M.null m
+            then genericPlaceholder "Job history empty"
+            else jobsList jobMap
+      _ <- dyn (widget <$> jobMap)
+      return ()
+    Job_Output -> jobOutput
+
+jobOutput
+  :: MonadAppIO Int t m
+  => RoutedT t Int m ()
+jobOutput = do
+  jobId <- askRoute
+  _ <- networkView (outputWidget <$> jobId)
+  return ()
+
+outputWidget :: MonadApp r t m => Int -> m ()
+outputWidget jobId = do
+  let bjid = BuildJobId jobId
+  el "pre" $ do
+    dos <- asks _as_buildOutputs
+    _ <- simpleList (fmap (maybe [] toList . M.lookup bjid) dos) $ \v -> do
+      dynText $ (T.pack . prettyProcMsg) <$> v
+    return ()
   return ()
 
 jobDuration :: BuildJob -> Maybe NominalDiffTime
@@ -63,7 +90,7 @@ jobsList as = do
         _ <- f v
         return never
   _ <- genericTableG def (M.mapKeys Down <$> as)
-    [ ("Status", (\_ v -> el "td" $ dynStatusWidget (_buildJob_status <$> v)))
+    [ ("Status", (\_ v -> el "td" $ dynStatusWidget v))
     , ("ID", mkField $ dynText . fmap (tshow . _buildJob_id))
     , ("Repository", \_ v -> el "td" (repoColumnWidget v) >> return never)
     , ("Git Ref", mkField $ dynText . fmap (_rbi_gitRef . _buildJob_repoBuildInfo))
@@ -223,14 +250,32 @@ oneMonth = oneDay * 30
 oneYear :: NominalDiffTime
 oneYear = oneDay * 365
 
-dynStatusWidget :: MonadAppIO r t m => Dynamic t JobStatus -> m (Event t ())
-dynStatusWidget status = do
-    let cfg = def & buttonConfig_color .~ Dyn (Just . statusColor <$> status)
+--dynStatusWidget :: MonadAppIO r t m => Dynamic t BuildJob -> m (Event t ())
+--dynStatusWidget job = do
+--    let status = _buildJob_status <$> job
+--    let cfg = def & buttonConfig_color .~ Dyn (Just . statusColor <$> status)
+--                  & buttonConfig_basic .~ Static True
+--                  & buttonConfig_elConfig . classes .~ Static (Classes ["jobstatus"])
+--    click <- SemUI.button cfg $ do
+--      icon (Dyn $ statusIcon <$> status) def
+--      dynText $ statusMessage <$> status
+--    setRoute $ (FR_Jobs :/ Job_Output :/ 0) <$ click
+--    return never
+
+dynStatusWidget :: MonadAppIO r t m => Dynamic t BuildJob -> m (Event t ())
+dynStatusWidget djob = networkView (statusWidget <$> djob) >> return never
+
+statusWidget :: MonadAppIO r t m => BuildJob -> m (Event t ())
+statusWidget job = do
+    let status = _buildJob_status job
+    let cfg = def & buttonConfig_color .~ Static (Just $ statusColor status)
                   & buttonConfig_basic .~ Static True
                   & buttonConfig_elConfig . classes .~ Static (Classes ["jobstatus"])
-    _ <- SemUI.button cfg $ do
-      icon (Dyn $ statusIcon <$> status) def
-      dynText $ statusMessage <$> status
+    click <- SemUI.button cfg $ do
+      icon (Static $ statusIcon status) def
+      text $ statusMessage status
+    triggerBatch trigger_subscribeOutput $ [BuildJobId $ _buildJob_id job] <$ click
+    setRoute $ (FR_Jobs :/ Job_Output :/ _buildJob_id job) <$ click
     return never
 
 statusColor :: JobStatus -> Color
