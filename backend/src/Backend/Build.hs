@@ -201,32 +201,32 @@ buildThread se ecMVar rng repo bm = do
   let cloneDir = printf "/tmp/zeus-builds/%s" buildId :: String
   createDirectoryIfMissing True cloneDir
   createDirectoryIfMissing True buildOutputDir
-  let outputFile = printf "%d.output" (_buildMsg_jobId bm)
+  let outputFile = printf "%s/%d.output" buildOutputDir (_buildMsg_jobId bm)
   printf "Writing build output to %s\n" outputFile
   withLogHandle outputFile $ \lh  -> do
     let cloneCmd = printf "%s clone %s" gitBinary url
-        saveAndSend msg = do
+        saveAndSendStr msgTy msg = do
           !t <- getCurrentTime
-          let pm = ProcMsg t CiMsg $ T.pack msg
+          let pm = ProcMsg t msgTy msg
+          saveAndSend pm
+        saveAndSend pm = do
           hPutStrLn lh $! prettyProcMsg pm
-
           sendOutput se (_buildMsg_jobId bm) pm
-    saveAndSend cloneCmd
 
-    saveAndSend $ printf "Cloning %s to %s" (_repo_fullName repo) cloneDir
+    saveAndSendStr CiMsg $ T.pack $ printf "Cloning %s to %s" (_repo_fullName repo) cloneDir
     let handleCloneOutput inH pm@(ProcMsg _ _ m) = do
           if
             | "Username" `T.isPrefixOf` m -> do
-              saveAndSend $ printf "Got login prompt: %s" m
-              hPutStrLn inH "mightybyte" -- TODO Replace with correct username
+              saveAndSendStr CiMsg $ T.pack $ printf "Got login prompt: %s" m
+              maybe (return ()) (\h -> hPutStrLn h "mightybyte") inH -- TODO Replace with correct username
             | "Password" `T.isPrefixOf` m -> do
-              saveAndSend $ printf "Got password prompt: %s" m
-              hPutStrLn inH "blah" -- TODO Replace with correct password
+              saveAndSendStr CiMsg $ T.pack $ printf "Got password prompt: %s" m
+              maybe (return ()) (\h -> hPutStrLn h "blah") inH -- TODO Replace with correct username
             | otherwise -> return ()
-          saveAndSend (prettyProcMsg pm)
-    let handleBuildOutput :: Handle -> ProcMsg -> IO ()
+          saveAndSend pm
+    let handleBuildOutput :: Maybe Handle -> ProcMsg -> IO ()
         handleBuildOutput _ pm = do
-          saveAndSend (prettyProcMsg pm)
+          saveAndSend pm
           return ()
     res <- runExceptT $ do
       _ <- runCmd (microsToDelay 3600 start) cloneCmd cloneDir Nothing handleCloneOutput
@@ -239,7 +239,7 @@ buildThread se ecMVar rng repo bm = do
       _ <- runCmd (microsToDelay 3600 start) buildCmd repoDir (Just buildEnv) handleBuildOutput
       end <- liftIO getCurrentTime
       let finishMsg = printf "Build finished in %.3f seconds" (realToFrac (diffUTCTime end start) :: Double)
-      liftIO $ saveAndSend (finishMsg ++ "\n")
+      liftIO $ saveAndSendStr CiMsg $ T.pack (finishMsg ++ "\n")
       liftIO $ putStrLn finishMsg
       return ExitSuccess
     case res of
@@ -298,7 +298,7 @@ runCmd
   -> String
   -> FilePath
   -> Maybe [(String, String)]
-  -> (Handle
+  -> (Maybe Handle
      -- ^ File handle for sending to the stdin for the process
    -> ProcMsg
      -- ^ A message the process printed to stdout or stderr
@@ -313,6 +313,7 @@ runCmd calcDelay cmd dir e action = do
         , std_out = CreatePipe
         , std_err = CreatePipe
         }
+  liftIO $ action Nothing $ ProcMsg start BuildCommandMsg $ T.pack cmd
   exitCode <- liftIO $ withCreateProcess_ "runCmd" cp (collectOutput calcDelay action)
   case exitCode of
     ExitFailure _ -> hoistEither $ Left exitCode
@@ -329,7 +330,7 @@ catchEOF _ = return ()
 collectOutput
   :: (IO Int)
   -- ^ Function that calculates the number of microseconds to delay
-  -> (Handle -> ProcMsg -> IO ())
+  -> (Maybe Handle -> ProcMsg -> IO ())
   -> Maybe Handle
   -> Maybe Handle
   -> Maybe Handle
@@ -342,11 +343,11 @@ collectOutput calcDelay action (Just hIn) (Just hOut) (Just hErr) ph = do
           _ <- C.catch (void $ hWaitForInput h (-1)) catchEOF
           t <- getCurrentTime
           msg <- C.handle (\e -> catchEOF e >> return "") $ hGetLine h
-          atomically $ writeTQueue msgQueue $ ProcMsg t src (T.pack msg)
+          when (not $ null msg) $ atomically $ writeTQueue msgQueue $ ProcMsg t src (T.pack msg)
           watchForOutput src h
         handleOutput = do
           procMsg <- atomically (readTQueue msgQueue)
-          action hIn procMsg
+          action (Just hIn) procMsg
           handleOutput
     otid <- forkIO $ watchForOutput StdoutMsg hOut
     etid <- forkIO $ watchForOutput StderrMsg hErr

@@ -68,12 +68,33 @@ jobOutput = do
 outputWidget :: MonadApp r t m => Int -> m ()
 outputWidget jobId = do
   let bjid = BuildJobId jobId
-  el "pre" $ do
+  elClass "table" "ui inverted table build-output" $ do
     dos <- asks _as_buildOutputs
-    _ <- simpleList (fmap (maybe [] toList . M.lookup bjid) dos) $ \v -> do
-      dynText $ (T.pack . prettyProcMsg) <$> v
+    _ <- simpleList (fmap (zip [1 :: Int ..] . maybe [] toList . M.lookup bjid) dos) $ \v -> do
+      let mkTheId n = "L" <> tshow n
+          msgClass BuildCommandMsg = "cmd-msg output-line"
+          msgClass _ = "output-line"
+          mkDivAttrs (n,pm) =
+            "class" =: msgClass (_procMsg_source pm) <>
+            "id" =: mkTheId n
+            -- TODO Line jumping currently doesn't jump to the right place.
+            -- This approach was working: https://css-tricks.com/hash-tag-links-padding/
+            -- but it stopped working after the switch to a table
+      elDynAttr "tr" (mkDivAttrs <$> v) $ do
+        let mkAttrs (n,_) =
+              "href" =: ("#" <> mkTheId n)
+        elClass "td" "linenum" $
+          elDynAttr "a" (mkAttrs <$> v)blank
+        elAttr "td" ("class" =: "output") $
+          dynText $ showProcMsgLine . snd <$> v
     return ()
   return ()
+
+showProcMsgLine :: ProcMsg -> Text
+showProcMsgLine (ProcMsg _ s m) =
+  case s of
+    BuildCommandMsg -> "$ " <> m
+    _ -> m
 
 jobDuration :: BuildJob -> Maybe NominalDiffTime
 jobDuration bj = do
