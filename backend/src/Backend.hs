@@ -302,7 +302,9 @@ addRepo env wsConn
         GitLab -> do
           mhid <- setupGitlabWebhook
             (toS $ _serverEnv_webhookBaseUrl env)
-            0
+            (_connectedAccount_name ca)
+            n
+            (_connectedAccount_accessToken ca)
             (_serverEnv_secretToken env)
           case mhid of
             Nothing -> putStrLn "Didn't get a hook ID"
@@ -325,11 +327,20 @@ deleteRepo env rid = do
   case mrepo of
     Nothing -> return ()
     Just (repo,owner) -> do
-      _ <- deleteRepoWebhook'
-        (OAuth $ toS $ _connectedAccount_accessToken owner)
-        (N $ _connectedAccount_name owner)
-        (N $ _repo_name repo)
-        (Id $ _repo_hookId repo)
+      case _connectedAccount_provider owner of
+        GitHub -> do
+          _ <- deleteRepoWebhook'
+            (OAuth $ toS $ _connectedAccount_accessToken owner)
+            (N $ _connectedAccount_name owner)
+            (N $ _repo_name repo)
+            (Id $ _repo_hookId repo)
+          return ()
+        GitLab -> do
+          deleteGitlabWebhook
+            (_connectedAccount_name owner)
+            (_repo_name repo)
+            (_connectedAccount_accessToken owner)
+            (_repo_hookId repo)
 
       beamQuery env $
         runDelete $ delete (_ciDb_repos ciDb) $

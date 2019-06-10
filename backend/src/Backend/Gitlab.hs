@@ -10,6 +10,8 @@ import           Control.Monad
 import           Control.Monad.IO.Class
 import           Data.Aeson
 import           Data.Aeson.Lens
+import           Data.ByteString (ByteString)
+import qualified Data.ByteString.Lazy as LB
 import           Data.String.Conv
 import           Data.Text (Text)
 import qualified Data.Text as T
@@ -29,6 +31,7 @@ import           Common.Types.RepoBuildInfo
 
 gitlabHandler :: ServerEnv -> Snap ()
 gitlabHandler env = do
+  liftIO $ putStrLn "************* IN GITLAB HANDLER!!!"
   checkToken $ _serverEnv_secretToken env
   eventHeader <- getHeader "X-Gitlab-Event" <$> getRequest
   body <- readRequestBody 1048576 -- TODO what should this number be?
@@ -111,31 +114,50 @@ gitlabMergeRequestHandler _ _ = liftIO $ putStrLn "Got gitlab merge request"
   --    , show (_objectAttributes_action $ _mergeRequest_object_attributes mr)
   --    ]
 
-setupGitlabWebhook :: Text -> Int -> Text -> IO (Maybe Integer)
-setupGitlabWebhook domain projId secret = do
-  sendToGitlab secret $ object
+setupGitlabWebhook :: Text -> Text -> Text -> Text -> Text -> IO (Maybe Integer)
+setupGitlabWebhook domain gitlabNamespace gitlabProjectName gitlabSecret zeusAccessToken = do
+  let projId = gitlabNamespace <> "%2F" <> gitlabProjectName
+  resp <- sendToGitlab "POST" ("projects/" <> projId <> "/hooks") gitlabSecret $ object
     [ "id" .= projId
     , "url" .= (toS domain <> "/" <> gitlabHookPath)
     , "push_events" .= True
     -- , "push_events_branch_filter" .= ""
     , "merge_requests_events" .= True
-    , "token" .= secret
+    , "token" .= zeusAccessToken
+    ]
+  return (responseBody resp ^? _Value . key "id" . _Integer)
+
+deleteGitlabWebhook :: Text -> Text -> Text -> Int -> IO ()
+deleteGitlabWebhook gitlabNamespace gitlabProjectName gitlabSecret hookId = do
+  let projId = gitlabNamespace <> "%2F" <> gitlabProjectName
+      apiPath = "projects/" <> projId <> "/hooks/" <> T.pack (show hookId)
+  _ <- sendToGitlab "DELETE" apiPath gitlabSecret $ object
+    [ "id" .= projId
+    , "hook_id" .= hookId
     ]
 
+  return ()
 
-sendToGitlab :: Text -> Value -> IO (Maybe Integer)
-sendToGitlab secret o = do
+
+sendToGitlab :: ByteString -> Text -> Text -> Value -> IO (HC.Response LB.ByteString)
+sendToGitlab meth apiPath secret o = do
     m <- newTlsManager
-    initReq <- parseRequest "https://gitlab.com/api/v4/projects/12297919/hooks"
+    initReq <- parseRequest $ "https://gitlab.com/api/v4/" <> T.unpack apiPath
     let req = initReq
-            { HC.method = "POST"
+            { HC.method = meth
             , requestBody = RequestBodyLBS $ encode o
-            , requestHeaders = [ ("Private-Token", T.encodeUtf8 secret) ]
+            , requestHeaders = [ ("Private-Token", T.encodeUtf8 secret)
+                               , ("Content-Type", "application/json")
+                               ]
             }
+    putStrLn "Sending request to gitlab"
+    print req
+    putStrLn "---request body---"
+    LB.putStrLn $ encode o
     resp <- httpLbs req m
     putStrLn "Got response from Gitlab:"
     print resp
-    return (responseBody resp ^? _Value . key "id" . _Integer)
+    return resp
 
 --Response {responseStatus = Status {statusCode = 401, statusMessage = "Unauthorized"},
 --          responseVersion = HTTP/1.1,
