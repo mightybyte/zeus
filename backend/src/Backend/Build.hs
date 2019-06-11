@@ -13,6 +13,7 @@ import           Control.Error
 import qualified Control.Exception as C
 import           Control.Lens
 import           Control.Monad
+import qualified Data.ByteString.Char8 as B
 import           Data.IORef
 import           Data.Map (Map)
 import qualified Data.Map as M
@@ -192,6 +193,7 @@ buildThread
 buildThread se ecMVar rng repo bm = do
   start <- getCurrentTime
   let rbi = _buildMsg_repoBuildInfo bm
+  let jid = _buildMsg_jobId bm
   tok <- randomToken 8 rng
   let url = case _repo_cloneMethod repo of
               SshClone -> _rbi_cloneUrlSsh rbi
@@ -201,7 +203,7 @@ buildThread se ecMVar rng repo bm = do
   let cloneDir = printf "/tmp/zeus-builds/%s" buildId :: String
   createDirectoryIfMissing True cloneDir
   createDirectoryIfMissing True buildOutputDir
-  let outputFile = printf "%s/%d.output" buildOutputDir (_buildMsg_jobId bm)
+  let outputFile = printf "%s/%d.output" buildOutputDir jid
   printf "Writing build output to %s\n" outputFile
   withLogHandle outputFile $ \lh  -> do
     let cloneCmd = printf "%s clone %s" gitBinary url
@@ -211,7 +213,7 @@ buildThread se ecMVar rng repo bm = do
           saveAndSend pm
         saveAndSend pm = do
           hPutStrLn lh $! prettyProcMsg pm
-          sendOutput se (_buildMsg_jobId bm) pm
+          sendOutput se jid pm
 
     saveAndSendStr CiMsg $ T.pack $ printf "Cloning %s to %s" (_repo_fullName repo) cloneDir
     let handleCloneOutput inH pm@(ProcMsg _ _ m) = do
@@ -229,14 +231,14 @@ buildThread se ecMVar rng repo bm = do
           saveAndSend pm
           return ()
     res <- runExceptT $ do
-      _ <- runCmd (microsToDelay 3600 start) cloneCmd cloneDir Nothing handleCloneOutput
+      _ <- runCmd jid (microsToDelay 3600 start) cloneCmd cloneDir Nothing handleCloneOutput
       let repoDir = cloneDir </> toS (_repo_name repo)
       let checkout = printf "%s checkout %s" gitBinary (_rbi_commitHash rbi)
-      _ <- runCmd (microsToDelay 3600 start) checkout repoDir Nothing handleBuildOutput
+      _ <- runCmd jid (microsToDelay 3600 start) checkout repoDir Nothing handleBuildOutput
       let buildCmd = printf "%s --show-trace %s" nixBuildBinary (_repo_buildNixFile repo)
       e <- liftIO getEnvironment
       let buildEnv = M.toList $ M.insert "NIX_PATH" (toS $ _repo_nixPath repo) $ M.fromList e
-      _ <- runCmd (microsToDelay 3600 start) buildCmd repoDir (Just buildEnv) handleBuildOutput
+      _ <- runCmd jid (microsToDelay 3600 start) buildCmd repoDir (Just buildEnv) handleBuildOutput
       end <- liftIO getCurrentTime
       let finishMsg = printf "Build finished in %.3f seconds" (realToFrac (diffUTCTime end start) :: Double)
       liftIO $ saveAndSendStr CiMsg $ T.pack (finishMsg ++ "\n")
@@ -292,19 +294,40 @@ withCreateProcess_ fun c action =
 --  hPutStrLn lh $ "Exited with: " ++ show exitCode
 --  return exitCode
 
+testGit :: IO ()
+testGit = do
+  let cloneDir = "/Users/doug/zzz"
+  createDirectoryIfMissing True cloneDir
+  let cloneCmd = "git clone http://localhost:8888/git/test-project.git"
+  let handleCloneOutput inH pm@(ProcMsg _ s m) = do
+        clog $ "GOT OUTPUT " <> show s <> ": " <> T.unpack m
+        if
+          | "Username" `T.isPrefixOf` m -> do
+            printf "Got login prompt: %s" m
+            maybe (return ()) (\h -> hPutStrLn h "alice") inH -- TODO Replace with correct username
+          | "Password" `T.isPrefixOf` m -> do
+            printf "Got password prompt: %s" m
+            maybe (return ()) (\h -> hPutStrLn h "supersecret") inH -- TODO Replace with correct username
+          | otherwise -> return ()
+  ec <- runExceptT $ runCmd 111 (return $ 3600 * 1000000) cloneCmd cloneDir Nothing handleCloneOutput
+  clog $ printf "Clone command returned with exit code %s\n" (show ec)
+
+toBS :: String -> B.ByteString
+toBS = toS
+
 runCmd
-  :: IO Int
+  :: Int
+  -- ^ Job ID (for debugging)
+  -> IO Int
   -- ^ Timeout in seconds
   -> String
   -> FilePath
   -> Maybe [(String, String)]
-  -> (Maybe Handle
-     -- ^ File handle for sending to the stdin for the process
-   -> ProcMsg
-     -- ^ A message the process printed to stdout or stderr
-   -> IO ())
+  -> (Maybe Handle -- File handle for sending to the stdin for the process
+      -> ProcMsg -- message the process printed to stdout or stderr
+      -> IO ())
   -> ExceptT ExitCode IO ExitCode
-runCmd calcDelay cmd dir e action = do
+runCmd jid calcDelay cmd dir e action = do
   start <- liftIO getCurrentTime
   let cp = (shell cmd)
         { cwd = Just dir
@@ -313,22 +336,29 @@ runCmd calcDelay cmd dir e action = do
         , std_out = CreatePipe
         , std_err = CreatePipe
         }
+  liftIO $ action Nothing $ ProcMsg start CiMsg $ "With env " <> T.pack (show e)
   liftIO $ action Nothing $ ProcMsg start BuildCommandMsg $ T.pack cmd
-  exitCode <- liftIO $ withCreateProcess_ "runCmd" cp (collectOutput calcDelay action)
+  exitCode <- liftIO $ withCreateProcess_ "runCmd" cp (collectOutput jid calcDelay action)
   case exitCode of
     ExitFailure _ -> hoistEither $ Left exitCode
     ExitSuccess -> do
       t <- liftIO $ getCurrentTime
-      liftIO $ printf "ExitSuccess in %.2f seconds" (realToFrac (diffUTCTime t start) :: Double)
+      liftIO $ clog $ printf "ExitSuccess in %.2f seconds" (realToFrac (diffUTCTime t start) :: Double)
       hoistEither $ Right exitCode
 
 data ThreadType = TimerThread | ProcessThread
 
-catchEOF :: C.SomeException -> IO ()
-catchEOF _ = return ()
+-- Thread-safe console logging function
+clog :: String -> IO ()
+clog = B.putStrLn . toS
+
+
+catchEOF :: String -> C.SomeException -> IO ()
+catchEOF msg e = clog $ printf "Caught exception in %s: %s" msg (show e)
 
 collectOutput
-  :: (IO Int)
+  :: Int
+  -> (IO Int)
   -- ^ Function that calculates the number of microseconds to delay
   -> (Maybe Handle -> ProcMsg -> IO ())
   -> Maybe Handle
@@ -336,16 +366,35 @@ collectOutput
   -> Maybe Handle
   -> ProcessHandle
   -> IO ExitCode
-collectOutput calcDelay action (Just hIn) (Just hOut) (Just hErr) ph = do
+collectOutput jid calcDelay action (Just hIn) (Just hOut) (Just hErr) ph = do
     msgQueue <- atomically newTQueue
+    hSetBuffering hOut LineBuffering
+    hSetBuffering hErr LineBuffering
     let watchForOutput src h = do
-          hSetBuffering h LineBuffering
-          _ <- C.catch (void $ hWaitForInput h (-1)) catchEOF
+          is_open <- hIsOpen h
+          is_closed <- hIsClosed h
+          is_readable <- hIsReadable h
+          is_eof <- hIsEOF h
+          is_ready <- hReady h
+
+          clog $ printf "waiting for input (%s %s %s %s %s)"
+                        (show is_open) (show is_closed) (show is_readable) (show is_eof) (show is_ready)
+          --waitRes <- hWaitForInput h (-1)
+          waitRes <- C.catch (hWaitForInput h 5) (\e -> catchEOF ("hWaitForInput " <> show src) e >> return False)
+          clog $ "hWaitForInput finished with " <> show waitRes
+
           t <- getCurrentTime
-          msg <- C.handle (\e -> catchEOF e >> return "") $ hGetLine h
+          clog $ printf "Job %d watching %s\n" jid (show src)
+
+          clog $ "calling hGetLine"
+          --msg <- hGetLine h
+          msg <- C.handle (\e -> (catchEOF $ "hGetLine " <> show src) e >> return "") $ hGetLine h
+          clog $ "hGetLine returned"
+
           when (not $ null msg) $ atomically $ writeTQueue msgQueue $ ProcMsg t src (T.pack msg)
           watchForOutput src h
         handleOutput = do
+          clog $ printf "Job %d handling output\n" jid
           procMsg <- atomically (readTQueue msgQueue)
           action (Just hIn) procMsg
           handleOutput
@@ -356,6 +405,7 @@ collectOutput calcDelay action (Just hIn) (Just hOut) (Just hErr) ph = do
     ecMVar <- newEmptyMVar
     ttid <- forkIO $ do
       d <- calcDelay
+      clog $ printf "Job %d delaying for %d microseconds\n" jid d
       threadDelay d
       putMVar ecMVar Nothing
     ptid <- forkIO $ do
@@ -378,9 +428,11 @@ collectOutput calcDelay action (Just hIn) (Just hOut) (Just hErr) ph = do
     killThread otid
     killThread etid
     killThread atid
+    threadDelay 100000
+    clog $ printf "Job %d finished and killed all child threads\n" jid
     return ec
-collectOutput _ _ _ _ _ _ = do
-  putStrLn "WARN: collectOutput file descriptors are wonky!"
+collectOutput _ _ _ _ _ _ _ = do
+  clog "WARN: collectOutput file descriptors are wonky!"
   return $ ExitFailure 101
 
 

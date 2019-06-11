@@ -150,14 +150,7 @@ sendToGitlab meth apiPath secret o = do
                                , ("Content-Type", "application/json")
                                ]
             }
-    putStrLn "Sending request to gitlab"
-    print req
-    putStrLn "---request body---"
-    LB.putStrLn $ encode o
-    resp <- httpLbs req m
-    putStrLn "Got response from Gitlab:"
-    print resp
-    return resp
+    httpLbs req m
 
 --Response {responseStatus = Status {statusCode = 401, statusMessage = "Unauthorized"},
 --          responseVersion = HTTP/1.1,

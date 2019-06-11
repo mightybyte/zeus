@@ -1,6 +1,7 @@
 import Backend
 import Frontend
 import Obelisk.Backend
+import Backend.Build
 
 main :: IO ()
-main = runBackend backend frontend
+main = testGit --runBackend backend frontend

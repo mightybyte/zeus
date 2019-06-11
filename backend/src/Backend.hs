@@ -115,6 +115,7 @@ serveBackendRoute env = \case
   BackendRoute_Ping :=> _ -> writeText "PONG\nPONG\nPONG\n"
   BackendRoute_Websocket :=> _ -> wsHandler $ \conn -> do
       cid <- addConnection conn (_serverEnv_connRepo env)
+      putStrLn $ "Established websocket connection with connId " <> show cid
       listJobs env conn
       listAccounts env conn
       listRepos env conn

@@ -44,6 +44,7 @@ library
     Frontend.Widgets.Jobs
     Frontend.Widgets.Form
     Frontend.Widgets.Repos
+    Frontend.Widgets.Settings
   ghc-options: -Wall
 
 executable frontend
