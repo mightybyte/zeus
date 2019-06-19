@@ -3,6 +3,7 @@
 {-# LANGUAGE MultiWayIf #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE TemplateHaskell #-}
+{-# LANGUAGE TupleSections #-}
 {-# LANGUAGE TypeFamilies #-}
 module Backend.Build where
 
@@ -13,13 +14,16 @@ import           Control.Error
 import qualified Control.Exception as C
 import           Control.Lens
 import           Control.Monad
-import qualified Data.ByteString.Char8 as B
+import qualified Data.ByteString as B
+import qualified Data.ByteString.Char8 as CB
 import           Data.IORef
 import           Data.Map (Map)
 import qualified Data.Map as M
 import           Data.RNG
 import           Data.String.Conv
+import           Data.Text (Text)
 import qualified Data.Text as T
+import qualified Data.Text.Encoding as T
 import           Data.Time
 import           Database.Beam
 import           Database.Beam.Sqlite
@@ -31,6 +35,7 @@ import           System.IO
 import           System.Mem.Weak
 import           System.Process
 import           Text.Printf
+import qualified Turtle as Turtle
 ------------------------------------------------------------------------------
 import           Backend.Db
 import           Backend.Types.ServerEnv
@@ -64,25 +69,26 @@ buildManagerThread se = do
                (_rbi_repoFullName rbi)
         printf "Pushed commit %s to %s\n"
                (_rbi_commitHash rbi) (_rbi_gitRef rbi)
-        repos <- runBeamSqlite dbConn $
+        ras <- runBeamSqlite dbConn $
           runSelectReturningList $ select $ do
             account <- all_ (_ciDb_connectedAccounts ciDb)
             repo <- all_ (_ciDb_repos ciDb)
             guard_ (_repo_fullName repo ==. val_ (_rbi_repoFullName rbi))
             guard_ (account ^. connectedAccount_id ==. repo ^. repo_owner)
-            return repo
-        case repos of
+            return (repo, account)
+        case ras of
           [] -> putStrLn "Warning: Got a webhook for a repo that is not in our DB.  Is the DB corrupted?"
-          [r] -> runBuild se rng r msg
+          [(r,a)] -> runBuild se rng r a msg
           _ -> printf "Warning: Got more repos than expected.  Why isn't %s unique?\n" (_rbi_repoFullName rbi)
 
 runBuild
   :: ServerEnv
   -> RNG
   -> Repo
+  -> ConnectedAccount
   -> BuildMsg
   -> IO ()
-runBuild se rng repo msg = do
+runBuild se rng repo ca msg = do
   let dbConn = _serverEnv_db se
       connRepo = _serverEnv_connRepo se
   start <- getCurrentTime
@@ -97,7 +103,7 @@ runBuild se rng repo msg = do
   broadcastJobs dbConn connRepo
 
   ecMVar <- newEmptyMVar
-  wtid <- mkWeakThreadId =<< forkIO (buildThread se ecMVar rng repo msg)
+  wtid <- mkWeakThreadId =<< forkIO (buildThread se ecMVar rng repo ca msg)
   let jobId = fromIntegral $ _buildMsg_jobId msg
   atomicModifyIORef (_serverEnv_buildThreads se) $ \m ->
     (M.insert jobId wtid m, ())
@@ -183,21 +189,28 @@ sendOutput se jid msg = do
         forM_ connIds $ \connId ->
           sendToConnId (_serverEnv_connRepo se) connId (Down_JobNewOutput $ (BuildJobId jid, [msg]))
 
+addCloneCreds :: Text -> Text -> Text -> Text
+addCloneCreds user pass url =
+  T.replace "://" ("://" <> user <> ":" <> pass <> "@") url
+
 buildThread
   :: ServerEnv
   -> MVar ExitCode
   -> RNG
   -> Repo
+  -> ConnectedAccount
   -> BuildMsg
   -> IO ()
-buildThread se ecMVar rng repo bm = do
+buildThread se ecMVar rng repo ca bm = do
   start <- getCurrentTime
   let rbi = _buildMsg_repoBuildInfo bm
   let jid = _buildMsg_jobId bm
   tok <- randomToken 8 rng
+  let user = _connectedAccount_name ca
+  let pass = _connectedAccount_accessToken ca
   let url = case _repo_cloneMethod repo of
               SshClone -> _rbi_cloneUrlSsh rbi
-              HttpClone -> _rbi_cloneUrlHttp rbi
+              HttpClone -> addCloneCreds user pass (_rbi_cloneUrlHttp rbi)
   let timeStr = formatTime defaultTimeLocale "%Y%m%d%H%M%S" start
   let buildId = printf "build-%s-%s" timeStr (toS tok :: String) :: String
   let cloneDir = printf "/tmp/zeus-builds/%s" buildId :: String
@@ -216,29 +229,15 @@ buildThread se ecMVar rng repo bm = do
           sendOutput se jid pm
 
     saveAndSendStr CiMsg $ T.pack $ printf "Cloning %s to %s" (_repo_fullName repo) cloneDir
-    let handleCloneOutput inH pm@(ProcMsg _ _ m) = do
-          if
-            | "Username" `T.isPrefixOf` m -> do
-              saveAndSendStr CiMsg $ T.pack $ printf "Got login prompt: %s" m
-              maybe (return ()) (\h -> hPutStrLn h "mightybyte") inH -- TODO Replace with correct username
-            | "Password" `T.isPrefixOf` m -> do
-              saveAndSendStr CiMsg $ T.pack $ printf "Got password prompt: %s" m
-              maybe (return ()) (\h -> hPutStrLn h "blah") inH -- TODO Replace with correct username
-            | otherwise -> return ()
-          saveAndSend pm
-    let handleBuildOutput :: Maybe Handle -> ProcMsg -> IO ()
-        handleBuildOutput _ pm = do
-          saveAndSend pm
-          return ()
     res <- runExceptT $ do
-      _ <- runCmd jid (microsToDelay 3600 start) cloneCmd cloneDir Nothing handleCloneOutput
+      _ <- runCmd2 jid cloneCmd cloneDir Nothing saveAndSend
       let repoDir = cloneDir </> toS (_repo_name repo)
       let checkout = printf "%s checkout %s" gitBinary (_rbi_commitHash rbi)
-      _ <- runCmd jid (microsToDelay 3600 start) checkout repoDir Nothing handleBuildOutput
+      _ <- runCmd2 jid checkout repoDir Nothing saveAndSend
       let buildCmd = printf "%s --show-trace %s" nixBuildBinary (_repo_buildNixFile repo)
       e <- liftIO getEnvironment
       let buildEnv = M.toList $ M.insert "NIX_PATH" (toS $ _repo_nixPath repo) $ M.fromList e
-      _ <- runCmd jid (microsToDelay 3600 start) buildCmd repoDir (Just buildEnv) handleBuildOutput
+      _ <- runCmd2 jid buildCmd repoDir (Just buildEnv) saveAndSend
       end <- liftIO getCurrentTime
       let finishMsg = printf "Build finished in %.3f seconds" (realToFrac (diffUTCTime end start) :: Double)
       liftIO $ saveAndSendStr CiMsg $ T.pack (finishMsg ++ "\n")
@@ -294,26 +293,39 @@ withCreateProcess_ fun c action =
 --  hPutStrLn lh $ "Exited with: " ++ show exitCode
 --  return exitCode
 
-testGit :: IO ()
-testGit = do
-  let cloneDir = "/Users/doug/zzz"
-  createDirectoryIfMissing True cloneDir
-  let cloneCmd = "git clone http://localhost:8888/git/test-project.git"
-  let handleCloneOutput inH pm@(ProcMsg _ s m) = do
-        clog $ "GOT OUTPUT " <> show s <> ": " <> T.unpack m
-        if
-          | "Username" `T.isPrefixOf` m -> do
-            printf "Got login prompt: %s" m
-            maybe (return ()) (\h -> hPutStrLn h "alice") inH -- TODO Replace with correct username
-          | "Password" `T.isPrefixOf` m -> do
-            printf "Got password prompt: %s" m
-            maybe (return ()) (\h -> hPutStrLn h "supersecret") inH -- TODO Replace with correct username
-          | otherwise -> return ()
-  ec <- runExceptT $ runCmd 111 (return $ 3600 * 1000000) cloneCmd cloneDir Nothing handleCloneOutput
-  clog $ printf "Clone command returned with exit code %s\n" (show ec)
-
-toBS :: String -> B.ByteString
+toBS :: String -> CB.ByteString
 toBS = toS
+
+runCmd2
+  :: Int
+  -- ^ Job ID (for debugging)
+  -> String
+  -> FilePath
+  -> Maybe [(String, String)]
+  -> (ProcMsg -> IO ())
+  -> ExceptT ExitCode IO ExitCode
+runCmd2 jid cmd dir envVars action = do
+  let cp = (shell cmd)
+        { cwd = Just dir
+        , env = envVars
+        }
+  res <- liftIO $ C.try
+    (Turtle.foldShell (Turtle.streamWithErr cp (return mempty)) (shellHandler action))
+  case res of
+    Left e -> ExceptT $ return $ Left e
+    Right _ -> return ExitSuccess
+
+shellHandler
+  :: (ProcMsg -> IO ())
+  -> Turtle.FoldShell (Either Turtle.Line Turtle.Line) ()
+shellHandler action = Turtle.FoldShell step () return
+  where
+    step _ a = do
+      t <- getCurrentTime
+      let pm = case a of
+                Left m -> ProcMsg t StderrMsg (Turtle.lineToText m)
+                Right m -> ProcMsg t StdoutMsg (Turtle.lineToText m)
+      action pm
 
 runCmd
   :: Int
@@ -350,7 +362,7 @@ data ThreadType = TimerThread | ProcessThread
 
 -- Thread-safe console logging function
 clog :: String -> IO ()
-clog = B.putStrLn . toS
+clog = CB.putStrLn . toS
 
 
 catchEOF :: String -> C.SomeException -> IO ()
@@ -371,27 +383,14 @@ collectOutput jid calcDelay action (Just hIn) (Just hOut) (Just hErr) ph = do
     hSetBuffering hOut LineBuffering
     hSetBuffering hErr LineBuffering
     let watchForOutput src h = do
-          is_open <- hIsOpen h
-          is_closed <- hIsClosed h
-          is_readable <- hIsReadable h
-          is_eof <- hIsEOF h
-          is_ready <- hReady h
-
-          clog $ printf "waiting for input (%s %s %s %s %s)"
-                        (show is_open) (show is_closed) (show is_readable) (show is_eof) (show is_ready)
-          --waitRes <- hWaitForInput h (-1)
-          waitRes <- C.catch (hWaitForInput h 5) (\e -> catchEOF ("hWaitForInput " <> show src) e >> return False)
-          clog $ "hWaitForInput finished with " <> show waitRes
-
           t <- getCurrentTime
-          clog $ printf "Job %d watching %s\n" jid (show src)
+          clog $ "calling hGetSome " <> show src
+          msg <- B.hGetSome h 4096
+          --msg <- B.hGetLine h
+          --msg <- C.handle (\e -> (catchEOF $ "hGetLine " <> show src) e >> return "") $ B.hGetLine h
+          clog $ printf "hGetSome %s returned %d bytes" (show src) (B.length msg)
 
-          clog $ "calling hGetLine"
-          --msg <- hGetLine h
-          msg <- C.handle (\e -> (catchEOF $ "hGetLine " <> show src) e >> return "") $ hGetLine h
-          clog $ "hGetLine returned"
-
-          when (not $ null msg) $ atomically $ writeTQueue msgQueue $ ProcMsg t src (T.pack msg)
+          when (not $ B.null msg) $ atomically $ writeTQueue msgQueue $ ProcMsg t src (T.decodeUtf8 msg)
           watchForOutput src h
         handleOutput = do
           clog $ printf "Job %d handling output\n" jid
@@ -421,9 +420,9 @@ collectOutput jid calcDelay action (Just hIn) (Just hOut) (Just hErr) ph = do
         return $ ExitFailure 99
       Just ec -> do
         -- Process finished
+        threadDelay 1000000
         killThread ttid
         return ec
-    threadDelay 1000000
 
     killThread otid
     killThread etid

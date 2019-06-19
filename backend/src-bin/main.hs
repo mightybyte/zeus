@@ -4,4 +4,4 @@ import Obelisk.Backend
 import Backend.Build
 
 main :: IO ()
-main = testGit --runBackend backend frontend
+main = runBackend backend frontend
