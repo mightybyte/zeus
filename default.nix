@@ -17,7 +17,13 @@ project ./. ({ pkgs, ... }: {
         sha256 = "1li8w95ibq4xm717clz5wz23kdp15j9vrqb1kq64d5ld0fjx7ln0";
       };
   in {
-    backend = addBuildDepends super.backend [pkgs.git pkgs.nix pkgs.gnutar];
+    backend = overrideCabal super.backend (drv: {
+      librarySystemDepends = drv.librarySystemDepends or [] ++ [
+        pkgs.git
+        pkgs.nix
+        pkgs.gnutar
+      ];
+    });
     # aeson = dontCheck (self.callCabal2nix "aeson" (pkgs.fetchFromGitHub {
     #     owner = "bos";
     #     repo = "aeson";
