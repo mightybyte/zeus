@@ -90,7 +90,7 @@ addRepo = do
       return ()
 
 unfilledRepo :: RepoT Maybe
-unfilledRepo = Repo Nothing Nothing (ConnectedAccountId Nothing) Nothing Nothing Nothing Nothing Nothing Nothing
+unfilledRepo = Repo Nothing Nothing (ConnectedAccountId Nothing) Nothing Nothing Nothing Nothing Nothing
 
 newRepoForm
   :: (MonadAppIO r t m, Prerender js t m)
@@ -115,9 +115,6 @@ newRepoForm iv sv = do
         & inputElementConfig_initialValue .~ (fromMaybe "default.nix" $ _repo_buildNixFile iv)
         & inputElementConfig_setValue .~ (fromMaybe "default.nix" . _repo_buildNixFile <$> sv)
       return $ value ie
-    dnp <- labelledAs "NIX_PATH to use for the build" $ textField
-      (fromMaybe "" $ _repo_nixPath iv)
-      (fromMaybe "" . _repo_nixPath <$> sv)
     dcm <- labelledAs "Clone Method" $ filledDropdown
       (fromMaybe HttpClone $ _repo_cloneMethod iv)
       (fmapMaybe id $ _repo_cloneMethod <$> sv)
@@ -129,7 +126,6 @@ newRepoForm iv sv = do
         nf <- dnf
         cm <- dcm
         t <- dt
-        np <- dnp
         mca <- dmca
         pure $ case mca of
           Nothing -> unfilledRepo
@@ -138,7 +134,7 @@ newRepoForm iv sv = do
                 maid = ConnectedAccountId $ Just aid
                 ownerName = _connectedAccount_name a
                 fn = mkFullName (_connectedAccount_provider a) ownerName n
-             in Repo Nothing (Just fn) maid (Just n) (Just cm) (Just nf) (Just np) t Nothing
+             in Repo Nothing (Just fn) maid (Just n) (Just cm) (Just nf) t Nothing
 
 accountDropdown
   :: forall r t m. MonadApp r t m
@@ -183,5 +179,5 @@ mkFullName GitHub owner name = owner <> "/" <> name
 mkFullName GitLab owner name = owner <> "/" <> name
 
 isValidRepo :: RepoT Maybe -> Bool
-isValidRepo (Repo _ (Just _) (ConnectedAccountId (Just _)) (Just _) (Just _) (Just _) (Just _) (Just _) _) = True
+isValidRepo (Repo _ (Just _) (ConnectedAccountId (Just _)) (Just _) (Just _) (Just _) (Just _) _) = True
 isValidRepo _ = False

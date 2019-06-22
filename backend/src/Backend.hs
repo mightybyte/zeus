@@ -58,6 +58,7 @@ import           Common.Api
 import           Common.Route
 import           Common.Types.BuildJob
 import           Common.Types.BuildMsg
+import           Common.Types.CiSettings
 import           Common.Types.ConnectedAccount
 import           Common.Types.JobStatus
 import           Common.Types.Repo
@@ -100,7 +101,9 @@ backend = Backend
           return $ T.strip hbu
       putStrLn $ "hookBaseUrl set to " <> show hookBaseUrl
       listeners <- newIORef mempty
-      let env = ServerEnv appRoute hookBaseUrl secretToken dbConn buildQueue connRepo buildThreads listeners
+      cs <- newIORef $ CiSettings "nixpkgs=/nix/var/nix/profiles/per-user/root/channels/nixos"
+      let env = ServerEnv appRoute hookBaseUrl secretToken dbConn buildQueue
+                          connRepo buildThreads listeners cs
       _ <- forkIO $ buildManagerThread env
       serve $ serveBackendRoute env
   , _backend_routeEncoder = backendRouteEncoder
@@ -148,6 +151,11 @@ talkClient env cid conn = do
           mapM_ (cancelJobAndRemove env) jids
         Right (Up_RerunJobs jids) -> do
           mapM_ (rerunJob env) jids
+        Right (Up_GetCiSettings) -> do
+          cs <- readIORef (_serverEnv_ciSettings env)
+          wsSend conn (Down_CiSettings cs)
+        Right (Up_UpdateCiSettings cs) -> do
+          writeIORef (_serverEnv_ciSettings env) cs
   where
     cRepo = _serverEnv_connRepo env
     cleanup :: E.SomeException -> IO ()
@@ -265,7 +273,7 @@ addRepo
   -> IO ()
 addRepo env wsConn
         (Repo _ (Just fn) (ConnectedAccountId (Just o)) (Just n)
-              (Just c) (Just nf) (Just np) (Just t) _) = do
+              (Just c) (Just nf) (Just t) _) = do
   mca <- beamQuery env $ do
     runSelectReturningOne $ select $ do
       account <- all_ (ciDb ^. ciDb_connectedAccounts)
@@ -281,7 +289,6 @@ addRepo env wsConn
                   (val_ n)
                   (val_ c)
                   (val_ nf)
-                  (val_ np)
                   (val_ t)
                   (val_ hid)
             ]

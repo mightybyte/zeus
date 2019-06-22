@@ -10,6 +10,7 @@ import           Data.Text (Text)
 import           Database.Beam
 ------------------------------------------------------------------------------
 import           Common.Types.BuildJob
+import           Common.Types.CiSettings
 import           Common.Types.ConnectedAccount
 import           Common.Types.ProcMsg
 import           Common.Types.Repo
@@ -23,6 +24,15 @@ batchOne a = [a]
 --batchMaybe :: FunctorMaybe f => (a -> Batch b) -> f a -> f b
 --batchMaybe f = fmapMaybe (listToMaybe . f)
 
+-- WIP
+-- data CrudAction itemT
+--   = CrudCreate (Batch (itemT Maybe))
+--   | CrudRead (Batch (PrimaryKey itemT))
+--   -- | CrudUpdate
+--   |
+--   | CrudDelete (Batch (PrimaryKey itemT))
+--   | CrudList
+
 data Up
   = Up_ListAccounts
   | Up_ConnectAccount (Batch (ConnectedAccountT Maybe))
@@ -35,6 +45,8 @@ data Up
   | Up_UnsubscribeJobOutput (Batch BuildJobId)
   | Up_CancelJobs (Batch BuildJobId)
   | Up_RerunJobs (Batch BuildJobId)
+  | Up_GetCiSettings
+  | Up_UpdateCiSettings CiSettings
   deriving (Show,Generic)
 
 data Down
@@ -44,6 +56,7 @@ data Down
   | Down_Jobs [BuildJob]
   | Down_JobOutput (BuildJobId, Text)
   | Down_JobNewOutput (BuildJobId, [ProcMsg])
+  | Down_CiSettings CiSettings
   deriving (Generic)
 
 instance ToJSON Up where

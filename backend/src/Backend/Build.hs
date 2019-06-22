@@ -45,6 +45,7 @@ import           Common.Types.ConnectedAccount
 import           Backend.Types.ConnRepo
 import           Common.Types.BuildJob
 import           Common.Types.BuildMsg
+import           Common.Types.CiSettings
 import           Common.Types.JobStatus
 import           Common.Types.ProcMsg
 import           Common.Types.Repo
@@ -236,7 +237,8 @@ buildThread se ecMVar rng repo ca bm = do
       _ <- runCmd2 jid checkout repoDir Nothing saveAndSend
       let buildCmd = printf "%s --show-trace %s" nixBuildBinary (_repo_buildNixFile repo)
       e <- liftIO getEnvironment
-      let buildEnv = M.toList $ M.insert "NIX_PATH" (toS $ _repo_nixPath repo) $ M.fromList e
+      cs <- liftIO $ readIORef (_serverEnv_ciSettings se)
+      let buildEnv = M.toList $ M.insert "NIX_PATH" (toS $ _ciSettings_nixPath cs) $ M.fromList e
       _ <- runCmd2 jid buildCmd repoDir (Just buildEnv) saveAndSend
       end <- liftIO getCurrentTime
       let finishMsg = printf "Build finished in %.3f seconds" (realToFrac (diffUTCTime end start) :: Double)
@@ -304,7 +306,7 @@ runCmd2
   -> Maybe [(String, String)]
   -> (ProcMsg -> IO ())
   -> ExceptT ExitCode IO ExitCode
-runCmd2 jid cmd dir envVars action = do
+runCmd2 _ cmd dir envVars action = do
   let cp = (shell cmd)
         { cwd = Just dir
         , env = envVars

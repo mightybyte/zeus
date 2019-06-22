@@ -135,3 +135,10 @@ genericPlaceholder placeholderText = do
     divClass "ui icon header" $ do
       elClass "i" "dont icon" blank
       text placeholderText
+
+genericLoading :: DomBuilder t m => m ()
+genericLoading = do
+  elAttr "div" ("class" =: "ui segment" <> "style" =: "height: 100px") $
+    divClass "ui active dimmer" $ do
+      divClass "ui text loader" $
+        text "Loading"
