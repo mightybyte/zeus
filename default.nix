@@ -18,7 +18,7 @@ project ./. ({ pkgs, ... }: {
       };
   in {
     backend = overrideCabal super.backend (drv: {
-      libraryToolDepends = drv.libraryToolDepends or [] ++ [
+      librarySystemDepends = drv.librarySystemDepends or [] ++ [
         pkgs.git
         pkgs.nix
         pkgs.gnutar

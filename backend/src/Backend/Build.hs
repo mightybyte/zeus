@@ -231,19 +231,27 @@ buildThread se ecMVar rng repo ca bm = do
 
     res <- runExceptT $ do
       liftIO $ saveAndSendStr CiMsg $ T.pack $ printf "Cloning %s to %s" (_repo_fullName repo) cloneDir
-      _ <- runCmd2 jid cloneCmd cloneDir Nothing saveAndSend
+      _ <- runCmd2 cloneCmd cloneDir Nothing saveAndSend
       let repoDir = cloneDir </> toS (_repo_name repo)
       let checkout = printf "%s checkout %s" gitBinary (_rbi_commitHash rbi)
       liftIO $ saveAndSendStr CiMsg (toS checkout)
-      _ <- runCmd2 jid checkout repoDir Nothing saveAndSend
+      _ <- runCmd2 checkout repoDir Nothing saveAndSend
       let buildCmd = printf "%s --show-trace %s" nixBuildBinary (_repo_buildNixFile repo)
       e <- liftIO getEnvironment
       cs <- liftIO $ readIORef (_serverEnv_ciSettings se)
       let buildEnv = M.toList $ M.insert "NIX_PATH" (toS $ _ciSettings_nixPath cs) $ M.fromList e
       liftIO $ saveAndSendStr CiMsg $ "Building with the following environment:"
       liftIO $ saveAndSendStr CiMsg $ T.pack $ show buildEnv
-      liftIO $ saveAndSendStr CiMsg (T.pack buildCmd)
-      _ <- runCmd2 jid buildCmd repoDir (Just buildEnv) saveAndSend
+      let buildArgs =
+            [ T.unpack (_repo_buildNixFile repo)
+            , "--show-trace"
+            , "--option"
+            , "build-keep-log"
+            , "true"
+            , "--keep-going"
+            ]
+      liftIO $ saveAndSendStr CiMsg (T.pack $ unwords (buildCmd : buildArgs))
+      _ <- runProc nixBuildBinary buildArgs repoDir (Just buildEnv) saveAndSend
       end <- liftIO getCurrentTime
       let finishMsg = printf "Build finished in %.3f seconds" (realToFrac (diffUTCTime end start) :: Double)
       liftIO $ saveAndSendStr CiMsg $ T.pack (finishMsg ++ "\n")
@@ -303,18 +311,37 @@ toBS :: String -> CB.ByteString
 toBS = toS
 
 runCmd2
-  :: Int
-  -- ^ Job ID (for debugging)
-  -> String
+  :: String
   -> FilePath
   -> Maybe [(String, String)]
   -> (ProcMsg -> IO ())
   -> ExceptT ExitCode IO ExitCode
-runCmd2 _ cmd dir envVars action = do
+runCmd2 cmd dir envVars action = do
   let cp = (shell cmd)
         { cwd = Just dir
         , env = envVars
         }
+  runCP cp action
+
+runProc
+  :: String
+  -> [String]
+  -> FilePath
+  -> Maybe [(String, String)]
+  -> (ProcMsg -> IO ())
+  -> ExceptT ExitCode IO ExitCode
+runProc cmd args dir envVars action = do
+  let cp = (proc cmd args)
+        { cwd = Just dir
+        , env = envVars
+        }
+  runCP cp action
+
+runCP
+  :: CreateProcess
+  -> (ProcMsg -> IO ())
+  -> ExceptT ExitCode IO ExitCode
+runCP cp action = do
   res <- liftIO $ C.try
     (Turtle.foldShell (Turtle.streamWithErr cp (return mempty)) (shellHandler action))
   case res of
