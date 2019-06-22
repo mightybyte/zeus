@@ -229,16 +229,19 @@ buildThread se ecMVar rng repo ca bm = do
           hPutStrLn lh $! prettyProcMsg pm
           sendOutput se jid pm
 
-    saveAndSendStr CiMsg $ T.pack $ printf "Cloning %s to %s" (_repo_fullName repo) cloneDir
     res <- runExceptT $ do
+      liftIO $ saveAndSendStr CiMsg $ T.pack $ printf "Cloning %s to %s" (_repo_fullName repo) cloneDir
       _ <- runCmd2 jid cloneCmd cloneDir Nothing saveAndSend
       let repoDir = cloneDir </> toS (_repo_name repo)
       let checkout = printf "%s checkout %s" gitBinary (_rbi_commitHash rbi)
+      liftIO $ saveAndSendStr CiMsg (toS checkout)
       _ <- runCmd2 jid checkout repoDir Nothing saveAndSend
       let buildCmd = printf "%s --show-trace %s" nixBuildBinary (_repo_buildNixFile repo)
       e <- liftIO getEnvironment
       cs <- liftIO $ readIORef (_serverEnv_ciSettings se)
       let buildEnv = M.toList $ M.insert "NIX_PATH" (toS $ _ciSettings_nixPath cs) $ M.fromList e
+      liftIO $ saveAndSendStr CiMsg $ T.pack $ printf "Building with NIX_PATH='%s'" (T.unpack $ _ciSettings_nixPath cs)
+      liftIO $ saveAndSendStr CiMsg (T.pack buildCmd)
       _ <- runCmd2 jid buildCmd repoDir (Just buildEnv) saveAndSend
       end <- liftIO getCurrentTime
       let finishMsg = printf "Build finished in %.3f seconds" (realToFrac (diffUTCTime end start) :: Double)
