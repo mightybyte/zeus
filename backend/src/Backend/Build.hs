@@ -240,7 +240,8 @@ buildThread se ecMVar rng repo ca bm = do
       e <- liftIO getEnvironment
       cs <- liftIO $ readIORef (_serverEnv_ciSettings se)
       let buildEnv = M.toList $ M.insert "NIX_PATH" (toS $ _ciSettings_nixPath cs) $ M.fromList e
-      liftIO $ saveAndSendStr CiMsg $ T.pack $ printf "Building with NIX_PATH='%s'" (T.unpack $ _ciSettings_nixPath cs)
+      liftIO $ saveAndSendStr CiMsg $ "Building with the following environment:"
+      liftIO $ saveAndSendStr CiMsg $ T.pack $ show buildEnv
       liftIO $ saveAndSendStr CiMsg (T.pack buildCmd)
       _ <- runCmd2 jid buildCmd repoDir (Just buildEnv) saveAndSend
       end <- liftIO getCurrentTime
