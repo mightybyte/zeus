@@ -82,4 +82,9 @@ project ./. ({ pkgs, ... }: {
     zeus = addBuildDepends super.zeus [ pkgs.git ];
 
   };
+  shellToolOverrides = ghc: super: {
+    inherit (pkgs) git;
+    inherit (pkgs) nix;
+    inherit (ghc) hlint;
+  };
 })
