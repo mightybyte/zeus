@@ -9,6 +9,7 @@
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE RankNTypes #-}
+{-# LANGUAGE RecordWildCards #-}
 {-# LANGUAGE StandaloneDeriving #-}
 {-# LANGUAGE TypeFamilies #-}
 {-# LANGUAGE TypeSynonymInstances #-}
@@ -46,7 +47,7 @@ instance FromJSON RepoEvent
 
 data RepoBuildInfoT f = RepoBuildInfo
   { _rbi_repoName :: C f Text
-  , _rbi_repoFullName :: C f Text
+  , _rbi_repoNamespace :: C f Text
   , _rbi_repoEvent :: C f RepoEvent
   , _rbi_cloneUrlSsh :: C f Text
   , _rbi_cloneUrlHttp :: C f Text
@@ -57,10 +58,14 @@ data RepoBuildInfoT f = RepoBuildInfo
   , _rbi_pushAvatar :: C f (Maybe Text)
   } deriving (Generic)
 
+rbiRepoFullName :: RepoBuildInfo -> Text
+rbiRepoFullName RepoBuildInfo{..} =
+  _rbi_repoNamespace <> "/" <> _rbi_repoName
+
 -- TODO Handle links appropriately for github and gitlab
 rbiRepoLink :: RepoBuildInfo -> Text
 rbiRepoLink rbi =
-  "https://github.com/" <> _rbi_repoFullName rbi
+  "https://github.com/" <> rbiRepoFullName rbi
 
 -- TODO Handle links appropriately for github and gitlab
 rbiCommitLink :: RepoBuildInfo -> Text
@@ -95,8 +100,8 @@ instance Beamable RepoBuildInfoT
 
 prettyRBI ::RepoBuildInfo -> Text
 prettyRBI rbi = T.unlines
-  [ _rbi_repoName rbi
-  , _rbi_repoFullName rbi
+  [ _rbi_repoNamespace rbi
+  , _rbi_repoName rbi
   , _rbi_cloneUrlSsh rbi
   , _rbi_cloneUrlHttp rbi
   , _rbi_commitHash rbi

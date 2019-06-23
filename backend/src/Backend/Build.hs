@@ -2,6 +2,7 @@
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE MultiWayIf #-}
 {-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TemplateHaskell #-}
 {-# LANGUAGE TupleSections #-}
 {-# LANGUAGE TypeFamilies #-}
@@ -63,24 +64,25 @@ buildManagerThread se = do
     let rbi = _buildMsg_repoBuildInfo msg
     case _rbi_repoEvent rbi of
       RepoPullRequest ->
-        printf "Ignoring pull request message on %s commit %s\n"
-               (_rbi_repoFullName rbi) (_rbi_commitHash rbi)
+        printf "Ignoring pull request message on %s/%s commit %s\n"
+               (_rbi_repoNamespace rbi) (_rbi_repoName rbi) (_rbi_commitHash rbi)
       RepoPush -> do
-        printf "Got push message on %s\n"
-               (_rbi_repoFullName rbi)
+        printf "Got push message on %s/%s\n"
+               (_rbi_repoNamespace rbi) (_rbi_repoName rbi)
         printf "Pushed commit %s to %s\n"
                (_rbi_commitHash rbi) (_rbi_gitRef rbi)
         ras <- runBeamSqlite dbConn $
           runSelectReturningList $ select $ do
             account <- all_ (_ciDb_connectedAccounts ciDb)
             repo <- all_ (_ciDb_repos ciDb)
-            guard_ (_repo_fullName repo ==. val_ (_rbi_repoFullName rbi))
-            guard_ (account ^. connectedAccount_id ==. repo ^. repo_owner)
+            guard_ (_repo_name repo ==. val_ (_rbi_repoName rbi))
+            guard_ (account ^. connectedAccount_id ==. repo ^. repo_accessAccount)
             return (repo, account)
         case ras of
           [] -> putStrLn "Warning: Got a webhook for a repo that is not in our DB.  Is the DB corrupted?"
           [(r,a)] -> runBuild se rng r a msg
-          _ -> printf "Warning: Got more repos than expected.  Why isn't %s unique?\n" (_rbi_repoFullName rbi)
+          _ -> printf "Warning: Got more repos than expected.  Why isn't %s/%s unique?\n"
+                      (_rbi_repoNamespace rbi) (_rbi_repoName rbi)
 
 runBuild
   :: ServerEnv
@@ -230,7 +232,8 @@ buildThread se ecMVar rng repo ca bm = do
           sendOutput se jid pm
 
     res <- runExceptT $ do
-      liftIO $ saveAndSendStr CiMsg $ T.pack $ printf "Cloning %s to %s" (_repo_fullName repo) cloneDir
+      liftIO $ saveAndSendStr CiMsg $ T.pack $ printf "Cloning %s/%s to %s"
+        (_repo_namespace repo) (_repo_name repo) cloneDir
       _ <- runCmd2 cloneCmd cloneDir Nothing saveAndSend
       let repoDir = cloneDir </> toS (_repo_name repo)
       let checkout = printf "%s checkout %s" gitBinary (_rbi_commitHash rbi)

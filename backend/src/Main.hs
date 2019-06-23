@@ -79,8 +79,8 @@ testPlayground = do
     runSelectReturningList $ select $ do
       repo <- all_ (ciDb ^. ciDb_repos)
       --account <- all_ (ciDb ^. ciDb_accounts)
-      guard_ (_repo_fullName repo ==. val_ "mightybyte/test-project")
-      --guard_ (account ^. account_id ==. repo ^. repo_owner)
+      guard_ (repoFullName repo ==. val_ "mightybyte/test-project")
+      --guard_ (account ^. account_id ==. repo ^. repo_accessAccount
       --return (account, repo)
       return repo
 
@@ -113,7 +113,7 @@ runServer cfg = do
     runSelectReturningList $ select $ do
       account <- all_ (ciDb ^. ciDb_accounts)
       repo <- all_ (ciDb ^. ciDb_repos)
-      guard_ (account ^. account_id ==. repo ^. repo_owner)
+      guard_ (account ^. account_id ==. repo ^. repo_accessAccount)
       return (account, repo)
 
   ghSecret <- getGitHubSecret

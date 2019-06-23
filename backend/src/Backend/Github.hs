@@ -55,8 +55,9 @@ handleValidatedHook env event body = do
       Just "pull_request" -> do
         let decodeErr e = Left $ "Error decoding push message: " ++ e
             mkPrMsg rbi = Left $
-              printf "Ignoring pull request message on %s commit %s"
-                     (_rbi_repoFullName rbi) (_rbi_commitHash rbi)
+              printf "Ignoring pull request message on %s/%s commit %s"
+                     (_rbi_repoNamespace rbi) (_rbi_repoName rbi)
+                     (_rbi_commitHash rbi)
         either decodeErr (mkPrMsg . handlePR) $ eitherDecodeStrict (toS body)
       Just "push" -> mkPushRBI =<< eitherDecodeStrict (toS body)
       _ -> Left "Event not supported"
@@ -68,7 +69,9 @@ handleValidatedHook env event body = do
 
 handlePR :: GW.PullRequestEvent -> RepoBuildInfo
 handlePR pre = do
-    RepoBuildInfo (GW.whRepoName repo) (GW.whRepoFullName repo)
+    RepoBuildInfo
+      (GW.whRepoName repo)
+      (either GW.whSimplUserName GW.whUserLogin $ GW.whRepoOwner repo)
       RepoPullRequest (GW.getUrl $ GW.whRepoSshUrl repo)
       (GW.getUrl $ GW.whRepoCloneUrl repo)
       (GW.whPullReqTargetRef prHead)
@@ -86,7 +89,9 @@ mkPushRBI :: GW.PushEvent -> Either String RepoBuildInfo
 mkPushRBI pe = do
     sha <- note ("PushEvent didn't have git hash:\n" ++ show pe) $
       GW.evPushHeadSha pe
-    pure $ RepoBuildInfo (GW.whRepoName repo) (GW.whRepoFullName repo)
+    pure $ RepoBuildInfo
+      (GW.whRepoName repo)
+      (either GW.whSimplUserName GW.whUserLogin $ GW.whRepoOwner repo)
       RepoPush
       (GW.getUrl $ GW.whRepoSshUrl repo)
       (GW.getUrl $ GW.whRepoCloneUrl repo)

@@ -67,7 +67,7 @@ reposList as = do
 
   _ <- genericTableG def as
     [ ("ID", textDynColumn (tshow . _repo_id))
-    , ("Full Name", textDynColumn $ _repo_fullName)
+    , ("Full Name", textDynColumn $ repoFullName)
     , ("Clone Method", textDynColumn $ tshow . _repo_cloneMethod)
     , ("Nix File", textDynColumn $ _repo_buildNixFile)
     , ("Timeout", textDynColumn (tshow . _repo_timeout))
@@ -90,7 +90,7 @@ addRepo = do
       return ()
 
 unfilledRepo :: RepoT Maybe
-unfilledRepo = Repo Nothing Nothing (ConnectedAccountId Nothing) Nothing Nothing Nothing Nothing Nothing
+unfilledRepo = Repo Nothing (ConnectedAccountId Nothing) Nothing Nothing Nothing Nothing Nothing Nothing
 
 newRepoForm
   :: (MonadAppIO r t m, Prerender js t m)
@@ -99,11 +99,26 @@ newRepoForm
   -> m (Dynamic t (RepoT Maybe))
 newRepoForm iv sv = do
     accounts <- asks _as_accounts
-    dmca <- labelledAs "Owning Account" $
+    dmca <- labelledAs "Access Account" $
       accountDropdown accounts Nothing never
-    dn <- labelledAs "Repo name" $ textField
-      (fromMaybe "" $ _repo_name iv)
-      (fromMaybe "" . _repo_name <$> sv)
+    drns <- divClass "field" $ do
+      el "label" $ do
+        text "Repo Namespace "
+        let tip = "Everything after the domain but before the repository name.  In GitHub, this is just the user/org name.  In GitLab, this can be multiple nested subgroups."
+        elAttr "span" ("data-tooltip" =: tip <> "data-position" =: "top left") $
+          elAttr "i" ("class" =: "info circle icon") blank
+      textField
+        (fromMaybe "" $ _repo_namespace iv)
+        (fromMaybe "" . _repo_namespace <$> sv)
+    drn <- divClass "field" $ do
+      el "label" $ do
+        text "Repo name "
+        let tip = "The repository name (the last component of the project's root URL)"
+        elAttr "span" ("data-tooltip" =: tip <> "data-position" =: "top left") $
+          elAttr "i" ("class" =: "info circle icon") blank
+      textField
+        (fromMaybe "" $ _repo_name iv)
+        (fromMaybe "" . _repo_name <$> sv)
     let tip = "Path to .nix file in your repo that describes the build (default.nix, release.nix, etc)"
     let bnfLabel = do
           text "Build Nix File "
@@ -122,7 +137,8 @@ newRepoForm iv sv = do
       (maybe (Just 3600) Just $ _repo_timeout iv)
       (_repo_timeout <$> sv)
     return $ do
-        n <- dn
+        rns <- drns
+        rn <- drn
         nf <- dnf
         cm <- dcm
         t <- dt
@@ -133,8 +149,7 @@ newRepoForm iv sv = do
             let aid = _connectedAccount_id a
                 maid = ConnectedAccountId $ Just aid
                 ownerName = _connectedAccount_name a
-                fn = mkFullName (_connectedAccount_provider a) ownerName n
-             in Repo Nothing (Just fn) maid (Just n) (Just cm) (Just nf) t Nothing
+             in Repo Nothing maid (Just rn) (Just rns) (Just cm) (Just nf) t Nothing
 
 accountDropdown
   :: forall r t m. MonadApp r t m
@@ -179,5 +194,5 @@ mkFullName GitHub owner name = owner <> "/" <> name
 mkFullName GitLab owner name = owner <> "/" <> name
 
 isValidRepo :: RepoT Maybe -> Bool
-isValidRepo (Repo _ (Just _) (ConnectedAccountId (Just _)) (Just _) (Just _) (Just _) (Just _) _) = True
+isValidRepo (Repo _ (ConnectedAccountId (Just _)) (Just _) (Just _) (Just _) (Just _) (Just _) _) = True
 isValidRepo _ = False

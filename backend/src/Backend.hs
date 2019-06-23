@@ -272,7 +272,7 @@ addRepo
   -> RepoT Maybe
   -> IO ()
 addRepo env wsConn
-        (Repo _ (Just fn) (ConnectedAccountId (Just o)) (Just n)
+        (Repo _ (ConnectedAccountId (Just o)) (Just n) (Just ns)
               (Just c) (Just nf) (Just t) _) = do
   mca <- beamQuery env $ do
     runSelectReturningOne $ select $ do
@@ -284,9 +284,9 @@ addRepo env wsConn
         beamQuery env $ do
           runInsert $ insert (_ciDb_repos ciDb) $ insertExpressions
             [Repo default_
-                  (val_ fn)
                   (ConnectedAccountId $ val_ o)
                   (val_ n)
+                  (val_ ns)
                   (val_ c)
                   (val_ nf)
                   (val_ t)
@@ -310,7 +310,7 @@ addRepo env wsConn
         GitLab -> do
           mhid <- setupGitlabWebhook
             (toS $ _serverEnv_webhookBaseUrl env)
-            (_connectedAccount_name ca)
+            ns
             n
             (_connectedAccount_accessToken ca)
             (_serverEnv_secretToken env)
@@ -327,27 +327,27 @@ deleteRepo env rid = do
   mrepo <- beamQuery env $
     runSelectReturningOne $ select $ do
       repo <- all_ (_ciDb_repos ciDb)
-      owner <- all_ (_ciDb_connectedAccounts ciDb)
+      accessAccount <- all_ (_ciDb_connectedAccounts ciDb)
       guard_ (repo ^. repo_id ==. (val_ $ repoKeyToInt rid))
-      guard_ (_repo_owner repo `references_` owner)
-      return (repo, owner)
+      guard_ (_repo_accessAccount repo `references_` accessAccount)
+      return (repo, accessAccount)
 
   case mrepo of
     Nothing -> return ()
-    Just (repo,owner) -> do
-      case _connectedAccount_provider owner of
+    Just (repo,accessAccount) -> do
+      case _connectedAccount_provider accessAccount of
         GitHub -> do
           _ <- deleteRepoWebhook'
-            (OAuth $ toS $ _connectedAccount_accessToken owner)
-            (N $ _connectedAccount_name owner)
+            (OAuth $ toS $ _connectedAccount_accessToken accessAccount)
+            (N $ _connectedAccount_name accessAccount)
             (N $ _repo_name repo)
             (Id $ _repo_hookId repo)
           return ()
         GitLab -> do
           deleteGitlabWebhook
-            (_connectedAccount_name owner)
+            (_connectedAccount_name accessAccount)
             (_repo_name repo)
-            (_connectedAccount_accessToken owner)
+            (_connectedAccount_accessToken accessAccount)
             (_repo_hookId repo)
 
       beamQuery env $

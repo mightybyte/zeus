@@ -161,7 +161,7 @@ repoColumnWidget
 repoColumnWidget dj = do
   let drbi = _buildJob_repoBuildInfo <$> dj
   let mkAttrs rbi = ("href" =: rbiRepoLink rbi <> "target" =: "_blank")
-  elDynAttr "a" (mkAttrs <$> drbi) $ dynText (_rbi_repoFullName <$> drbi)
+  elDynAttr "a" (mkAttrs <$> drbi) $ dynText (rbiRepoFullName <$> drbi)
 
 authorWidget
   :: (DomBuilder t m, PostBuild t m)

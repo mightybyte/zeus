@@ -48,10 +48,12 @@ instance (BeamBackend be, FromBackendRow be Text) => FromBackendRow be CloneMeth
 ------------------------------------------------------------------------------
 data RepoT f = Repo
   { _repo_id :: C f Int
-  , _repo_fullName :: C f Text
   -- ^ For GitHub this is "owner/name".
-  , _repo_owner :: PrimaryKey ConnectedAccountT f
+  , _repo_accessAccount :: PrimaryKey ConnectedAccountT f
   , _repo_name :: C f Text
+  , _repo_namespace :: C f Text
+  -- ^ With GitHub repos this is always the repository name.  With gitlab it
+  -- can be a deeper nested path of groups /foo/bar/baz/repo
   , _repo_cloneMethod :: C f CloneMethod
   , _repo_buildNixFile :: C f Text
   , _repo_timeout :: C f Int
@@ -60,15 +62,18 @@ data RepoT f = Repo
   -- ^ Allows us to delete the webhook
   } deriving Generic
 
+repoFullName :: Repo -> Text
+repoFullName r = _repo_name r <> "/" <> _repo_namespace r
+
 repoToMaybe :: RepoT Identity -> RepoT Maybe
-repoToMaybe (Repo i f (ConnectedAccountId o) n c bf t h) = Repo (Just i) (Just f)
-    (ConnectedAccountId $ Just o) (Just n) (Just c) (Just bf) (Just t) (Just h)
+repoToMaybe (Repo i (ConnectedAccountId o) on rn c bf t h) = Repo (Just i)
+    (ConnectedAccountId $ Just o) (Just on) (Just rn) (Just c) (Just bf) (Just t) (Just h)
 
 Repo
   (LensFor repo_id)
-  (LensFor repo_fullName)
-  (ConnectedAccountId (LensFor repo_owner))
+  (ConnectedAccountId (LensFor repo_accessAccount))
   (LensFor repo_name)
+  (LensFor repo_namespace)
   (LensFor rep_cloneMethod)
   (LensFor repo_buildNixFile)
   (LensFor repo_timeout)

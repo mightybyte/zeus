@@ -31,7 +31,6 @@ import           Common.Types.RepoBuildInfo
 
 gitlabHandler :: ServerEnv -> Snap ()
 gitlabHandler env = do
-  liftIO $ putStrLn "************* IN GITLAB HANDLER!!!"
   checkToken $ _serverEnv_secretToken env
   eventHeader <- getHeader "X-Gitlab-Event" <$> getRequest
   body <- readRequestBody 1048576 -- TODO what should this number be?
@@ -42,9 +41,11 @@ gitlabHandler env = do
       forM_ mp $ \p -> liftIO $ do
         --liftIO $ print p
         let proj = _push_project p
+        let fullpath = _project_path_with_namespace proj
+            ns = T.dropEnd 1 $ T.dropWhileEnd (/= '/') fullpath
         let rbi = RepoBuildInfo
               (_project_name proj)
-              (_project_path_with_namespace proj)
+              ns
               RepoPush
               (_project_git_ssh_url proj)
               (_project_git_http_url proj)
@@ -114,22 +115,27 @@ gitlabMergeRequestHandler _ _ = liftIO $ putStrLn "Got gitlab merge request"
   --    , show (_objectAttributes_action $ _mergeRequest_object_attributes mr)
   --    ]
 
+mkProjId ns n = T.replace "/" "%2F" $ ns <> "/" <> n
+
 setupGitlabWebhook :: Text -> Text -> Text -> Text -> Text -> IO (Maybe Integer)
 setupGitlabWebhook domain gitlabNamespace gitlabProjectName gitlabSecret zeusAccessToken = do
-  let projId = gitlabNamespace <> "%2F" <> gitlabProjectName
-  resp <- sendToGitlab "POST" ("projects/" <> projId <> "/hooks") gitlabSecret $ object
-    [ "id" .= projId
-    , "url" .= (toS domain <> "/" <> gitlabHookPath)
-    , "push_events" .= True
-    -- , "push_events_branch_filter" .= ""
-    , "merge_requests_events" .= True
-    , "token" .= zeusAccessToken
-    ]
+  let projId = mkProjId gitlabNamespace gitlabProjectName
+      o = object
+        [ "id" .= projId
+        , "url" .= (toS domain <> "/" <> gitlabHookPath)
+        , "push_events" .= True
+        -- , "push_events_branch_filter" .= ""
+        , "merge_requests_events" .= True
+        , "token" .= zeusAccessToken
+        ]
+      apiPath = "projects/" <> projId <> "/hooks"
+  resp <- sendToGitlab "POST" apiPath gitlabSecret o
   return (responseBody resp ^? _Value . key "id" . _Integer)
 
 deleteGitlabWebhook :: Text -> Text -> Text -> Int -> IO ()
 deleteGitlabWebhook gitlabNamespace gitlabProjectName gitlabSecret hookId = do
-  let projId = gitlabNamespace <> "%2F" <> gitlabProjectName
+  -- TODO Use proper url encoding instead of this janky replace
+  let projId = mkProjId gitlabNamespace gitlabProjectName
       apiPath = "projects/" <> projId <> "/hooks/" <> T.pack (show hookId)
   _ <- sendToGitlab "DELETE" apiPath gitlabSecret $ object
     [ "id" .= projId
