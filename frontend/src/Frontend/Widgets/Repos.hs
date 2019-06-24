@@ -112,7 +112,7 @@ newRepoForm iv sv = do
         (fromMaybe "" . _repo_namespace <$> sv)
     drn <- divClass "field" $ do
       el "label" $ do
-        text "Repo name "
+        text "Repo Name "
         let tip = "The repository name (the last component of the project's root URL)"
         elAttr "span" ("data-tooltip" =: tip <> "data-position" =: "top left") $
           elAttr "i" ("class" =: "info circle icon") blank
@@ -130,9 +130,9 @@ newRepoForm iv sv = do
         & inputElementConfig_initialValue .~ (fromMaybe "default.nix" $ _repo_buildNixFile iv)
         & inputElementConfig_setValue .~ (fromMaybe "default.nix" . _repo_buildNixFile <$> sv)
       return $ value ie
-    dcm <- labelledAs "Clone Method" $ filledDropdown
-      (fromMaybe HttpClone $ _repo_cloneMethod iv)
-      (fmapMaybe id $ _repo_cloneMethod <$> sv)
+    --dcm <- labelledAs "Clone Method" $ filledDropdown
+    --  (fromMaybe HttpClone $ _repo_cloneMethod iv)
+    --  (fmapMaybe id $ _repo_cloneMethod <$> sv)
     dt <- labelledAs "Timeout (in seconds)" $ readableField Nothing
       (maybe (Just 3600) Just $ _repo_timeout iv)
       (_repo_timeout <$> sv)
@@ -140,7 +140,7 @@ newRepoForm iv sv = do
         rns <- drns
         rn <- drn
         nf <- dnf
-        cm <- dcm
+        --cm <- dcm
         t <- dt
         mca <- dmca
         pure $ case mca of
@@ -149,7 +149,7 @@ newRepoForm iv sv = do
             let aid = _connectedAccount_id a
                 maid = ConnectedAccountId $ Just aid
                 ownerName = _connectedAccount_name a
-             in Repo Nothing maid (Just rn) (Just rns) (Just cm) (Just nf) t Nothing
+             in Repo Nothing maid (Just rn) (Just rns) (Just HttpClone) (Just nf) t Nothing
 
 accountDropdown
   :: forall r t m. MonadApp r t m

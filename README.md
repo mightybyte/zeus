@@ -22,7 +22,7 @@ Zeus makes it drop dead simple to get blazing fast CI for Nix projects.
 
 ## Installing
 
-### Deploying to a Remote Server
+### Deploying to a Remote Server with Obelisk
 
 The easiest way to deploy Zeus is with
 [Obelisk](https://github.com/obsidiansystems/obelisk). To deploy with Obelisk,
@@ -58,7 +58,7 @@ ob deploy push
 Zeus CI should now be running on your server! Point your browser at
 https://ci.example.com and you're off to the races.
 
-### Running the Server Locally
+### Running Zeus Without Obelisk
 
 ```shell
 git clone https://gitlab.com/mightybyte/zeus.git
@@ -68,3 +68,106 @@ ln -s result-exe/frontend.jsexe.assets .
 ln -s result-exe/static.assets .
 result-exe/backend +RTS -N
 ```
+
+This runs the Zeus server on port 8000. Point your browser at
+http://localhost:8000 and you should see the Zeus web UI.
+
+In order for Zeus to work this way, the server it is running on needs to be
+reachable from GitHub or GitLab and you need to tell the frontend what that
+address is. To do that, put the address in the file `config/common/route` as
+follows:
+
+```
+http://ci.example.com:8000
+```
+
+### Running Zeus Locally
+
+If you are running Zeus behind NAT or in some other situation where it's not
+reachable from the internet (perhaps if you're contributing to Zeus and testing
+on your local machine for instance), you can get it to work by setting up a
+reverse SSH tunnel to a machine that does have a public address. For example, if
+you are running it as described above and you have SSH access to a machine at
+`ci.example.com` with a public IP, you can set up an SSH tunnel as follows:
+
+```
+ssh -R '*:8000:localhost:8000' alice@ci.example.com
+```
+
+You need to have this SSH tunnel open when you create the Repo in the Zeus UI,
+and also have it open whenever you want pushes to the repository to trigger
+builds on Zeus.
+
+With this setup you need to set `config/common/route` to this:
+
+```
+http://localhost:8000
+```
+
+This is because the frontend is running locally and needs to open websocket
+connections to `localhost` to connect to the server.
+
+The astute reader will notice a problem here. This is the correct address for
+the frontend to use for its websocket connection, but it is not the correct
+address for GitHub/GitLab to use to connect to Zeus. If you have a public IP
+these two addresses are the same, but if you are running locally these two
+addresses are different. In this situation you can tell Zeus the public address
+that GitHub/GitLab should use by creating a file `webhook-baseurl` in the
+zeus project root directory with the following contents:
+
+```
+http://ci.example.com:8000
+```
+
+## Setup
+
+### Setting up an Account
+
+Once you have gotten Zeus running through one of the above methods, you need to
+connect it to your GitHub/GitLab account and set up repositories that you want
+it to build. Point your browser at the frontend address from above
+(http://localhost:8000, etc). The first thing you need to do is set up an
+account. Click the "Accounts" tab, and then click "Connect Account", then
+type the name of your account.
+
+After you do this you need to create a personal access token. You can do
+this as follows:
+
+### GitHub
+
+1. Go to https://github.com/settings/tokens
+2. Click "Generate new token"
+3. Type something descriptive in the Note field like "Zeus CI"
+4. Check "repo" and all its sub-items
+5. Check "admin:repo_hook" and all its sub-items
+6. Click "Generate token"
+
+### GitLab
+
+1. Go to https://gitlab.com/profile/personal_access_tokens
+2. Type something descriptive in the Name field like "Zeus CI"
+3. Check "api", "read_user", and "read_repository"
+4. Click "Create personal access token"
+
+Once you've done this the access token will be displayed and you can copy it to
+your clipboard. Then go back to Zeus and paste this into the "Access Token"
+field. Then select the appropriate value for "Provider" and click "Connect
+Account".
+
+### Setting up a repo
+
+Now that you have an account connected, click on the "Repos" tab and click "Add
+Repository". Select the appropriate account from the "Access Account" dropdown.
+Here are some examples of how to set the "Repo Namespace" and "Repo Name" fields.
+
+If your repo URL is "https://github.com/alice/my-repo", the namespace will be
+"alice" and the name will be "my-repo". The values would be the same for GitHub
+or GitLab.
+
+If your repo URL is "https://gitlab.com/acme-corp/frontend-team/foo-frontend",
+the namespace will be "acme-corp/frontend-team" and the name will be
+"foo-frontend".
+
+Fill out the rest of the form as appropriate, then click "Add Repo" and you
+should be good to go! Zeus will now run a build every time someone pushes to
+your repo.
