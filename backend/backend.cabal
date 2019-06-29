@@ -65,6 +65,7 @@ library
     -- Backend.Gitlab.Request
     Backend.Gitlab.Schema
     Backend.Schedule
+    Backend.Types.BackendSettings
     Backend.Types.ConnRepo
     Backend.Types.ServerEnv
     Backend.WsCmds
