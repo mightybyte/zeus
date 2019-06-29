@@ -115,6 +115,7 @@ gitlabMergeRequestHandler _ _ = liftIO $ putStrLn "Got gitlab merge request"
   --    , show (_objectAttributes_action $ _mergeRequest_object_attributes mr)
   --    ]
 
+mkProjId :: Text -> Text -> Text
 mkProjId ns n = T.replace "/" "%2F" $ ns <> "/" <> n
 
 setupGitlabWebhook :: Text -> Text -> Text -> Text -> Text -> IO (Maybe Integer)

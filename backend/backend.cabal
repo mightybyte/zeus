@@ -32,6 +32,7 @@ library
     , lens
     , lens-aeson              >= 1.0.2   && < 1.1
     , mtl                     >= 2.2.2   && < 2.3
+    , network                 >= 2.6     && < 2.7
     , obelisk-backend
     , obelisk-executable-config
     , obelisk-route

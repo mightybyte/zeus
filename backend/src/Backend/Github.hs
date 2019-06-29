@@ -114,7 +114,7 @@ data SslSettings
 -- | Adds the GitHub webhook necessary for allowing this server to do CI for a
 -- particular repo.
 setupGithubWebhook
-  :: String
+  :: Text
     -- ^ Domain (optionally with port) that your hook will be served on
   -> Auth
     -- ^ Token authenticating you with GitHub so the webhook can be created.
@@ -129,7 +129,7 @@ setupGithubWebhook
   -> SslSettings
   -> IO (Either Error RepoWebhook)
 setupGithubWebhook domain auth owner repo secret sslSettings = do
-    let url = toS domain <> "/" <> githubHookPath
+    let url = domain <> "/" <> githubHookPath
     let cfg = M.fromList
           [ ("url", url)
           , ("content_type", "json")

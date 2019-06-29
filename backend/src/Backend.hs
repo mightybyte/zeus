@@ -16,6 +16,7 @@ import           Control.Lens
 import qualified Data.Map as M
 import           Control.Monad
 import           Control.Monad.Trans
+import qualified Data.Aeson as A
 import           Data.Dependent.Sum (DSum ((:=>)))
 import           Data.IORef
 import           Data.RNG
@@ -50,6 +51,7 @@ import           Backend.Build
 import           Backend.Db
 import           Backend.Github
 import           Backend.Gitlab
+import           Backend.Types.BackendSettings
 import           Backend.Types.ConnRepo
 import           Backend.Types.ServerEnv
 import           Backend.WsCmds
@@ -92,17 +94,17 @@ backend = Backend
       buildQueue <- atomically newTQueue
       connRepo <- newConnRepo
       buildThreads <- newIORef mempty
-      hookBaseUrl <- ObConfig.get "webhook-baseurl" >>= \case
-        Nothing -> do
-          putStrLn "No webhook-baseurl override file found"
-          return appRoute
-        Just hbu -> do
-          putStrLn "Found override for webhook-baseurl"
-          return $ T.strip hbu
-      putStrLn $ "hookBaseUrl set to " <> show hookBaseUrl
+      let settingsFile = "config/backend/settings" :: String
+      settings <- ObConfig.get (toS settingsFile) >>= \case
+        Nothing -> error ("Must define " <> settingsFile)
+        Just bs -> do
+          case A.decode $ toS bs of
+            Nothing -> error ("Error parsing " <> settingsFile)
+            Just s -> return s
+      putStrLn $ "read settings: " <> show settings
       listeners <- newIORef mempty
       cs <- newIORef $ CiSettings "nixpkgs=/nix/var/nix/profiles/per-user/root/channels/nixos"
-      let env = ServerEnv appRoute hookBaseUrl secretToken dbConn buildQueue
+      let env = ServerEnv appRoute settings secretToken dbConn buildQueue
                           connRepo buildThreads listeners cs
       _ <- forkIO $ buildManagerThread env
       serve $ serveBackendRoute env
@@ -115,8 +117,14 @@ serveBackendRoute env = \case
   BackendRoute_Hook :=> Identity hr -> case hr of
     Hook_GitHub :=> _ -> githubHandler env
     Hook_GitLab :=> _ -> gitlabHandler env
-  BackendRoute_Ping :=> _ -> writeText "PONG\nPONG\nPONG\n"
-  BackendRoute_Websocket :=> _ -> wsHandler $ \conn -> do
+  BackendRoute_Ping :=> _ -> do
+    addr <- getsRequest rqClientAddr
+    writeText $ "CLIENT ADDR: " <> toS addr <> "\n"
+    writeText "PONG\nPONG\nPONG\n"
+  BackendRoute_Websocket :=> _ -> do
+    addr <- getsRequest rqClientAddr
+    liftIO $ putStrLn $ "CLIENT ADDR: " <> toS addr
+    wsHandler $ \conn -> do
       cid <- addConnection conn (_serverEnv_connRepo env)
       putStrLn $ "Established websocket connection with connId " <> show cid
       listJobs env conn
@@ -296,10 +304,12 @@ addRepo env wsConn
     Nothing -> return ()
     Just ca -> do
       putStrLn $ "Setting up new webhook for " <> show ca
+      let wbu = fromMaybe (_serverEnv_publicUrl env)
+                          (_beSettings_webhookBaseUrl $ _serverEnv_settings env)
       case _connectedAccount_provider ca of
         GitHub -> do
           erw <- setupGithubWebhook
-            (toS $ _serverEnv_webhookBaseUrl env)
+            wbu
             (OAuth $ toS $ _connectedAccount_accessToken ca)
             (_connectedAccount_name ca) n (_serverEnv_secretToken env) AllowInsecure
           case erw of
@@ -309,7 +319,7 @@ addRepo env wsConn
               insertRepo hid
         GitLab -> do
           mhid <- setupGitlabWebhook
-            (toS $ _serverEnv_webhookBaseUrl env)
+            wbu
             ns
             n
             (_connectedAccount_accessToken ca)
