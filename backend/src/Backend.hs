@@ -111,6 +111,11 @@ backend = Backend
   , _backend_routeEncoder = backendRouteEncoder
   }
 
+enforceIpWhitelist :: [Cidr] -> Snap ()
+enforceIpWhitelist ips = do
+  addr <- getsRequest rqClientAddr
+  return ()
+
 -- | Serve our dynconfigs file.
 serveBackendRoute :: ServerEnv -> R BackendRoute -> Snap ()
 serveBackendRoute env = \case

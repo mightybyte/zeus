@@ -6,12 +6,16 @@ module Backend.Types.BackendSettings where
 ------------------------------------------------------------------------------
 import           Control.Error
 import           Data.Aeson
+import           Data.Bits
 import           Data.List
 import           Data.Text (Text)
 import qualified Data.Text as T
 import           Data.Word
 import           Database.Beam
 import           Network.Socket
+import           Test.Tasty
+import           Test.Tasty.HUnit
+import           Text.Printf
 ------------------------------------------------------------------------------
 
 aesonOpts :: Int -> Options
@@ -53,6 +57,31 @@ showIp ip = intercalate "." [show a, show b, show c, show d]
 
 showCidr :: Cidr -> String
 showCidr (Cidr i m) = showIp i <> "/" <> show m
+
+numOnesToMask :: Int -> Word32
+numOnesToMask n = shift (2 ^ n - 1) (32 - n)
+
+matchesIp :: Cidr -> Word32 -> Bool
+matchesIp cidr ip = (ip .&. mask) == (_cidrIp cidr .&. mask)
+  where
+    mask = numOnesToMask (_cidrMask cidr)
+
+ipMatchTest :: TestTree
+ipMatchTest =
+    testGroup "matchesIp" $
+      f "184.72.104.138" 32 ++
+      f "184.72.104.138" 24 ++
+      f "184.72.104.138" 16 ++
+      f "184.72.104.138" 8
+  where
+    f ipStr mask =
+      let ip = either error id $ parseIp ipStr
+       in testCase "mask matches itself" (matchesIp (Cidr ip mask) ip @?= True) :
+          map (twiddleCheck ip mask) [0..31]
+    twiddleCheck ip mask n =
+      testCase (printf "twiddle %d is correct" n) $
+        matchesIp (Cidr ip mask) (complementBit ip n) @?= twiddleMatches mask n
+    twiddleMatches mask i = i < (32 - mask)
 
 instance ToJSON Cidr where
     toJSON = String . T.pack . showCidr
