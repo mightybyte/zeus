@@ -95,9 +95,9 @@ backend = Backend
       buildQueue <- atomically newTQueue
       connRepo <- newConnRepo
       buildThreads <- newIORef mempty
-      let settingsFile = "config/backend/settings" :: String
+      let settingsFile = "config/backend/settings.json" :: String
       settings <- ObConfig.get (toS settingsFile) >>= \case
-        Nothing -> error ("Must define " <> settingsFile)
+        Nothing -> return $ BackendSettings Nothing []
         Just bs -> do
           case A.decode $ toS bs of
             Nothing -> error ("Error parsing " <> settingsFile)
@@ -113,9 +113,16 @@ backend = Backend
   }
 
 enforceIpWhitelist :: [Cidr] -> Snap ()
-enforceIpWhitelist ips = do
+enforceIpWhitelist [] = return ()
+enforceIpWhitelist whitelist = do
   addr <- getsRequest rqClientAddr
-  return ()
+  case parseIp (toS addr) of
+    Left e -> do
+      serverError $ "Couldn't parse IP returned by Snap: " <> toS e
+    Right ip ->
+      when (not $ any (matchesCidr ip) whitelist) $ do
+        liftIO $ putStrLn $ "Rejecting connection from " <> toS addr
+        notFound "Not found"
 
 -- | Serve our dynconfigs file.
 serveBackendRoute :: ServerEnv -> R BackendRoute -> Snap ()
@@ -128,16 +135,7 @@ serveBackendRoute env = \case
     writeText $ "CLIENT ADDR: " <> toS addr <> "\n"
     writeText "PONG\nPONG\nPONG\n"
   BackendRoute_Websocket :=> _ -> do
-    let whitelist = _beSettings_ipWhitelist $ _serverEnv_settings env
-    when (not $ null whitelist) $ do
-      addr <- getsRequest rqClientAddr
-      case parseIp (toS addr) of
-        Left e -> do
-          serverError $ "Couldn't parse IP returned by Snap: " <> toS e
-        Right ip ->
-          when (not $ any (matchesCidr ip) whitelist) $ do
-            liftIO $ putStrLn $ "Rejecting connection from " <> toS addr
-            notFound "Not found"
+    enforceIpWhitelist (_beSettings_ipWhitelist $ _serverEnv_settings env)
     wsHandler $ \conn -> do
       cid <- addConnection conn (_serverEnv_connRepo env)
       putStrLn $ "Established websocket connection with connId " <> show cid

@@ -112,14 +112,35 @@ the frontend to use for its websocket connection, but it is not the correct
 address for GitHub/GitLab to use to connect to Zeus. If you have a public IP
 these two addresses are the same, but if you are running locally these two
 addresses are different. In this situation you can tell Zeus the public address
-that GitHub/GitLab should use by creating a file `webhook-baseurl` in the
-zeus project root directory with the following contents:
-
-```
-http://ci.example.com:8000
-```
+that GitHub/GitLab should use by specifying `webhookBaseUrl` in the
+`config/backend/settings` as described in the "Configuring the Backend" section
+below.
 
 ## Setup
+
+### Configuring the Backend
+
+The Zeus backend has a few configuration options that you can specify in the
+file `config/backend/settings.json` on the server. This file should contain
+server settings in JSON format. Here is an example settings file:
+
+
+```json
+{
+  "webhookBaseUrl": "http://ci.example.com:8000",
+  "ipWhitelist": [
+    "52.201.220.249/32",
+    "176.9.155.62/32"
+  ]
+}
+```
+
+`webhookBaseUrl` is an optional field described above in the "Running Zeus
+Locally" section. `ipWhitelist` is a list of CIDR blocks describing IP addresses
+that are allowed to connect to the server. If the list is empty, then the server
+will be accessible from anywhere. This feature is primarily intended as a quick
+and dirty way to provide access control until we get proper authentication and
+access control implemented.
 
 ### Setting up an Account
 
