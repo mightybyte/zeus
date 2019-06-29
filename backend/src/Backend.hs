@@ -48,6 +48,7 @@ import           System.Mem.Weak
 import           Text.Printf
 ------------------------------------------------------------------------------
 import           Backend.Build
+import           Backend.Common
 import           Backend.Db
 import           Backend.Github
 import           Backend.Gitlab
@@ -127,8 +128,16 @@ serveBackendRoute env = \case
     writeText $ "CLIENT ADDR: " <> toS addr <> "\n"
     writeText "PONG\nPONG\nPONG\n"
   BackendRoute_Websocket :=> _ -> do
-    addr <- getsRequest rqClientAddr
-    liftIO $ putStrLn $ "CLIENT ADDR: " <> toS addr
+    let whitelist = _beSettings_ipWhitelist $ _serverEnv_settings env
+    when (not $ null whitelist) $ do
+      addr <- getsRequest rqClientAddr
+      case parseIp (toS addr) of
+        Left e -> do
+          serverError $ "Couldn't parse IP returned by Snap: " <> toS e
+        Right ip ->
+          when (not $ any (matchesCidr ip) whitelist) $ do
+            liftIO $ putStrLn $ "Rejecting connection from " <> toS addr
+            notFound "Not found"
     wsHandler $ \conn -> do
       cid <- addConnection conn (_serverEnv_connRepo env)
       putStrLn $ "Established websocket connection with connId " <> show cid

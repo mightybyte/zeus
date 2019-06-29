@@ -61,14 +61,14 @@ showCidr (Cidr i m) = showIp i <> "/" <> show m
 numOnesToMask :: Int -> Word32
 numOnesToMask n = shift (2 ^ n - 1) (32 - n)
 
-matchesIp :: Cidr -> Word32 -> Bool
-matchesIp cidr ip = (ip .&. mask) == (_cidrIp cidr .&. mask)
+matchesCidr :: Word32 -> Cidr -> Bool
+matchesCidr ip cidr = (ip .&. mask) == (_cidrIp cidr .&. mask)
   where
     mask = numOnesToMask (_cidrMask cidr)
 
 ipMatchTest :: TestTree
 ipMatchTest =
-    testGroup "matchesIp" $
+    testGroup "matchesCidr" $
       f "184.72.104.138" 32 ++
       f "184.72.104.138" 24 ++
       f "184.72.104.138" 16 ++
@@ -76,11 +76,11 @@ ipMatchTest =
   where
     f ipStr mask =
       let ip = either error id $ parseIp ipStr
-       in testCase "mask matches itself" (matchesIp (Cidr ip mask) ip @?= True) :
+       in testCase "mask matches itself" (matchesCidr ip (Cidr ip mask) @?= True) :
           map (twiddleCheck ip mask) [0..31]
     twiddleCheck ip mask n =
       testCase (printf "twiddle %d is correct" n) $
-        matchesIp (Cidr ip mask) (complementBit ip n) @?= twiddleMatches mask n
+        matchesCidr (complementBit ip n) (Cidr ip mask) @?= twiddleMatches mask n
     twiddleMatches mask i = i < (32 - mask)
 
 instance ToJSON Cidr where

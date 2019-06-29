@@ -57,7 +57,7 @@ gitlabHandler env = do
 
         scheduleBuild env rbi
         --checkOutstandingMergeRequests env p
-    _ -> err404
+    _ -> notFound "gitlab event"
 
 checkToken :: Text -> Snap ()
 checkToken secret = do
