@@ -135,6 +135,10 @@ server settings in JSON format. Here is an example settings file:
 }
 ```
 
+If you're deploying with Obelisk as described above, you should create this file
+in `ob-deploy-info/config/backend/settings.json` after you do `ob deploy init`
+but before `ob deploy push`.
+
 `webhookBaseUrl` is an optional field described above in the "Running Zeus
 Locally" section. `ipWhitelist` is a list of CIDR blocks describing IP addresses
 that are allowed to connect to the server. If the list is empty, then the server
