@@ -63,7 +63,7 @@ data RepoT f = Repo
   } deriving Generic
 
 repoFullName :: Repo -> Text
-repoFullName r = _repo_name r <> "/" <> _repo_namespace r
+repoFullName r = _repo_namespace r <> "/" <> _repo_name r
 
 repoToMaybe :: RepoT Identity -> RepoT Maybe
 repoToMaybe (Repo i (ConnectedAccountId o) on rn c bf t h) = Repo (Just i)
