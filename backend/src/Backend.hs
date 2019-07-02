@@ -230,12 +230,8 @@ cancelJobAndRemove env (BuildJobId jid) = do
       Nothing -> updateJobStatus env jid JobVanished
       Just wtid -> do
         mtid <- deRefWeak wtid
-        case mtid of
-          Nothing ->
-            updateJobStatus env jid JobVanished
-          Just tid -> do
-            killThread tid
-            updateJobStatus env jid JobCanceled
+        maybe (return ()) killThread mtid
+        updateJobStatus env jid JobCanceled
     broadcastJobs (_serverEnv_db env) (_serverEnv_connRepo env)
 
 updateJobStatus :: ServerEnv -> Int -> JobStatus -> IO ()
