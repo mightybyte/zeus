@@ -24,6 +24,13 @@ project ./. ({ pkgs, ... }: {
         pkgs.gnutar
       ];
     });
+    base32-bytestring = (self.callCabal2nix "base32-bytestring" (pkgs.fetchFromGitHub {
+        owner = "FilWisher";
+        repo = "base32-bytestring";
+        rev = "0c4790ba150a35f7d0d56fe7262ccbe8407c2471";
+        sha256 = "1y0qifp8za9s8dzsflw51wyacpjwx4b8p0qpa4xxv46lc2c2gl6i";
+    }) {});
+
     # aeson = dontCheck (self.callCabal2nix "aeson" (pkgs.fetchFromGitHub {
     #     owner = "bos";
     #     repo = "aeson";

@@ -16,7 +16,9 @@ import           Control.Lens
 import qualified Data.Map as M
 import           Control.Monad
 import           Control.Monad.Trans
+import           Crypto.Sign.Ed25519
 import qualified Data.Aeson as A
+import qualified Data.ByteString.Base64 as Base64
 import           Data.Dependent.Sum (DSum ((:=>)))
 import           Data.IORef
 import           Data.RNG
@@ -24,6 +26,7 @@ import qualified Data.Set as S
 import           Data.String.Conv
 import           Data.Text (Text)
 import qualified Data.Text as T
+import qualified Data.Text.Encoding as T
 import qualified Data.Text.IO as T
 import           Data.Time
 import           Database.Beam
@@ -43,17 +46,22 @@ import           Obelisk.Route
 import           Scrub
 import           Snap.Core
 import           System.Directory
+import           System.Exit
 import           System.FilePath
 import           System.Mem.Weak
+import           System.Process (rawSystem)
 import           Text.Printf
 ------------------------------------------------------------------------------
 import           Backend.Build
+import           Backend.CacheServer
 import           Backend.Common
 import           Backend.Db
+import           Backend.ExecutablePaths
 import           Backend.Github
 import           Backend.Gitlab
 import           Backend.Types.BackendSettings
 import           Backend.Types.ConnRepo
+import           Backend.Types.NixCacheKeyPair
 import           Backend.Types.ServerEnv
 import           Backend.WsCmds
 import           Backend.WsUtils
@@ -82,6 +90,36 @@ getSecretToken = do
 dbConnectInfo :: String
 dbConnectInfo = "zeus.db"
 
+------------------------------------------------------------------------------
+-- | Generates a signing key for the Zeus nix cache.  If there is no key, this
+-- function generates a new one.  The key name parameter is recommended to be
+-- the domain name followed by "-1" (or other number) to allow for key
+-- rotation.
+getSigningKey :: String -> IO NixCacheKeyPair
+getSigningKey keyName = do
+  let baseName = "zeus-cache-key"
+      secretFile = baseName <> ".sec"
+      publicFile = baseName <> ".pub"
+  secretExists <- doesFileExist secretFile
+  publicExists <- doesFileExist publicFile
+  when (not $ secretExists && publicExists) $ do
+    let args =
+          [ "--generate-binary-cache-key"
+          , keyName
+          , secretFile
+          , publicFile
+          ]
+    putStrLn "Generating cache signing key"
+    putStrLn $ unwords (nixStore : args)
+    ec <- rawSystem nixStore args
+    case ec of
+      ExitFailure c -> error $ printf "Error %d: Could not generate nix cache key" c
+      ExitSuccess -> return ()
+
+  Right secret <- readKeyFile secretFile
+  Right public <- readKeyFile publicFile
+  return $ NixCacheKeyPair secret public
+
 backend :: Backend BackendRoute FrontendRoute
 backend = Backend
   { _backend_run = \serve -> do
@@ -105,8 +143,10 @@ backend = Backend
       putStrLn $ "read settings: " <> show settings
       listeners <- newIORef mempty
       cs <- newIORef $ CiSettings "nixpkgs=/nix/var/nix/profiles/per-user/root/channels/nixos"
+      let appDomain = T.takeWhile (\c -> c /= ':' && c /= '/') $ T.drop 3 $ snd $ T.breakOn "://" appRoute
+      keyPair <- getSigningKey $ T.unpack $ appDomain <> "-1"
       let env = ServerEnv appRoute settings secretToken dbConn buildQueue
-                          connRepo buildThreads listeners cs
+                          connRepo buildThreads listeners cs keyPair
       _ <- forkIO $ buildManagerThread env
       serve $ serveBackendRoute env
   , _backend_routeEncoder = backendRouteEncoder
@@ -127,6 +167,9 @@ enforceIpWhitelist whitelist = do
 -- | Serve our dynconfigs file.
 serveBackendRoute :: ServerEnv -> R BackendRoute -> Snap ()
 serveBackendRoute env = \case
+  BackendRoute_Cache :=> Identity ps -> do
+    enforceIpWhitelist (_beSettings_ipWhitelist $ _serverEnv_settings env)
+    nixCacheRoutes env ps
   BackendRoute_Hook :=> Identity hr -> case hr of
     Hook_GitHub :=> _ -> githubHandler env
     Hook_GitLab :=> _ -> gitlabHandler env

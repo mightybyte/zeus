@@ -28,4 +28,3 @@ staticWhich f = do
       let msg = "staticWhich: " <> msg'
       reportError msg
       [| error msg |]
-

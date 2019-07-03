@@ -20,13 +20,7 @@ module Common.Types.CiSettings where
 import           Control.Lens
 import           Data.Aeson
 import           Data.Text (Text)
-import qualified Data.Text as T
 import           Database.Beam
-import           Database.Beam.Backend.SQL
-import           Database.Beam.Backend.Types
-import           Database.Beam.Migrate
-------------------------------------------------------------------------------
-import           Common.Types.ConnectedAccount
 ------------------------------------------------------------------------------
 
 ------------------------------------------------------------------------------

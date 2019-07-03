@@ -61,6 +61,7 @@ deriveRouteComponent ''JobRoute
 
 data BackendRoute :: * -> * where
   -- | Used to handle unparseable routes.
+  BackendRoute_Cache :: BackendRoute [Text]
   BackendRoute_Missing :: BackendRoute ()
   BackendRoute_Hook :: BackendRoute (R HookRoute)
   BackendRoute_Ping :: BackendRoute ()
@@ -98,6 +99,7 @@ backendRouteEncoder
 backendRouteEncoder =
   handleEncoder (\_ -> InR (ObeliskRoute_App FR_Home) :/ ()) $ pathComponentEncoder $ \case
     InL backendRoute -> case backendRoute of
+      BackendRoute_Cache -> PathSegment "cache" pathOnlyEncoder
       BackendRoute_Missing -> PathSegment "missing" $ unitEncoder mempty
       BackendRoute_Hook -> PathSegment "hook" hookRouteEncoder
       BackendRoute_Ping -> PathSegment "ping" $ unitEncoder mempty

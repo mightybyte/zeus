@@ -36,7 +36,7 @@ import           Frontend.Widgets.Form
 ------------------------------------------------------------------------------
 
 reposWidget
-  :: (MonadAppIO (R CrudRoute) t m, Prerender js t m)
+  :: MonadAppIO (R CrudRoute) t m
   => RoutedT t (R CrudRoute) m ()
 reposWidget = mdo
   pb <- getPostBuild
@@ -75,7 +75,7 @@ reposList as = do
     ]
   return ()
 
-addRepo :: (MonadAppIO r t m, Prerender js t m) => m ()
+addRepo :: MonadAppIO r t m => m ()
 addRepo = do
   semuiForm $ do
     dr <- newRepoForm unfilledRepo never
@@ -93,7 +93,7 @@ unfilledRepo :: RepoT Maybe
 unfilledRepo = Repo Nothing (ConnectedAccountId Nothing) Nothing Nothing Nothing Nothing Nothing Nothing
 
 newRepoForm
-  :: (MonadAppIO r t m, Prerender js t m)
+  :: MonadAppIO r t m
   => RepoT Maybe
   -> Event t (RepoT Maybe)
   -> m (Dynamic t (RepoT Maybe))
@@ -148,7 +148,6 @@ newRepoForm iv sv = do
           Just a -> do
             let aid = _connectedAccount_id a
                 maid = ConnectedAccountId $ Just aid
-                ownerName = _connectedAccount_name a
              in Repo Nothing maid (Just rn) (Just rns) (Just HttpClone) (Just nf) t Nothing
 
 accountDropdown

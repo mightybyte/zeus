@@ -39,6 +39,7 @@ import           Text.Printf
 import qualified Turtle as Turtle
 ------------------------------------------------------------------------------
 import           Backend.Db
+import           Backend.ExecutablePaths
 import           Backend.Types.ServerEnv
 import           Backend.WsCmds
 import           Common.Api
@@ -51,7 +52,6 @@ import           Common.Types.JobStatus
 import           Common.Types.ProcMsg
 import           Common.Types.Repo
 import           Common.Types.RepoBuildInfo
-import           Which
 ------------------------------------------------------------------------------
 
 buildManagerThread :: ServerEnv -> IO ()
@@ -158,12 +158,6 @@ threadWatcher buildThreads start timeout ecMVar wtid jobId = go
 
               threadDelay 5000000 >> go
         Just ec -> return $ exitCodeToStatus ec
-
-gitBinary :: String
-gitBinary = $(staticWhich "git")
-
-nixBuildBinary :: String
-nixBuildBinary = $(staticWhich "nix-build")
 
 microsSince :: UTCTime -> IO Int
 microsSince start = do
