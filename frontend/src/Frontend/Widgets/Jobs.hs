@@ -126,12 +126,13 @@ jobsList as = do
 cancelOrRerun :: MonadApp r t m => BuildJobId -> Dynamic t JobStatus -> m (Event t ())
 cancelOrRerun k dj = do
     _ <- networkView $ ffor dj $ \case
+      JobPending -> cancelButton k
       JobInProgress -> cancelButton k
       JobCanceled -> rerunButton k
       JobTimedOut -> rerunButton k
       JobVanished -> rerunButton k
       JobFailed -> rerunButton k
-      _ -> return ()
+      JobSucceeded -> return ()
     return never
 
 cancelButton :: MonadApp r t m => BuildJobId -> m ()

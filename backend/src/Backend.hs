@@ -273,12 +273,8 @@ cancelJobAndRemove env (BuildJobId jid) = do
       Nothing -> updateJobStatus env jid JobVanished
       Just wtid -> do
         mtid <- deRefWeak wtid
-        case mtid of
-          Nothing ->
-            updateJobStatus env jid JobVanished
-          Just tid -> do
-            killThread tid
-            updateJobStatus env jid JobCanceled
+        maybe (return ()) killThread mtid
+        updateJobStatus env jid JobCanceled
     broadcastJobs (_serverEnv_db env) (_serverEnv_connRepo env)
 
 updateJobStatus :: ServerEnv -> Int -> JobStatus -> IO ()
@@ -366,7 +362,7 @@ addRepo env wsConn
           erw <- setupGithubWebhook
             wbu
             (OAuth $ toS $ _connectedAccount_accessToken ca)
-            (_connectedAccount_name ca) n (_serverEnv_secretToken env) AllowInsecure
+            ns n (_serverEnv_secretToken env) AllowInsecure
           case erw of
             Left e -> wsSend wsConn $ Down_Alert $ "Error setting up webhook: " <> (T.pack $ show e)
             Right rw -> do
@@ -404,13 +400,13 @@ deleteRepo env rid = do
         GitHub -> do
           _ <- deleteRepoWebhook'
             (OAuth $ toS $ _connectedAccount_accessToken accessAccount)
-            (N $ _connectedAccount_name accessAccount)
+            (N $ _repo_namespace repo)
             (N $ _repo_name repo)
             (Id $ _repo_hookId repo)
           return ()
         GitLab -> do
           deleteGitlabWebhook
-            (_connectedAccount_name accessAccount)
+            (_repo_namespace repo)
             (_repo_name repo)
             (_connectedAccount_accessToken accessAccount)
             (_repo_hookId repo)
