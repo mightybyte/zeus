@@ -16,9 +16,7 @@ import           Control.Lens
 import qualified Data.Map as M
 import           Control.Monad
 import           Control.Monad.Trans
-import           Crypto.Sign.Ed25519
 import qualified Data.Aeson as A
-import qualified Data.ByteString.Base64 as Base64
 import           Data.Dependent.Sum (DSum ((:=>)))
 import           Data.IORef
 import           Data.RNG
@@ -26,7 +24,6 @@ import qualified Data.Set as S
 import           Data.String.Conv
 import           Data.Text (Text)
 import qualified Data.Text as T
-import qualified Data.Text.Encoding as T
 import qualified Data.Text.IO as T
 import           Data.Time
 import           Database.Beam

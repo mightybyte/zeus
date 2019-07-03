@@ -8,7 +8,6 @@ module Backend.CacheServer where
 ------------------------------------------------------------------------------
 import           Control.Monad
 import           Control.Monad.Trans
-import           Crypto.Sign.Ed25519
 import qualified Data.ByteString as B
 import qualified Data.ByteString.Base16 as Base16
 import           Data.Maybe
@@ -73,7 +72,8 @@ mkBase32 narHash = (hashType,) <$> base32hash
         _ -> Left $ printf "Hash had unexpected length (%s)\n" (T.decodeUtf8 hashBS)
 
 nixCacheRoutes :: ServerEnv -> [Text] -> Snap ()
-nixCacheRoutes se ps =
+nixCacheRoutes se ps = do
+  liftIO $ putStrLn $ "Cache request: " <> show ps
   case ps of
     ["nix-cache-info"] -> cacheInfoHandler
     ["nar", nar] -> narHandler nar
@@ -109,8 +109,6 @@ otherHandler se file = do
             Right fingerprint -> do
               liftIO $ putStrLn "In Right"
               modifyResponse (setContentType "text/x-nix-narinfo")
-              writeText $ T.pack $ show vp
-              writeText "\n"
               writeText $ T.pack $ printf "StorePath: %s\n" (_validPath_path vp)
               writeText $ T.pack $ printf "URL: nar/%s.nar\n" hash
               writeText $ T.pack $ printf "Compression: none\n"
