@@ -75,6 +75,7 @@ library
     Backend.Schedule
     Backend.Types.BackendSettings
     Backend.Types.ConnRepo
+    Backend.Types.NixCacheKeyPair
     Backend.Types.ServerEnv
     Backend.WsCmds
     Backend.WsUtils
