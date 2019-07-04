@@ -73,12 +73,21 @@ mkBase32 narHash = (hashType,) <$> base32hash
 
 nixCacheRoutes :: ServerEnv -> [Text] -> Snap ()
 nixCacheRoutes se ps = do
-  liftIO $ putStrLn $ "Cache request: " <> show ps
   case ps of
     ["nix-cache-info"] -> cacheInfoHandler
     ["nar", nar] -> narHandler nar
     [p] -> otherHandler se p
     _ -> notFound "File not found."
+
+  -- TODO Remove this after cache is working.
+  -- Logging all nar responses will get really big!
+  r <- getResponse
+  let logMsg = unlines
+        [ "------------"
+        , "Cache request: " <> show ps
+        , show r
+        ]
+  liftIO $ appendFile "cache-server.log" logMsg
 
 stripPath :: Text -> Text
 stripPath = T.takeWhileEnd (/= '/')

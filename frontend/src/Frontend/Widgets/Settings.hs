@@ -20,7 +20,7 @@ settingsWidget
 settingsWidget = do
   pb <- delay 1 =<< getPostBuild
   trigger trigger_getCiSettings pb
-  el "h1" $ text "Settings Widget"
+  el "h1" $ text "Settings"
   dynSettingsForm
   return ()
 

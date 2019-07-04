@@ -19,6 +19,7 @@ library
     , obelisk-executable-config
     , obelisk-route
     , readable
+    , reflex-dom
     , scrub
     , text
     , time

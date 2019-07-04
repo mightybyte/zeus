@@ -20,7 +20,6 @@ import Control.Category
 import           Prelude hiding (id, (.))
 import           Control.Category
 import           Control.Lens
-import           Data.Dependent.Sum (DSum (..))
 import           Data.Some (Some)
 import qualified Data.Some as Some
 import           Data.Text (Text)
@@ -29,6 +28,7 @@ import           Data.Functor.Sum
 import qualified Obelisk.ExecutableConfig as ObConfig
 import           Obelisk.Route
 import           Obelisk.Route.TH
+import           Reflex.Dom
 ------------------------------------------------------------------------------
 
 -- This needs to match the BackendRoute_GithubHook line below. Will figure out
@@ -72,6 +72,7 @@ data FrontendRoute :: * -> * where
   FR_Jobs :: FrontendRoute (R JobRoute)
   FR_Repos :: FrontendRoute (R CrudRoute)
   FR_Accounts :: FrontendRoute (R CrudRoute)
+  FR_Info :: FrontendRoute ()
   FR_Settings :: FrontendRoute ()
 
 type FullRoute = Sum BackendRoute (ObeliskRoute FrontendRoute)
@@ -111,6 +112,7 @@ backendRouteEncoder =
       FR_Jobs -> PathSegment "jobs" jobRouteEncoder
       FR_Repos -> PathSegment "repos" crudRouteEncoder
       FR_Accounts -> PathSegment "accounts" crudRouteEncoder
+      FR_Info -> PathSegment "info" $ unitEncoder mempty
       FR_Settings -> PathSegment "settings" $ unitEncoder mempty
 
 concat <$> mapM deriveRouteComponent
@@ -126,17 +128,25 @@ getAppRoute = do
       Just r -> return $ T.dropWhileEnd (== '/') $ T.strip r
 
 -- | Provide a human-readable name for a given section
-tabTitle :: Some FrontendRoute -> Text
-tabTitle (Some.This sec) = case sec of
+tabTitle :: DomBuilder t m => Some FrontendRoute -> m ()
+tabTitle sfr@(Some.This sec) = case sec of
+  FR_Home -> text $ frToText sfr
+  FR_Jobs -> text $ frToText sfr
+  FR_Repos -> text $ frToText sfr
+  FR_Accounts -> text $ frToText sfr
+  FR_Info -> text $ frToText sfr --elClass "i" "cog icon" blank
+  FR_Settings -> text $ frToText sfr
+
+-- | Provide a human-readable name for a given section
+frToText :: Some FrontendRoute -> Text
+frToText (Some.This sec) = case sec of
   FR_Home -> "Home"
   FR_Jobs -> "Jobs"
   FR_Repos -> "Repos"
   FR_Accounts -> "Accounts"
+  FR_Info -> "Info"
   FR_Settings -> "Settings"
 
--- | Provide a human-readable name for a route
-frToText :: R FrontendRoute -> Text
-frToText (sec :=> _) = tabTitle $ Some.This sec
 
 tabHomepage :: Some FrontendRoute -> R FrontendRoute
 tabHomepage (Some.This sec) = sec :/ case sec of
@@ -144,4 +154,5 @@ tabHomepage (Some.This sec) = sec :/ case sec of
   FR_Jobs -> Job_List :/ ()
   FR_Repos -> Crud_List :/ ()
   FR_Accounts -> Crud_List :/ ()
+  FR_Info -> ()
   FR_Settings -> ()

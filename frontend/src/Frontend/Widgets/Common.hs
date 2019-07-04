@@ -1,18 +1,25 @@
+{-# LANGUAGE DataKinds #-}
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE ScopedTypeVariables #-}
+{-# LANGUAGE TypeFamilies #-}
 {-# LANGUAGE UndecidableInstances #-}
 
 module Frontend.Widgets.Common where
 
 ------------------------------------------------------------------------------
 import           Control.Lens
+import           Control.Monad
 import           Control.Monad.Fix
 import           Data.Default
 import           Data.Map (Map)
 import           Data.Text (Text)
+import qualified Data.Text as T
+import qualified GHCJS.DOM.Types as DOM
+import           Language.Javascript.JSaddle (MonadJSM, liftJSM, JSVal)
+import qualified Language.Javascript.JSaddle as JS
 import           Reflex
 import           Reflex.Dom
 ------------------------------------------------------------------------------
@@ -142,3 +149,39 @@ genericLoading = do
     divClass "ui active dimmer" $ do
       divClass "ui text loader" $
         text "Loading"
+
+-- | Copies the text content of a given node to the clipboard.
+copyButton
+  :: forall t m
+  . ( MonadJSM (Performable m), PerformEvent t m
+    , RawElement (DomBuilderSpace m) ~ DOM.Element
+    , DomBuilder t m
+    )
+  => RawElement (DomBuilderSpace m)
+  -> m (Event t ())
+copyButton e = do
+    onClick <- fmap (domEvent Click . fst) $ elAttr' "span" ("class" =: "clickable") $
+      elClass "button" "mini ui basic button" $ text "Copy"
+      --elClass "i" "copy icon" blank
+    performEvent_ $ jsCopy e <$ onClick
+    pure onClick
+  where
+
+    jsCopy :: forall m1. MonadJSM m1 => RawElement (DomBuilderSpace m) -> m1 ()
+    jsCopy eL = do
+      jsCopyFunc <- jsCopyVal
+      void $ liftJSM $ JS.call jsCopyFunc JS.obj [DOM.unElement eL]
+
+    jsCopyVal :: forall m1. MonadJSM m1 => m1 JSVal
+    jsCopyVal = liftJSM $ JS.eval $ T.unlines
+      [ "(function(e) {"
+      , " try {"
+      , "    var range = document.createRange();"
+      , "    range.selectNodeContents(e);"
+      , "    var selection = window.getSelection();"
+      , "    selection.removeAllRanges();"
+      , "    selection.addRange(range);"
+      , "    document.execCommand('copy');"
+      , " } catch(e) { console.log('Copy failed!'); return false; }"
+      , "})"
+      ]

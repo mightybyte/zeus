@@ -19,6 +19,7 @@ library
     , lens
     , lens-aeson
     , mtl
+    , obelisk-executable-config
     , obelisk-frontend
     , obelisk-generated-static
     , obelisk-route
@@ -43,6 +44,7 @@ library
     Frontend.Widgets.Common
     Frontend.Widgets.Jobs
     Frontend.Widgets.Form
+    Frontend.Widgets.Info
     Frontend.Widgets.Repos
     Frontend.Widgets.Settings
   ghc-options: -Wall

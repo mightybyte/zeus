@@ -33,6 +33,7 @@ import           Frontend.AppState
 import           Frontend.Common
 import           Frontend.Nav
 import           Frontend.Widgets.Accounts
+import           Frontend.Widgets.Info
 import           Frontend.Widgets.Jobs
 import           Frontend.Widgets.Repos
 import           Frontend.Widgets.Settings
@@ -56,11 +57,11 @@ appHead = do
                    "type" =: "image/svg+xml"
                   ) blank
 
+    css (static @"semantic.min.css")
+    css (static @"css/custom.css")
     --jsScript "https://cdnjs.cloudflare.com/ajax/libs/jquery/2.2.3/jquery.min.js"
     jsScript (static @"jquery-3.1.1.min.js")
     jsScript (static @"semantic.min.js")
-    css (static @"semantic.min.css")
-    css (static @"css/custom.css")
 
 css :: DomBuilder t m => Text -> m ()
 css url = elAttr "link" ("rel" =: "stylesheet" <> "type" =: "text/css" <> "href" =: url) blank
@@ -97,10 +98,11 @@ appBody = do
     nav
   divClass "ui main container" $ do
     subRoute_ $ \case
-      FR_Home -> text "Wizard" >> setRoute ((FR_Accounts :/ Crud_List :/ ()) <$ pb)
+      FR_Home -> setRoute ((FR_Jobs :/ Job_List :/ ()) <$ pb)
       FR_Jobs -> jobsWidget
       FR_Repos -> reposWidget
       FR_Accounts -> accountsWidget
+      FR_Info -> infoWidget
       FR_Settings -> settingsWidget
   serverAlert <- asks _as_serverAlert
   modalExample serverAlert

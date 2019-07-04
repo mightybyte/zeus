@@ -97,8 +97,10 @@ getSigningKey keyName = do
   let baseName = "zeus-cache-key"
       secretFile = baseName <> ".sec"
       publicFile = baseName <> ".pub"
-  secretExists <- doesFileExist secretFile
-  publicExists <- doesFileExist publicFile
+      secretPath = "config/backend/" <> secretFile
+      publicPath = "config/common/" <> publicFile
+  secretExists <- doesFileExist secretPath
+  publicExists <- doesFileExist publicPath
   when (not $ secretExists && publicExists) $ do
     let args =
           [ "--generate-binary-cache-key"
@@ -112,6 +114,8 @@ getSigningKey keyName = do
     case ec of
       ExitFailure c -> error $ printf "Error %d: Could not generate nix cache key" c
       ExitSuccess -> return ()
+    renameFile secretFile secretPath
+    renameFile publicFile publicPath
 
   Right secret <- readKeyFile secretFile
   Right public <- readKeyFile publicFile
@@ -160,6 +164,7 @@ enforceIpWhitelist whitelist = do
       when (not $ any (matchesCidr ip) whitelist) $ do
         liftIO $ putStrLn $ "Rejecting connection from " <> toS addr
         notFound "Not found"
+
 
 -- | Serve our dynconfigs file.
 serveBackendRoute :: ServerEnv -> R BackendRoute -> Snap ()
