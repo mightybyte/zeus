@@ -117,8 +117,8 @@ getSigningKey keyName = do
     renameFile secretFile secretPath
     renameFile publicFile publicPath
 
-  Right secret <- readKeyFile secretFile
-  Right public <- readKeyFile publicFile
+  Right secret <- readKeyFile secretPath
+  Right public <- readKeyFile publicPath
   return $ NixCacheKeyPair secret public
 
 backend :: Backend BackendRoute FrontendRoute
