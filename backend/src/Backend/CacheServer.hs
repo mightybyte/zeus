@@ -10,6 +10,7 @@ import           Control.Monad
 import           Control.Monad.Trans
 import qualified Data.ByteString as B
 import qualified Data.ByteString.Base16 as Base16
+import           Data.List
 import           Data.Maybe
 import           Data.Text (Text)
 import qualified Data.Text as T
@@ -79,16 +80,6 @@ nixCacheRoutes se ps = do
     [p] -> otherHandler se p
     _ -> notFound "File not found."
 
-  -- TODO Remove this after cache is working.
-  -- Logging all nar responses will get really big!
-  r <- getResponse
-  let logMsg = unlines
-        [ "------------"
-        , "Cache request: " <> show ps
-        , show r
-        ]
-  liftIO $ appendFile "cache-server.log" logMsg
-
 stripPath :: Text -> Text
 stripPath = T.takeWhileEnd (/= '/')
 
@@ -102,7 +93,7 @@ otherHandler se file = do
       vpRes <- liftIO $ query conn "select * from ValidPaths where path >= ? limit 1" (Only prefix)
       case vpRes of
         [vp] -> do
-          refs <- fmap (fmap fromOnly) $ liftIO $ query conn
+          refs <- fmap (sort . fmap fromOnly) $ liftIO $ query conn
             "select path from Refs join ValidPaths on reference = id where referrer = ?"
             (Only $ _validPath_id vp)
           let mf = fingerprintPath (_validPath_path vp)
@@ -111,12 +102,11 @@ otherHandler se file = do
                                    refs
           case mf of
             Left e -> do
-              liftIO $ putStrLn $ "In Left: " <> e
+              liftIO $ putStrLn $ "otherHandler in Left: " <> e
               modifyResponse $ setResponseStatus 500 "Error constructing fingerprint"
               writeText $ T.pack e
               getResponse >>= finishWith
             Right fingerprint -> do
-              liftIO $ putStrLn "In Right"
               modifyResponse (setContentType "text/x-nix-narinfo")
               writeText $ T.pack $ printf "StorePath: %s\n" (_validPath_path vp)
               writeText $ T.pack $ printf "URL: nar/%s.nar\n" hash
@@ -162,6 +152,7 @@ cacheInfoHandler = do
     , "Priority: 30"
     ]
 
+
 storePathForHash :: Text -> Text -> IO (Maybe Text)
 storePathForHash storeDir hash = do
   conn <- open nixSqliteDb
@@ -185,10 +176,10 @@ narHandler file = do
   case msp of
     Nothing -> notFound "No such path."
     Just sp -> do
-      writeText (sp <> "\n")
       case mnt of
         Nothing -> notFound "File not found."
         Just nt -> do
+          modifyResponse (setContentType "text/plain")
           let dumpCmd = T.pack $ printf "%s --dump '%s'" nixStore sp
           let cmd = case nt of
                       NarZipped -> dumpCmd <> " | " <> T.pack bzip2 <> " --fast"
