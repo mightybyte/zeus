@@ -19,7 +19,8 @@ infoWidget
   :: (MonadAppIO r t m, Prerender js t m)
   => m ()
 infoWidget = do
-  Just route <- fmap (fmap T.strip) $ liftIO $ ObConfig.get "config/common/route"
+  Just rootRoute <- fmap (fmap T.strip) $ liftIO $ ObConfig.get "config/common/route"
+  let route = rootRoute <> "/cache"
   Just pubkey <- fmap (fmap T.strip) $ liftIO $ ObConfig.get "config/common/zeus-cache-key.pub"
   _ <- prerender blank $ copyableValue "Cache Address" route
   _ <- prerender blank $ copyableValue "Cache Public Key" pubkey
@@ -29,8 +30,8 @@ infoWidget = do
 
 nixConfExample :: Text -> Text -> Text
 nixConfExample addr pubkey = T.unlines
-  [ "substituters = " <> addr
-  , "trusted-public-keys = " <> pubkey
+  [ "substituters = " <> addr <> " https://cache.nixos.org/"
+  , "trusted-public-keys = " <> pubkey <> " cache.nixos.org-1:6NCHdD59X431o0gWypbMrAU"
   ]
 
 copyableValue
