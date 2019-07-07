@@ -2,8 +2,7 @@
 
 ## Introduction
 
-Zeus is a CI server. You can use it to CI anything, but it is designed for the
-purpose of doing CI with Nix projects.
+Zeus is a no-fuss production quality CI server for Nix projects.
 
 Mainstream CI providers are not well suited for Nix projects. Because they run
 on ephemeral containers that are created fresh each time you build, you have to
@@ -16,9 +15,26 @@ caching, it's even worse.
 After trying many different providers we concluded that you really need
 dedicated build machines for Nix projects. This allows you to get blazing fast
 builds because all the build artifacts are kept in the build machine's nix store
-across builds and you get perfect dependency caching out of the box.
+across builds. You get perfect dependency caching out of the box with minimal
+rebuilding or transferring cached data over the network.
 
-Zeus makes it drop dead simple to get blazing fast CI for Nix projects.
+### Features
+
+Zeus makes it drop dead simple to get blazing fast CI for Nix projects *today* by
+providing the following features:
+
+* Automatically sets up webhooks for both GitHub and GitLab repositories.
+* All builds made available as a Nix binary cache so all your infrastructure
+  from development to deployment rebuilds as little as possible.
+* Organizations with closed source software can limit server and cache access to
+  specific IP addresses / subnets.
+
+### Roadmap
+
+The following features are planned for the very near future:
+
+* Support for pushing build outputs to a Nix cache hosted on S3
+* Ability to distribute builds to multiple build slaves
 
 ## Installing
 

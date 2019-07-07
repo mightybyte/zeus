@@ -19,8 +19,8 @@ infoWidget
   :: (MonadAppIO r t m, Prerender js t m)
   => m ()
 infoWidget = do
-  Just rootRoute <- fmap (fmap T.strip) $ liftIO $ ObConfig.get "config/common/route"
-  let route = rootRoute <> "/cache"
+  Just rootRoute <- liftIO $ ObConfig.get "config/common/route"
+  let route = T.strip rootRoute <> "/cache/"
   Just pubkey <- fmap (fmap T.strip) $ liftIO $ ObConfig.get "config/common/zeus-cache-key.pub"
   _ <- prerender blank $ copyableValue "Cache Address" route
   _ <- prerender blank $ copyableValue "Cache Public Key" pubkey
