@@ -293,11 +293,13 @@ statusWidget job = do
     let cfg = def & buttonConfig_color .~ Static (Just $ statusColor status)
                   & buttonConfig_basic .~ Static True
                   & buttonConfig_elConfig . classes .~ Static (Classes ["jobstatus"])
-    click <- SemUI.button cfg $ do
-      icon (Static $ statusIcon status) def
-      text $ statusMessage status
-    triggerBatch trigger_subscribeOutput $ [BuildJobId $ _buildJob_id job] <$ click
-    setRoute $ (FR_Jobs :/ Job_Output :/ _buildJob_id job) <$ click
+    _ <- elAttr "a" ("href" =: ("/raw/" <> tshow (_buildJob_id job) <> ".txt") <>
+                     "target" =: "_blank") $ do
+      SemUI.button cfg $ do
+        icon (Static $ statusIcon status) def
+        text $ statusMessage status
+      -- triggerBatch trigger_subscribeOutput $ [BuildJobId $ _buildJob_id job] <$ click
+      -- setRoute $ (FR_Jobs :/ Job_Output :/ _buildJob_id job) <$ click
     return never
 
 statusColor :: JobStatus -> Color

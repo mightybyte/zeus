@@ -65,6 +65,7 @@ data BackendRoute :: * -> * where
   BackendRoute_Missing :: BackendRoute ()
   BackendRoute_Hook :: BackendRoute (R HookRoute)
   BackendRoute_Ping :: BackendRoute ()
+  BackendRoute_RawBuildOut :: BackendRoute Text
   BackendRoute_Websocket :: BackendRoute ()
 
 data FrontendRoute :: * -> * where
@@ -104,6 +105,7 @@ backendRouteEncoder =
       BackendRoute_Missing -> PathSegment "missing" $ unitEncoder mempty
       BackendRoute_Hook -> PathSegment "hook" hookRouteEncoder
       BackendRoute_Ping -> PathSegment "ping" $ unitEncoder mempty
+      BackendRoute_RawBuildOut -> PathSegment "raw" singlePathSegmentEncoder
       BackendRoute_Websocket -> PathSegment "ws" $ unitEncoder mempty
     InR obeliskRoute -> obeliskRouteSegment obeliskRoute $ \case
       -- The encoder given to PathEnd determines how to parse query parameters,

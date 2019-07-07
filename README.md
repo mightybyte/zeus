@@ -20,7 +20,7 @@ rebuilding or transferring cached data over the network.
 
 ### Features
 
-Zeus makes it drop dead simple to get blazing fast CI for Nix projects *today* by
+Zeus makes it drop dead simple to get blazing fast CI for Nix projects **today** by
 providing the following features:
 
 * Automatically sets up webhooks for both GitHub and GitLab repositories.
@@ -35,6 +35,7 @@ The following features are planned for the very near future:
 
 * Support for pushing build outputs to a Nix cache hosted on S3
 * Ability to distribute builds to multiple build slaves
+* Proper support for merge requests and control of GitHub/GitLab status lights
 
 ## Installing
 

@@ -213,7 +213,7 @@ buildThread se ecMVar rng repo ca bm = do
   let cloneDir = printf "/tmp/zeus-builds/%s" buildId :: String
   createDirectoryIfMissing True cloneDir
   createDirectoryIfMissing True buildOutputDir
-  let outputFile = printf "%s/%d.output" buildOutputDir jid
+  let outputFile = printf "%s/%d.txt" buildOutputDir jid
   printf "Writing build output to %s\n" outputFile
   withLogHandle outputFile $ \lh  -> do
     let cloneCmd = printf "%s clone %s" gitBinary url

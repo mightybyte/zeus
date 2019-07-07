@@ -42,6 +42,7 @@ import qualified Obelisk.ExecutableConfig as ObConfig
 import           Obelisk.Route
 import           Scrub
 import           Snap.Core
+import           Snap.Util.FileServe
 import           System.Directory
 import           System.Exit
 import           System.FilePath
@@ -165,7 +166,6 @@ enforceIpWhitelist whitelist = do
         liftIO $ putStrLn $ "Rejecting connection from " <> toS addr
         notFound "Not found"
 
-
 -- | Serve our dynconfigs file.
 serveBackendRoute :: ServerEnv -> R BackendRoute -> Snap ()
 serveBackendRoute env = \case
@@ -179,6 +179,9 @@ serveBackendRoute env = \case
     addr <- getsRequest rqClientAddr
     writeText $ "CLIENT ADDR: " <> toS addr <> "\n"
     writeText "PONG\nPONG\nPONG\n"
+  BackendRoute_RawBuildOut :=> Identity outputFile -> do
+    modifyResponse (addHeader "Content-Disposition" "inline")
+    serveFileAs "text/plain" (T.unpack $ "log/builds/" <> outputFile)
   BackendRoute_Websocket :=> _ -> do
     enforceIpWhitelist (_beSettings_ipWhitelist $ _serverEnv_settings env)
     wsHandler $ \conn -> do
@@ -229,7 +232,7 @@ talkClient env cid conn = do
 
 subscribeJob :: ServerEnv -> ConnId -> BuildJobId -> IO ()
 subscribeJob env connId jid@(BuildJobId jidInt) = do
-    output <- liftIO $ T.readFile (buildOutputDir </> show jidInt <> ".output")
+    output <- liftIO $ T.readFile (buildOutputDir </> show jidInt <> ".txt")
     sendToConnId (_serverEnv_connRepo env) connId $ Down_JobOutput (jid, output)
     atomicModifyIORef' (_serverEnv_buildListeners env) $ \m ->
       (M.adjust (S.insert connId) jidInt m, ())
