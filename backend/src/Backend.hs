@@ -337,7 +337,7 @@ addRepo
   -> IO ()
 addRepo env wsConn
         (Repo _ (ConnectedAccountId (Just o)) (Just n) (Just ns)
-              (Just c) (Just nf) (Just t) _) = do
+              (Just nf) (Just t) _) = do
   mca <- beamQuery env $ do
     runSelectReturningOne $ select $ do
       account <- all_ (ciDb ^. ciDb_connectedAccounts)
@@ -351,7 +351,6 @@ addRepo env wsConn
                   (ConnectedAccountId $ val_ o)
                   (val_ n)
                   (val_ ns)
-                  (val_ c)
                   (val_ nf)
                   (val_ t)
                   (val_ hid)

@@ -35,12 +35,6 @@ class Formable t m a where
 --           map (\a -> (a, text $ tshow a)) [GitHub, GitLab]
 --    return $ value v
 
---instance Formable t m (Maybe CloneMethod) where
---  aForm iv sv = do
---    v <- SemUI.dropdown def iv sv $ TaggedStatic $ M.fromList $
---           map (\a -> (a, text $ tshow a)) [HttpClone, SshClone]
---    return $ value v
-
 instance (Ord a, Enum a, Bounded a, Humanizable a, Prerender js t m) => Formable t m (Maybe a) where
   aForm iv sv = do
     v <- prerender (pure $ pure $ Just minBound) $ fmap value $ SemUI.dropdown def iv sv $ TaggedStatic $ M.fromList $

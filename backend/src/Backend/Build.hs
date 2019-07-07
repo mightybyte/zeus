@@ -205,9 +205,7 @@ buildThread se ecMVar rng repo ca bm = do
   tok <- randomToken 8 rng
   let user = _connectedAccount_name ca
   let pass = _connectedAccount_accessToken ca
-  let url = case _repo_cloneMethod repo of
-              SshClone -> _rbi_cloneUrlSsh rbi
-              HttpClone -> addCloneCreds user pass (_rbi_cloneUrlHttp rbi)
+  let url = addCloneCreds user pass (_rbi_cloneUrlHttp rbi)
   let timeStr = formatTime defaultTimeLocale "%Y%m%d%H%M%S" start
   let buildId = printf "build-%s-%s" timeStr (toS tok :: String) :: String
   let cloneDir = printf "/tmp/zeus-builds/%s" buildId :: String

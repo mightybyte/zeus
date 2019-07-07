@@ -68,7 +68,6 @@ reposList as = do
   _ <- genericTableG def as
     [ ("ID", textDynColumn (tshow . _repo_id))
     , ("Full Name", textDynColumn $ repoFullName)
-    , ("Clone Method", textDynColumn $ tshow . _repo_cloneMethod)
     , ("Nix File", textDynColumn $ _repo_buildNixFile)
     , ("Timeout", textDynColumn (tshow . _repo_timeout))
     , ("", \k _ -> deleteColumn trigger_delRepos k)
@@ -90,7 +89,7 @@ addRepo = do
       return ()
 
 unfilledRepo :: RepoT Maybe
-unfilledRepo = Repo Nothing (ConnectedAccountId Nothing) Nothing Nothing Nothing Nothing Nothing Nothing
+unfilledRepo = Repo Nothing (ConnectedAccountId Nothing) Nothing Nothing Nothing Nothing Nothing
 
 newRepoForm
   :: MonadAppIO r t m
@@ -148,7 +147,7 @@ newRepoForm iv sv = do
           Just a -> do
             let aid = _connectedAccount_id a
                 maid = ConnectedAccountId $ Just aid
-             in Repo Nothing maid (Just rn) (Just rns) (Just HttpClone) (Just nf) t Nothing
+             in Repo Nothing maid (Just rn) (Just rns) (Just nf) t Nothing
 
 accountDropdown
   :: forall r t m. MonadApp r t m
@@ -193,5 +192,5 @@ mkFullName GitHub owner name = owner <> "/" <> name
 mkFullName GitLab owner name = owner <> "/" <> name
 
 isValidRepo :: RepoT Maybe -> Bool
-isValidRepo (Repo _ (ConnectedAccountId (Just _)) (Just _) (Just _) (Just _) (Just _) (Just _) _) = True
+isValidRepo (Repo _ (ConnectedAccountId (Just _)) (Just _) (Just _) (Just _) (Just _) _) = True
 isValidRepo _ = False

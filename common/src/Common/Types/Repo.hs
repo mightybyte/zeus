@@ -19,31 +19,11 @@ module Common.Types.Repo where
 ------------------------------------------------------------------------------
 import           Data.Aeson
 import           Data.Text (Text)
-import qualified Data.Text as T
 import           Database.Beam
-import           Database.Beam.Backend.SQL
-import           Database.Beam.Backend.Types
-import           Database.Beam.Migrate
 ------------------------------------------------------------------------------
 import           Common.Types.ConnectedAccount
 ------------------------------------------------------------------------------
 
-data CloneMethod = HttpClone | SshClone
-  deriving (Eq,Ord,Show,Read,Enum,Bounded,Generic)
-
-instance ToJSON CloneMethod where
-    toEncoding = genericToEncoding defaultOptions
-
-instance FromJSON CloneMethod
-
-instance HasSqlValueSyntax be String => HasSqlValueSyntax be CloneMethod where
-  sqlValueSyntax = autoSqlValueSyntax
-
-instance BeamMigrateSqlBackend be => HasDefaultSqlDataType be CloneMethod where
-  defaultSqlDataType _ _ _ = varCharType Nothing Nothing
-
-instance (BeamBackend be, FromBackendRow be Text) => FromBackendRow be CloneMethod where
-  fromBackendRow = read . T.unpack <$> fromBackendRow
 
 ------------------------------------------------------------------------------
 data RepoT f = Repo
@@ -54,7 +34,6 @@ data RepoT f = Repo
   , _repo_namespace :: C f Text
   -- ^ With GitHub repos this is always the repository name.  With gitlab it
   -- can be a deeper nested path of groups /foo/bar/baz/repo
-  , _repo_cloneMethod :: C f CloneMethod
   , _repo_buildNixFile :: C f Text
   , _repo_timeout :: C f Int
   -- ^ Build timeout in seconds
@@ -66,15 +45,14 @@ repoFullName :: Repo -> Text
 repoFullName r = _repo_namespace r <> "/" <> _repo_name r
 
 repoToMaybe :: RepoT Identity -> RepoT Maybe
-repoToMaybe (Repo i (ConnectedAccountId o) on rn c bf t h) = Repo (Just i)
-    (ConnectedAccountId $ Just o) (Just on) (Just rn) (Just c) (Just bf) (Just t) (Just h)
+repoToMaybe (Repo i (ConnectedAccountId o) on rn bf t h) = Repo (Just i)
+    (ConnectedAccountId $ Just o) (Just on) (Just rn) (Just bf) (Just t) (Just h)
 
 Repo
   (LensFor repo_id)
   (ConnectedAccountId (LensFor repo_accessAccount))
   (LensFor repo_name)
   (LensFor repo_namespace)
-  (LensFor rep_cloneMethod)
   (LensFor repo_buildNixFile)
   (LensFor repo_timeout)
   (LensFor repo_hookId)
