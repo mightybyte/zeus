@@ -46,7 +46,6 @@ import           Common.Api
 import           Common.Types.ConnectedAccount
 import           Backend.Types.ConnRepo
 import           Common.Types.BuildJob
-import           Common.Types.BuildMsg
 import           Common.Types.CiSettings
 import           Common.Types.JobStatus
 import           Common.Types.ProcMsg
@@ -54,60 +53,74 @@ import           Common.Types.Repo
 import           Common.Types.RepoBuildInfo
 ------------------------------------------------------------------------------
 
+getNextJob :: ServerEnv -> IO (Maybe BuildJob)
+getNextJob se = do
+  beamQueryConn (_serverEnv_db se) $
+    runSelectReturningOne $
+    select $
+    orderBy_ (asc_ . _buildJob_id) $ do
+      job <- all_ (_ciDb_buildJobs ciDb)
+      guard_ (job ^. buildJob_status ==. (val_ JobPending))
+      return job
+
+
 buildManagerThread :: ServerEnv -> IO ()
 buildManagerThread se = do
   let dbConn = _serverEnv_db se
-      buildQueue = _serverEnv_buildQueue se
   rng <- mkRNG
   forever $ do
-    msg <- atomically $ readTQueue buildQueue
-    let rbi = _buildMsg_repoBuildInfo msg
-    case _rbi_repoEvent rbi of
-      RepoPullRequest ->
-        printf "Ignoring pull request message on %s/%s commit %s\n"
-               (_rbi_repoNamespace rbi) (_rbi_repoName rbi) (_rbi_commitHash rbi)
-      RepoPush -> do
-        printf "Got push message on %s/%s\n"
-               (_rbi_repoNamespace rbi) (_rbi_repoName rbi)
-        printf "Pushed commit %s to %s\n"
-               (_rbi_commitHash rbi) (_rbi_gitRef rbi)
-        ras <- runBeamSqlite dbConn $
-          runSelectReturningList $ select $ do
-            account <- all_ (_ciDb_connectedAccounts ciDb)
-            repo <- all_ (_ciDb_repos ciDb)
-            guard_ (_repo_name repo ==. val_ (_rbi_repoName rbi))
-            guard_ (account ^. connectedAccount_id ==. repo ^. repo_accessAccount)
-            return (repo, account)
-        case ras of
-          [] -> putStrLn "Warning: Got a webhook for a repo that is not in our DB.  Is the DB corrupted?"
-          [(r,a)] -> runBuild se rng r a msg
-          _ -> printf "Warning: Got more repos than expected.  Why isn't %s/%s unique?\n"
-                      (_rbi_repoNamespace rbi) (_rbi_repoName rbi)
+    mjob <- getNextJob se
+    putStrLn $ "***************** getNextJob returned " <> show mjob
+    case mjob of
+      Nothing -> threadDelay 5000000
+      Just job -> do
+        let rbi = _buildJob_repoBuildInfo job
+        case _rbi_repoEvent rbi of
+          RepoPullRequest ->
+            printf "Ignoring pull request message on %s/%s commit %s\n"
+                   (_rbi_repoNamespace rbi) (_rbi_repoName rbi) (_rbi_commitHash rbi)
+          RepoPush -> do
+            printf "Got push message on %s/%s\n"
+                   (_rbi_repoNamespace rbi) (_rbi_repoName rbi)
+            printf "Pushed commit %s to %s\n"
+                   (_rbi_commitHash rbi) (_rbi_gitRef rbi)
+            ras <- runBeamSqlite dbConn $
+              runSelectReturningList $ select $ do
+                account <- all_ (_ciDb_connectedAccounts ciDb)
+                repo <- all_ (_ciDb_repos ciDb)
+                guard_ (_repo_name repo ==. val_ (_rbi_repoName rbi))
+                guard_ (account ^. connectedAccount_id ==. repo ^. repo_accessAccount)
+                return (repo, account)
+            case ras of
+              [] -> putStrLn "Warning: Got a webhook for a repo that is not in our DB.  Is the DB corrupted?"
+              [(r,a)] -> runBuild se rng r a job
+              _ -> printf "Warning: Got more repos than expected.  Why isn't %s/%s unique?\n"
+                          (_rbi_repoNamespace rbi) (_rbi_repoName rbi)
 
 runBuild
   :: ServerEnv
   -> RNG
   -> Repo
   -> ConnectedAccount
-  -> BuildMsg
+  -> BuildJob
   -> IO ()
-runBuild se rng repo ca msg = do
+runBuild se rng repo ca incomingJob = do
   let dbConn = _serverEnv_db se
       connRepo = _serverEnv_connRepo se
   start <- getCurrentTime
-  runBeamSqliteDebug putStrLn dbConn $ do
+  runBeamSqlite dbConn $ do
     runUpdate $
       update (_ciDb_buildJobs ciDb)
              (\job -> mconcat
                         [ job ^. buildJob_startedAt <-. val_ (Just start)
                         , job ^. buildJob_status <-. val_ JobInProgress ])
-             (\job -> _buildJob_id job ==. val_ (_buildMsg_jobId msg))
+             (\job -> _buildJob_id job ==. val_ (_buildJob_id incomingJob))
     return ()
   broadcastJobs dbConn connRepo
 
   ecMVar <- newEmptyMVar
-  wtid <- mkWeakThreadId =<< forkIO (buildThread se ecMVar rng repo ca msg)
-  let jobId = fromIntegral $ _buildMsg_jobId msg
+  wtid <- mkWeakThreadId =<< forkIO (buildThread se ecMVar rng repo ca incomingJob)
+  let jobId = fromIntegral $ _buildJob_id incomingJob
   atomicModifyIORef (_serverEnv_buildThreads se) $ \m ->
     (M.insert jobId wtid m, ())
   jobStatus <- threadWatcher
@@ -117,13 +130,13 @@ runBuild se rng repo ca msg = do
     ecMVar wtid jobId
 
   end <- getCurrentTime
-  runBeamSqliteDebug putStrLn dbConn $ do
+  runBeamSqlite dbConn $ do
     runUpdate $
       update (_ciDb_buildJobs ciDb)
              (\job -> mconcat
                         [ job ^. buildJob_endedAt <-. val_ (Just end)
                         , job ^. buildJob_status <-. val_ jobStatus ])
-             (\job -> _buildJob_id job ==. val_ (_buildMsg_jobId msg))
+             (\job -> _buildJob_id job ==. val_ (_buildJob_id incomingJob))
 
   broadcastJobs dbConn connRepo
   return ()
@@ -196,12 +209,12 @@ buildThread
   -> RNG
   -> Repo
   -> ConnectedAccount
-  -> BuildMsg
+  -> BuildJob
   -> IO ()
-buildThread se ecMVar rng repo ca bm = do
+buildThread se ecMVar rng repo ca job = do
   start <- getCurrentTime
-  let rbi = _buildMsg_repoBuildInfo bm
-  let jid = _buildMsg_jobId bm
+  let rbi = _buildJob_repoBuildInfo job
+  let jid = _buildJob_id job
   tok <- randomToken 8 rng
   let user = _connectedAccount_name ca
   let pass = _connectedAccount_accessToken ca

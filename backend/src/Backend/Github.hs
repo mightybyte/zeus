@@ -62,7 +62,7 @@ handleValidatedHook env event body = do
       Just "push" -> mkPushRBI =<< eitherDecodeStrict (toS body)
       _ -> Left "Event not supported"
 
-    ExceptT $ scheduleBuild env rbi
+    lift $ scheduleBuild env rbi
   case res of
     Left e -> putStrLn e
     Right _ -> return ()

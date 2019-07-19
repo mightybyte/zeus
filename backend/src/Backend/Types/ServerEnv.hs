@@ -4,7 +4,6 @@ module Backend.Types.ServerEnv where
 
 ------------------------------------------------------------------------------
 import           Control.Concurrent
-import           Control.Concurrent.STM.TQueue
 import           Data.IORef
 import           Data.Map (Map)
 import           Data.Set (Set)
@@ -16,7 +15,6 @@ import           System.Mem.Weak
 import           Backend.Types.BackendSettings
 import           Backend.Types.ConnRepo
 import           Backend.Types.NixCacheKeyPair
-import           Common.Types.BuildMsg
 import           Common.Types.CiSettings
 ------------------------------------------------------------------------------
 
@@ -33,7 +31,6 @@ data ServerEnv = ServerEnv
   -- ^ The secret token this server requires to determine legitimacy of
   -- incoming requests
   , _serverEnv_db :: Connection
-  , _serverEnv_buildQueue :: TQueue BuildMsg
   , _serverEnv_connRepo :: ConnRepo
   -- ^ Websocket connection repo that allows job updates to be pushed
   , _serverEnv_buildThreads :: IORef (Map Int (Weak ThreadId))
@@ -46,4 +43,4 @@ beamQuery :: ServerEnv -> SqliteM a -> IO a
 beamQuery env = beamQueryConn (_serverEnv_db env)
 
 beamQueryConn :: Connection -> SqliteM a -> IO a
-beamQueryConn conn f = runBeamSqliteDebug putStrLn conn f
+beamQueryConn conn f = runBeamSqlite conn f

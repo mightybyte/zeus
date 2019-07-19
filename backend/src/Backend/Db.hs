@@ -73,7 +73,7 @@ populateDb conn = do
               "a8cd23" "Dummy commit" "Alice Coder"
               (Just "https://secure.gravatar.com/avatar/0cece5abd2f9ad9056f5ac3830ac0bfe?s=80&d=identicon")
       start = addUTCTime (-82) now
-  runBeamSqliteDebug putStrLn conn $ do
+  runBeamSqlite conn $ do
     runInsert $ insert (_ciDb_buildJobs ciDb) $ insertExpressions
       [ BuildJob default_ (val_ rbi) (val_ start) (val_ $ Just start) (val_ $ Just now) (val_ JobSucceeded)
       ]
@@ -84,4 +84,5 @@ Migration for removing clone method column
 ALTER TABLE "ciDb_repos" RENAME TO "ciDb_repos_old_0";
 CREATE TABLE IF NOT EXISTS "ciDb_repos"("repo_id" INTEGER NOT NULL , "repo_accessAccount__connectedAccount_id" INTEGER NOT NULL , "repo_name" VARCHAR NOT NULL , "repo_namespace" VARCHAR NOT NULL , "repo_buildNixFile" VARCHAR NOT NULL , "repo_timeout" INTEGER NOT NULL , "repo_hookId" INTEGER NOT NULL , PRIMARY KEY("repo_id"));
 INSERT INTO "ciDb_repos" SELECT "repo_id", "repo_accessAccount__connectedAccount_id", "repo_name", "repo_namespace", "repo_buildNixFile", "repo_timeout", "repo_hookId" FROM "ciDb_repos_old_0";
+DROP TABLE ciDb_repos_old_0;
 -}

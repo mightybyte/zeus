@@ -9,7 +9,6 @@ module Backend where
 
 ------------------------------------------------------------------------------
 import           Control.Concurrent
-import           Control.Concurrent.STM
 import           Control.Error
 import qualified Control.Exception as E
 import           Control.Lens
@@ -66,7 +65,6 @@ import           Backend.WsUtils
 import           Common.Api
 import           Common.Route
 import           Common.Types.BuildJob
-import           Common.Types.BuildMsg
 import           Common.Types.CiSettings
 import           Common.Types.ConnectedAccount
 import           Common.Types.JobStatus
@@ -132,7 +130,6 @@ backend = Backend
       runBeamSqlite dbConn $ autoMigrate migrationBackend ciDbChecked
       appRoute <- getAppRoute
       secretToken <- getSecretToken
-      buildQueue <- atomically newTQueue
       connRepo <- newConnRepo
       buildThreads <- newIORef mempty
       let settingsFile = "config/backend/settings.json" :: String
@@ -147,7 +144,7 @@ backend = Backend
       cs <- newIORef $ CiSettings "nixpkgs=/nix/var/nix/profiles/per-user/root/channels/nixos"
       let appDomain = T.takeWhile (\c -> c /= ':' && c /= '/') $ T.drop 3 $ snd $ T.breakOn "://" appRoute
       keyPair <- getSigningKey $ T.unpack $ appDomain <> "-1"
-      let env = ServerEnv appRoute settings secretToken dbConn buildQueue
+      let env = ServerEnv appRoute settings secretToken dbConn
                           connRepo buildThreads listeners cs keyPair
       _ <- forkIO $ buildManagerThread env
       serve $ serveBackendRoute env
@@ -252,10 +249,10 @@ rerunJob se (BuildJobId jid) = do
         return job
     case mjob of
       Nothing -> printf "Job ID %d does not exist\n" jid
-      Just job -> do
+      Just _ -> do
         printf "Re-running job %d\n" jid
         t <- getCurrentTime
-        runBeamSqliteDebug putStrLn dbConn $ do
+        runBeamSqlite dbConn $ do
           runUpdate $
             update (_ciDb_buildJobs ciDb)
                    (\j -> mconcat
@@ -265,8 +262,6 @@ rerunJob se (BuildJobId jid) = do
                             , j ^. buildJob_status <-. val_ JobPending ])
                    (\j -> _buildJob_id j ==. val_ jid)
           return ()
-        void $ atomically $ writeTQueue (_serverEnv_buildQueue se) $
-          BuildMsg (_buildJob_id job) (_buildJob_repoBuildInfo job)
 
 cancelJobAndRemove :: ServerEnv -> BuildJobId -> IO ()
 cancelJobAndRemove env (BuildJobId jid) = do
@@ -284,7 +279,7 @@ cancelJobAndRemove env (BuildJobId jid) = do
 
 updateJobStatus :: ServerEnv -> Int -> JobStatus -> IO ()
 updateJobStatus env jid status =
-    runBeamSqliteDebug putStrLn (_serverEnv_db env) $ do
+    runBeamSqlite (_serverEnv_db env) $ do
       runUpdate $
         update (_ciDb_buildJobs ciDb)
                (\job -> job ^. buildJob_status <-. val_ status)

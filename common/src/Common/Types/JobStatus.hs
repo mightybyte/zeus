@@ -38,6 +38,7 @@ data JobStatus
   | JobSucceeded
   deriving (Eq,Ord,Show,Read,Enum,Bounded,Generic)
 
+instance BeamMigrateSqlBackend be => HasSqlEqualityCheck be JobStatus
 
 instance HasSqlValueSyntax be String => HasSqlValueSyntax be JobStatus where
   sqlValueSyntax = autoSqlValueSyntax

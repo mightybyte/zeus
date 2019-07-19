@@ -32,7 +32,6 @@ library
     Common.Types.CiSettings
     Common.Types.ConnectedAccount
     Common.Types.BuildJob
-    Common.Types.BuildMsg
     Common.Types.Builder
     Common.Types.JobStatus
     Common.Types.ProcMsg
