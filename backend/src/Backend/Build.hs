@@ -70,7 +70,6 @@ buildManagerThread se = do
   rng <- mkRNG
   forever $ do
     mjob <- getNextJob se
-    putStrLn $ "***************** getNextJob returned " <> show mjob
     case mjob of
       Nothing -> threadDelay 5000000
       Just job -> do
