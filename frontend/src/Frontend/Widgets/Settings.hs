@@ -1,9 +1,13 @@
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE ScopedTypeVariables #-}
 module Frontend.Widgets.Settings where
 
 ------------------------------------------------------------------------------
 import           Control.Monad.Reader
+import           Data.Maybe
+import           Data.Text (Text)
+import qualified Data.Text as T
 import           Reflex.Dom
 import           Reflex.Network
 ------------------------------------------------------------------------------
@@ -53,4 +57,53 @@ settingsForm iv sv = do
         & inputElementConfig_initialValue .~ _ciSettings_nixPath iv
         & inputElementConfig_setValue .~ (_ciSettings_nixPath <$> sv)
       return $ value ie
-    return (CiSettings <$> dnp)
+    useS3Cache <- divClass "field" $ do
+      divClass "ui checkbox" $ do
+        v <- checkbox (isJust $ _ciSettings_s3Cache iv) $ def
+          & setValue .~ (isJust . _ciSettings_s3Cache <$> sv)
+        el "label" $ text "Use S3 Cache"
+        return v
+    res <- networkView (s3CacheWidget (_ciSettings_s3Cache iv) (_ciSettings_s3Cache <$> sv) <$> value useS3Cache)
+    cache <- join <$> holdDyn (constDyn $ _ciSettings_s3Cache iv) res
+    return (CiSettings 0 <$> dnp <*> cache)
+
+s3CacheWidget
+  :: MonadApp r t m
+  => Maybe S3Cache
+  -> Event t (Maybe S3Cache)
+  -> Bool
+  -> m (Dynamic t (Maybe S3Cache))
+s3CacheWidget _ _ False = return $ constDyn Nothing
+s3CacheWidget iv sv True = do
+    db :: Dynamic t Text <- divClass "field" $ do
+      el "label" $ text "Bucket"
+      v <- inputElement $ def
+        & inputElementConfig_initialValue .~ maybe "" _s3Cache_bucket iv
+        & inputElementConfig_setValue .~ (maybe "" _s3Cache_bucket <$> sv)
+      return $ value v
+    dr <- divClass "field" $ do
+      el "label" $ text "Region"
+      v <- inputElement $ def
+        & inputElementConfig_initialValue .~ maybe "" _s3Cache_region iv
+        & inputElementConfig_setValue .~ (maybe "" _s3Cache_region <$> sv)
+      return $ value v
+    dak <- divClass "field" $ do
+      el "label" $ text "Access Key"
+      v <- inputElement $ def
+        & inputElementConfig_initialValue .~ maybe "" _s3Cache_accessKey iv
+        & inputElementConfig_setValue .~ (maybe "" _s3Cache_accessKey <$> sv)
+      return $ value v
+    dsk <- divClass "field" $ do
+      el "label" $ text "Secret Key"
+      v <- inputElement $ def
+        & inputElementConfig_initialValue .~ maybe "" _s3Cache_secretKey iv
+        & inputElementConfig_setValue .~ (maybe "" _s3Cache_secretKey <$> sv)
+      return $ value v
+    return $ do
+      b <- db
+      r <- dr
+      ak <- dak
+      sk <- dsk
+      if any T.null [b, r, ak, sk]
+        then pure Nothing
+        else pure $ Just $ S3Cache b r ak sk

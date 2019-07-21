@@ -30,6 +30,7 @@ import           Database.Beam.Migrate.Simple
 import           Database.Beam.Sqlite.Connection
 import           Database.SQLite.Simple
 ------------------------------------------------------------------------------
+import           Common.Types.CiSettings
 import           Common.Types.ConnectedAccount
 import           Common.Types.Builder
 import           Common.Types.BuildJob
@@ -44,6 +45,7 @@ data CiDb f = CiDb
   , _ciDb_repos :: f (TableEntity RepoT)
   , _ciDb_builders :: f (TableEntity BuilderT)
   , _ciDb_buildJobs :: f (TableEntity BuildJobT)
+  , _ciDb_ciSettings :: f (TableEntity CiSettingsT)
   } deriving (Generic, Database be)
 
 --ciDbChecked :: BeamMigrateSqlBackend be => CheckedDatabaseSettings be CiDb
@@ -61,6 +63,7 @@ CiDb (TableLens ciDb_connectedAccounts)
      (TableLens ciDb_repos)
      (TableLens ciDb_builders)
      (TableLens ciDb_buildJobs)
+     (TableLens ciDb_ciSettings)
      = dbLenses
 
 populateDb :: Connection -> IO ()

@@ -28,6 +28,7 @@ import qualified Data.Text.Encoding as T
 import           Data.Time
 import           Database.Beam
 import           Database.Beam.Sqlite
+import           Database.SQLite.Simple
 import           System.Directory
 import           System.Environment
 import           System.Exit
@@ -202,6 +203,24 @@ addCloneCreds :: Text -> Text -> Text -> Text
 addCloneCreds user pass url =
   T.replace "://" ("://" <> user <> ":" <> pass <> "@") url
 
+getCiSettings :: Connection -> IO (Maybe CiSettings)
+getCiSettings dbConn = do
+  beamQueryConn dbConn $
+    runSelectReturningOne $ select $ do
+      ci <- all_ (_ciDb_ciSettings ciDb)
+      guard_ (ci ^. ciSettings_id ==. (val_ 0))
+      return ci
+
+setCiSettings :: Connection -> CiSettings -> IO ()
+setCiSettings dbConn (CiSettings _ np c) = do
+  beamQueryConn dbConn $
+    runUpdate $
+      update (_ciDb_ciSettings ciDb)
+             (\ci -> mconcat
+                        [ ci ^. ciSettings_nixPath <-. val_ np
+                        , ci ^. ciSettings_s3Cache <-. val_ c ])
+             (\ci -> _ciSettings_id ci ==. val_ 0)
+
 buildThread
   :: ServerEnv
   -> MVar ExitCode
@@ -245,7 +264,7 @@ buildThread se ecMVar rng repo ca job = do
       _ <- runCmd2 checkout repoDir Nothing saveAndSend
       let buildCmd = printf "%s --show-trace %s" nixBuildBinary (_repo_buildNixFile repo)
       e <- liftIO getEnvironment
-      cs <- liftIO $ readIORef (_serverEnv_ciSettings se)
+      Just cs <- liftIO $ getCiSettings (_serverEnv_db se)
       let buildEnv = M.toList $ M.insert "NIX_PATH" (toS $ _ciSettings_nixPath cs) $ M.fromList e
       liftIO $ saveAndSendStr CiMsg $ "Building with the following environment:"
       liftIO $ saveAndSendStr CiMsg $ T.pack $ show buildEnv

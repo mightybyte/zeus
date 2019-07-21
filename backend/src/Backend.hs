@@ -128,6 +128,13 @@ backend = Backend
       -- very low priority.
       dbConn <- open dbConnectInfo
       runBeamSqlite dbConn $ autoMigrate migrationBackend ciDbChecked
+      mcs <- getCiSettings dbConn
+      cs <- case mcs of
+        Nothing -> do
+          let c = CiSettings 0 "nixpkgs=/nix/var/nix/profiles/per-user/root/channels/nixos" Nothing
+          setCiSettings dbConn c
+          return c
+        Just c -> return c
       appRoute <- getAppRoute
       secretToken <- getSecretToken
       connRepo <- newConnRepo
@@ -141,11 +148,10 @@ backend = Backend
             Just s -> return s
       putStrLn $ "read settings: " <> show settings
       listeners <- newIORef mempty
-      cs <- newIORef $ CiSettings "nixpkgs=/nix/var/nix/profiles/per-user/root/channels/nixos"
       let appDomain = T.takeWhile (\c -> c /= ':' && c /= '/') $ T.drop 3 $ snd $ T.breakOn "://" appRoute
       keyPair <- getSigningKey $ T.unpack $ appDomain <> "-1"
       let env = ServerEnv appRoute settings secretToken dbConn
-                          connRepo buildThreads listeners cs keyPair
+                          connRepo buildThreads listeners keyPair
       _ <- forkIO $ buildManagerThread env
       serve $ serveBackendRoute env
   , _backend_routeEncoder = backendRouteEncoder
@@ -217,10 +223,10 @@ talkClient env cid conn = do
         Right (Up_RerunJobs jids) -> do
           mapM_ (rerunJob env) jids
         Right (Up_GetCiSettings) -> do
-          cs <- readIORef (_serverEnv_ciSettings env)
+          Just cs <- getCiSettings (_serverEnv_db env)
           wsSend conn (Down_CiSettings cs)
-        Right (Up_UpdateCiSettings cs) -> do
-          writeIORef (_serverEnv_ciSettings env) cs
+        Right (Up_UpdateCiSettings cs) ->
+          setCiSettings (_serverEnv_db env) cs
   where
     cRepo = _serverEnv_connRepo env
     cleanup :: E.SomeException -> IO ()
@@ -242,7 +248,7 @@ unsubscribeJob env connId (BuildJobId jidInt) = do
 rerunJob :: ServerEnv -> BuildJobId -> IO ()
 rerunJob se (BuildJobId jid) = do
     let dbConn = _serverEnv_db se
-    mjob <- beamQueryConn (_serverEnv_db se) $
+    mjob <- beamQueryConn dbConn $
       runSelectReturningOne $ select $ do
         job <- all_ (_ciDb_buildJobs ciDb)
         guard_ (job ^. buildJob_id ==. (val_ jid))
