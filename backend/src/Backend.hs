@@ -131,7 +131,7 @@ backend = Backend
       case mcs of
         Nothing -> do
           let c = CiSettings 0 "nixpkgs=/nix/var/nix/profiles/per-user/root/channels/nixos" Nothing
-          setCiSettings dbConn c
+          initCiSettings dbConn c
         Just _ -> return ()
       appRoute <- getAppRoute
       secretToken <- getSecretToken
