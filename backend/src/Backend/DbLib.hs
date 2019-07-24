@@ -15,7 +15,7 @@ getCiSettings dbConn = do
   beamQueryConn dbConn $
     runSelectReturningOne $ select $ do
       ci <- all_ (_ciDb_ciSettings ciDb)
-      guard_ (ci ^. ciSettings_id ==. (val_ 0))
+      guard_ (ci ^. ciSettings_id ==. (val_ 1))
       return ci
 
 setCiSettings :: Connection -> CiSettings -> IO ()
@@ -26,7 +26,7 @@ setCiSettings dbConn (CiSettings _ np c) = do
              (\ci -> mconcat
                         [ ci ^. ciSettings_nixPath <-. val_ np
                         , ci ^. ciSettings_s3Cache <-. val_ c ])
-             (\ci -> _ciSettings_id ci ==. val_ 0)
+             (\ci -> _ciSettings_id ci ==. val_ 1)
 
 initCiSettings :: Connection -> CiSettings -> IO ()
 initCiSettings dbConn (CiSettings _ a b) = do
