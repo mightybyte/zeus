@@ -7,6 +7,9 @@ import Which
 gitBinary :: String
 gitBinary = $(staticWhich "git")
 
+nixBinary :: String
+nixBinary = $(staticWhich "nix")
+
 nixBuildBinary :: String
 nixBuildBinary = $(staticWhich "nix-build")
 

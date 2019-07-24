@@ -63,15 +63,18 @@ library
   exposed-modules:
     Backend
     Backend.Build
+    Backend.Cache
     Backend.CacheServer
     Backend.Common
     Backend.Db
+    Backend.DbLib
     Backend.ExecutablePaths
     Backend.Github
     Backend.Gitlab
     -- Backend.Gitlab.Request
     Backend.Gitlab.Schema
     Backend.NixBase32
+    Backend.Process
     Backend.Schedule
     Backend.Types.BackendSettings
     Backend.Types.ConnRepo

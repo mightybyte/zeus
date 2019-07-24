@@ -21,6 +21,7 @@ library
     , readable
     , reflex-dom
     , scrub
+    , string-conv
     , text
     , time
   default-extensions:
@@ -29,6 +30,7 @@ library
   exposed-modules:
     Common.Api
     Common.Route
+    Common.Types.CacheJob
     Common.Types.CiSettings
     Common.Types.ConnectedAccount
     Common.Types.BuildJob

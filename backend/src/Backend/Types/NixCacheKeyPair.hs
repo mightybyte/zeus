@@ -7,6 +7,9 @@ module Backend.Types.NixCacheKeyPair
   , readKeyFile
   , mkNixSig
   , NixCacheKeyPair(..)
+  , signingKeyBaseName
+  , signingKeySecretFile
+  , signingKeyPublicFile
   ) where
 
 ------------------------------------------------------------------------------
@@ -45,3 +48,11 @@ data NixCacheKeyPair = NixCacheKeyPair
   { _nixCacheKey_secret :: NixCacheKey
   , _nixCacheKey_public :: NixCacheKey
   } deriving (Eq,Ord,Show)
+
+signingKeyBaseName :: String
+signingKeyBaseName = "zeus-cache-key"
+
+signingKeySecretFile :: String
+signingKeySecretFile = "config/backend/" <> signingKeyBaseName <> ".sec"
+signingKeyPublicFile :: String
+signingKeyPublicFile = "config/common/" <> signingKeyBaseName <> ".pub"

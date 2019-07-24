@@ -28,7 +28,6 @@ import qualified Data.Text.Encoding as T
 import           Data.Time
 import           Database.Beam
 import           Database.Beam.Sqlite
-import           Database.SQLite.Simple
 import           System.Directory
 import           System.Environment
 import           System.Exit
@@ -37,16 +36,18 @@ import           System.IO
 import           System.Mem.Weak
 import           System.Process
 import           Text.Printf
-import qualified Turtle as Turtle
 ------------------------------------------------------------------------------
 import           Backend.Db
+import           Backend.DbLib
 import           Backend.ExecutablePaths
+import           Backend.Process
 import           Backend.Types.ServerEnv
 import           Backend.WsCmds
 import           Common.Api
 import           Common.Types.ConnectedAccount
 import           Backend.Types.ConnRepo
 import           Common.Types.BuildJob
+import           Common.Types.CacheJob
 import           Common.Types.CiSettings
 import           Common.Types.JobStatus
 import           Common.Types.ProcMsg
@@ -203,24 +204,6 @@ addCloneCreds :: Text -> Text -> Text -> Text
 addCloneCreds user pass url =
   T.replace "://" ("://" <> user <> ":" <> pass <> "@") url
 
-getCiSettings :: Connection -> IO (Maybe CiSettings)
-getCiSettings dbConn = do
-  beamQueryConn dbConn $
-    runSelectReturningOne $ select $ do
-      ci <- all_ (_ciDb_ciSettings ciDb)
-      guard_ (ci ^. ciSettings_id ==. (val_ 0))
-      return ci
-
-setCiSettings :: Connection -> CiSettings -> IO ()
-setCiSettings dbConn (CiSettings _ np c) = do
-  beamQueryConn dbConn $
-    runUpdate $
-      update (_ciDb_ciSettings ciDb)
-             (\ci -> mconcat
-                        [ ci ^. ciSettings_nixPath <-. val_ np
-                        , ci ^. ciSettings_s3Cache <-. val_ c ])
-             (\ci -> _ciSettings_id ci ==. val_ 0)
-
 buildThread
   :: ServerEnv
   -> MVar ExitCode
@@ -242,7 +225,7 @@ buildThread se ecMVar rng repo ca job = do
   let cloneDir = printf "/tmp/zeus-builds/%s" buildId :: String
   createDirectoryIfMissing True cloneDir
   createDirectoryIfMissing True buildOutputDir
-  let outputFile = printf "%s/%d.txt" buildOutputDir jid
+  let outputFile = printf "%s/%d-build.txt" buildOutputDir jid
   printf "Writing build output to %s\n" outputFile
   withLogHandle outputFile $ \lh  -> do
     let cloneCmd = printf "%s clone %s" gitBinary url
@@ -277,42 +260,41 @@ buildThread se ecMVar rng repo ca job = do
             , "--keep-going"
             ]
       liftIO $ saveAndSendStr CiMsg (T.pack $ unwords (buildCmd : buildArgs))
-      _ <- runProc nixBuildBinary buildArgs repoDir (Just buildEnv) saveAndSend
+      runProc nixBuildBinary buildArgs repoDir (Just buildEnv) saveAndSend
       end <- liftIO getCurrentTime
       let finishMsg = printf "Build finished in %.3f seconds" (realToFrac (diffUTCTime end start) :: Double)
       liftIO $ saveAndSendStr CiMsg $ T.pack (finishMsg ++ "\n")
       liftIO $ putStrLn finishMsg
-      return ExitSuccess
+
+      liftIO $ getSymlinkTarget (repoDir </> "result")
+
     case res of
       Left ec -> do
         liftIO $ printf "Build failed with code %s\n" (show ec)
         putMVar ecMVar ec
-      Right ec -> do
-        liftIO $ printf "Build succeeded with %s\n" (show ec)
-        putMVar ecMVar ec
+      Right msp -> do
+        case msp of
+          Nothing -> liftIO $ putStrLn "No build outputs to cache"
+          Just sp -> do
+            beamQuery se $ do
+              runInsert $ insert (_ciDb_cacheJobs ciDb) $ insertExpressions
+                [CacheJob default_ (val_ $ T.pack sp) (val_ Nothing) (val_ Nothing) (val_ JobPending)]
+            liftIO $ printf "Build succeeded with result storepath %s\n" (show sp)
+        putMVar ecMVar ExitSuccess
+
+getSymlinkTarget :: FilePath -> IO (Maybe FilePath)
+getSymlinkTarget nm = do
+    putStrLn $ "Getting symlink target for " <> nm
+    exists <- doesPathExist nm
+    if exists
+      then do
+        isLink <- pathIsSymbolicLink nm
+        if isLink
+          then Just <$> getSymbolicLinkTarget nm
+          else return Nothing
+      else return Nothing
 
 data GitMsgType = UsernameMessage String | PasswordMessage String | OtherMessage
-
-exitCodeToStatus :: ExitCode -> JobStatus
-exitCodeToStatus ExitSuccess = JobSucceeded
-exitCodeToStatus (ExitFailure _) = JobFailed
-
-withLogHandle :: FilePath -> (Handle -> IO a) -> IO a
-withLogHandle fp action = withFile fp AppendMode $ \h -> do
-  hSetBuffering h NoBuffering
-  action h
-
-withCreateProcess_
-  :: String
-  -> CreateProcess
-  -> (Maybe Handle -> Maybe Handle -> Maybe Handle -> ProcessHandle -> IO a)
-  -> IO a
-withCreateProcess_ fun c action =
-    C.bracket (createProcess_ fun c) cleanup
-              (\(m_in, m_out, m_err, ph) -> action m_in m_out m_err ph)
-  where
-    cleanup (_, _, _, ph) = terminateProcess ph
-
 
 --runInDirWithEnv :: Handle -> String -> FilePath -> Maybe [(String, String)] -> IO ExitCode
 --runInDirWithEnv lh cmd dir e = do
@@ -335,56 +317,6 @@ withCreateProcess_ fun c action =
 
 toBS :: String -> CB.ByteString
 toBS = toS
-
-runCmd2
-  :: String
-  -> FilePath
-  -> Maybe [(String, String)]
-  -> (ProcMsg -> IO ())
-  -> ExceptT ExitCode IO ExitCode
-runCmd2 cmd dir envVars action = do
-  let cp = (shell cmd)
-        { cwd = Just dir
-        , env = envVars
-        }
-  runCP cp action
-
-runProc
-  :: String
-  -> [String]
-  -> FilePath
-  -> Maybe [(String, String)]
-  -> (ProcMsg -> IO ())
-  -> ExceptT ExitCode IO ExitCode
-runProc cmd args dir envVars action = do
-  let cp = (proc cmd args)
-        { cwd = Just dir
-        , env = envVars
-        }
-  runCP cp action
-
-runCP
-  :: CreateProcess
-  -> (ProcMsg -> IO ())
-  -> ExceptT ExitCode IO ExitCode
-runCP cp action = do
-  res <- liftIO $ C.try
-    (Turtle.foldShell (Turtle.streamWithErr cp (return mempty)) (shellHandler action))
-  case res of
-    Left e -> ExceptT $ return $ Left e
-    Right _ -> return ExitSuccess
-
-shellHandler
-  :: (ProcMsg -> IO ())
-  -> Turtle.FoldShell (Either Turtle.Line Turtle.Line) ()
-shellHandler action = Turtle.FoldShell step () return
-  where
-    step _ a = do
-      t <- getCurrentTime
-      let pm = case a of
-                Left m -> ProcMsg t StderrMsg (Turtle.lineToText m)
-                Right m -> ProcMsg t StdoutMsg (Turtle.lineToText m)
-      action pm
 
 runCmd
   :: Int

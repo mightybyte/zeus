@@ -15,7 +15,6 @@ import           System.Mem.Weak
 import           Backend.Types.BackendSettings
 import           Backend.Types.ConnRepo
 import           Backend.Types.NixCacheKeyPair
-import           Common.Types.CiSettings
 ------------------------------------------------------------------------------
 
 data ServerEnv = ServerEnv

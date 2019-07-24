@@ -50,9 +50,11 @@ import           System.Process (rawSystem)
 import           Text.Printf
 ------------------------------------------------------------------------------
 import           Backend.Build
+import           Backend.Cache
 import           Backend.CacheServer
 import           Backend.Common
 import           Backend.Db
+import           Backend.DbLib
 import           Backend.ExecutablePaths
 import           Backend.Github
 import           Backend.Gitlab
@@ -93,13 +95,10 @@ dbConnectInfo = "zeus.db"
 -- rotation.
 getSigningKey :: String -> IO NixCacheKeyPair
 getSigningKey keyName = do
-  let baseName = "zeus-cache-key"
-      secretFile = baseName <> ".sec"
-      publicFile = baseName <> ".pub"
-      secretPath = "config/backend/" <> secretFile
-      publicPath = "config/common/" <> publicFile
-  secretExists <- doesFileExist secretPath
-  publicExists <- doesFileExist publicPath
+  let secretFile = signingKeyBaseName <> ".sec"
+      publicFile = signingKeyBaseName <> ".pub"
+  secretExists <- doesFileExist signingKeySecretFile
+  publicExists <- doesFileExist signingKeyPublicFile
   when (not $ secretExists && publicExists) $ do
     let args =
           [ "--generate-binary-cache-key"
@@ -113,11 +112,11 @@ getSigningKey keyName = do
     case ec of
       ExitFailure c -> error $ printf "Error %d: Could not generate nix cache key" c
       ExitSuccess -> return ()
-    renameFile secretFile secretPath
-    renameFile publicFile publicPath
+    renameFile secretFile signingKeySecretFile
+    renameFile publicFile signingKeyPublicFile
 
-  Right secret <- readKeyFile secretPath
-  Right public <- readKeyFile publicPath
+  Right secret <- readKeyFile signingKeySecretFile
+  Right public <- readKeyFile signingKeyPublicFile
   return $ NixCacheKeyPair secret public
 
 backend :: Backend BackendRoute FrontendRoute
@@ -129,12 +128,11 @@ backend = Backend
       dbConn <- open dbConnectInfo
       runBeamSqlite dbConn $ autoMigrate migrationBackend ciDbChecked
       mcs <- getCiSettings dbConn
-      cs <- case mcs of
+      case mcs of
         Nothing -> do
           let c = CiSettings 0 "nixpkgs=/nix/var/nix/profiles/per-user/root/channels/nixos" Nothing
           setCiSettings dbConn c
-          return c
-        Just c -> return c
+        Just _ -> return ()
       appRoute <- getAppRoute
       secretToken <- getSecretToken
       connRepo <- newConnRepo
@@ -153,6 +151,7 @@ backend = Backend
       let env = ServerEnv appRoute settings secretToken dbConn
                           connRepo buildThreads listeners keyPair
       _ <- forkIO $ buildManagerThread env
+      _ <- forkIO $ cacheManagerThread env
       serve $ serveBackendRoute env
   , _backend_routeEncoder = backendRouteEncoder
   }

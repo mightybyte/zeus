@@ -56,7 +56,6 @@ data CiSettingsT f = CiSettings
   , _ciSettings_s3Cache :: C f (Maybe S3Cache)
   } deriving (Generic)
 
---makeLenses 'CiSettings
 CiSettings
   (LensFor ciSettings_id)
   (LensFor ciSettings_nixPath)

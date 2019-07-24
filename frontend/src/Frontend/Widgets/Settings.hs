@@ -40,11 +40,6 @@ dynSettingsForm = do
       return ()
   return ()
 
---loadingSettings :: MonadApp r t m => m (Dynamic t (Maybe CiSettings))
---loadingSettings = do
---  genericLoading
---  return $ constDyn Nothing
-
 settingsForm
   :: (MonadApp r t m)
   => CiSettings
