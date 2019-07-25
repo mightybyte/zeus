@@ -1,9 +1,13 @@
+{-# LANGUAGE OverloadedStrings #-}
+
 module Backend.Process where
 
 ------------------------------------------------------------------------------
 import           Control.Error
 import qualified Control.Exception as C
 import           Control.Monad.Trans
+import           Data.Text (Text)
+import qualified Data.Text as T
 import           Data.Time
 import           System.Exit
 import           System.IO
@@ -67,11 +71,19 @@ runCP
   -> (ProcMsg -> IO ())
   -> ExceptT ExitCode IO ()
 runCP cp action = do
+  t <- liftIO getCurrentTime
+  liftIO $ action $ ProcMsg t BuildCommandMsg (cmdSpecToText $ cmdspec cp)
   res <- liftIO $ C.try
     (Turtle.foldShell (Turtle.streamWithErr cp (return mempty)) (shellHandler action))
   case res of
     Left e -> ExceptT $ return $ Left e
     Right _ -> return ()
+
+cmdSpecToText :: CmdSpec -> Text
+cmdSpecToText (ShellCommand s) = T.pack s
+cmdSpecToText (RawCommand cmd args) = T.unwords $ T.pack cmd : map doArg args
+  where
+    doArg s = "\"" <> T.pack s <> "\""
 
 shellHandler
   :: (ProcMsg -> IO ())
