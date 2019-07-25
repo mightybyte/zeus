@@ -28,6 +28,7 @@ library
     , reflex
     , reflex-dom
     , reflex-dom-contrib
+    , scrub
     , semantic-reflex
     , text
     , time
