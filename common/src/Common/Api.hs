@@ -1,3 +1,4 @@
+{-# OPTIONS_GHC -fno-warn-orphans #-}
 {-# LANGUAGE DeriveGeneric#-}
 {-# LANGUAGE GADTs #-}
 {-# LANGUAGE TemplateHaskell #-}
@@ -8,6 +9,7 @@ import           Control.Lens
 import           Data.Aeson
 import           Data.Text (Text)
 import           Database.Beam
+import           Scrub
 ------------------------------------------------------------------------------
 import           Common.Types.BuildJob
 import           Common.Types.CiSettings
@@ -20,6 +22,12 @@ type Batch a = [a]
 
 batchOne :: a -> Batch a
 batchOne a = [a]
+
+instance ToJSON a => ToJSON (Scrubbed a) where
+  toJSON = toJSON . getScrubbed
+
+instance FromJSON a => FromJSON (Scrubbed a) where
+  parseJSON = fmap Scrubbed . parseJSON
 
 --batchMaybe :: FunctorMaybe f => (a -> Batch b) -> f a -> f b
 --batchMaybe f = fmapMaybe (listToMaybe . f)
@@ -56,7 +64,7 @@ data Down
   | Down_Jobs [BuildJob]
   | Down_JobOutput (BuildJobId, Text)
   | Down_JobNewOutput (BuildJobId, [ProcMsg])
-  | Down_CiSettings CiSettings
+  | Down_CiSettings (Scrubbed CiSettings)
   deriving (Generic)
 
 instance ToJSON Up where

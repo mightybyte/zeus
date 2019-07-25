@@ -89,7 +89,12 @@ s3CacheWidget iv sv True = do
         & inputElementConfig_setValue .~ (maybe "" _s3Cache_accessKey <$> sv)
       return $ value v
     dsk <- divClass "field" $ do
-      el "label" $ text "Secret Key"
+      el "label" $ do
+        text "Secret Key "
+        let tip = "Secret key not shown for security.  Leaving it empty will not clear it."
+        elAttr "span" ("data-tooltip" =: tip <> "data-position" =: "top left") $
+          elAttr "i" ("class" =: "info circle icon") blank
+
       v <- inputElement $ def
         & inputElementConfig_initialValue .~ maybe "" _s3Cache_secretKey iv
         & inputElementConfig_setValue .~ (maybe "" _s3Cache_secretKey <$> sv)
@@ -99,6 +104,6 @@ s3CacheWidget iv sv True = do
       r <- dr
       ak <- dak
       sk <- dsk
-      if any T.null [b, r, ak, sk]
+      if any T.null [b, r, ak]
         then pure Nothing
         else pure $ Just $ S3Cache b r ak sk

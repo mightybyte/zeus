@@ -223,7 +223,7 @@ talkClient env cid conn = do
           mapM_ (rerunJob env) jids
         Right (Up_GetCiSettings) -> do
           Just cs <- getCiSettings (_serverEnv_db env)
-          wsSend conn (Down_CiSettings cs)
+          wsSend conn (Down_CiSettings $ scrub cs)
         Right (Up_UpdateCiSettings cs) ->
           setCiSettings (_serverEnv_db env) cs
   where

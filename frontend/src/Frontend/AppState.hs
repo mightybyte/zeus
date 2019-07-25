@@ -33,6 +33,7 @@ import           Database.Beam (Table, primaryKey)
 import           GHC.Generics
 import           Reflex
 import           Reflex.Dom
+import           Scrub
 ------------------------------------------------------------------------------
 import           Common.Api
 import           Common.Types.BuildJob
@@ -156,7 +157,7 @@ stateManager route ft = do
       [ fmapMaybe (fmap startOutput . preview _Down_JobOutput) downEvent
       , fmapMaybe (fmap addToOutput . preview _Down_JobNewOutput) downEvent
       ]
-    ciSettings <- holdDyn Nothing $ preview _Down_CiSettings <$> downEvent
+    ciSettings <- holdDyn Nothing $ fmap getScrubbed . preview _Down_CiSettings <$> downEvent
 
     return $ AppState accounts jobs repos serverAlert buildOutput ciSettings
 

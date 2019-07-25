@@ -27,6 +27,7 @@ import           Database.Beam.Backend.SQL
 import           Database.Beam.Backend.Types
 import           Database.Beam.Migrate.Generics
 import           Database.Beam.Migrate.SQL
+import           Scrub
 ------------------------------------------------------------------------------
 
 data S3Cache = S3Cache
@@ -36,8 +37,11 @@ data S3Cache = S3Cache
   , _s3Cache_secretKey :: Text
   } deriving (Eq,Ord,Show,Read,Generic)
 
+instance Scrub S3Cache where
+  scrub c = Scrubbed $ c { _s3Cache_secretKey = "" }
+
 instance ToJSON S3Cache where
-    toEncoding = genericToEncoding defaultOptions
+  toEncoding = genericToEncoding defaultOptions
 instance FromJSON S3Cache
 
 instance HasSqlValueSyntax be Text => HasSqlValueSyntax be S3Cache where
@@ -55,6 +59,9 @@ data CiSettingsT f = CiSettings
   , _ciSettings_nixPath :: C f Text
   , _ciSettings_s3Cache :: C f (Maybe S3Cache)
   } deriving (Generic)
+
+instance Scrub (CiSettingsT Identity) where
+  scrub s = Scrubbed $ s { _ciSettings_s3Cache = getScrubbed $ scrub (_ciSettings_s3Cache s) }
 
 CiSettings
   (LensFor ciSettings_id)

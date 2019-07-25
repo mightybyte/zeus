@@ -207,6 +207,7 @@ addCloneCreds user pass url =
 isStorePath :: Text -> Bool
 isStorePath t = T.isPrefixOf "/nix/store" t && not (T.isInfixOf " " t)
 
+addCacheJob :: ServerEnv -> Text -> IO ()
 addCacheJob se sp = do
   beamQuery se $ do
     runInsert $ insert (_ciDb_cacheJobs ciDb) $ insertExpressions
@@ -233,7 +234,7 @@ buildThread se ecMVar rng repo ca job = do
   let cloneDir = printf "/tmp/zeus-builds/%s" buildId :: String
   createDirectoryIfMissing True cloneDir
   createDirectoryIfMissing True buildOutputDir
-  let outputFile = printf "%s/%d-build.txt" buildOutputDir jid
+  let outputFile = printf "%s/%d.txt" buildOutputDir jid
   printf "Writing build output to %s\n" outputFile
   withLogHandle outputFile $ \lh  -> do
     let cloneCmd = printf "%s clone %s" gitBinary url
