@@ -84,6 +84,10 @@ cacheBuild se s3cache cj = do
     -- nix sign-paths -k ~/cache-key.sec --all && nix copy --to s3://cache.kadena.io $(nix-build)
     let signCP = proc nixBinary ["sign-paths", "-k", signingKeySecretFile, "--all"]
     let saveAndSend pm = hPutStrLn lh $! prettyProcMsg pm
+        saveAndSendStr msgTy msg = do
+          !t <- getCurrentTime
+          let pm = ProcMsg t msgTy msg
+          saveAndSend pm
 
     runCP signCP saveAndSend
 
@@ -97,6 +101,7 @@ cacheBuild se s3cache cj = do
               ]
           }
     runCP copyCP saveAndSend
+    liftIO $ saveAndSendStr CiMsg "Finished caching"
 
   end <- getCurrentTime
   runBeamSqlite dbConn $ do
