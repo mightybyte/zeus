@@ -94,12 +94,12 @@ cacheBuild se s3cache cj = do
     let bucket = T.unpack $ _s3Cache_bucket s3cache
     let region = T.unpack $ _s3Cache_region s3cache
     let s3url = printf "s3://%s?region=%s" bucket region
+    let awsEnv = [ ("AWS_ACCESS_KEY_ID", T.unpack $ _s3Cache_accessKey s3cache)
+                 , ("AWS_SECRET_ACCESS_KEY", T.unpack $ _s3Cache_secretKey s3cache)
+                 ]
+
     let copyCP = (proc nixBinary ["copy", "--to", s3url, T.unpack $ _cacheJob_storePath cj])
-          { env = Just
-              [ ("AWS_ACCESS_KEY_ID", T.unpack $ _s3Cache_accessKey s3cache)
-              , ("AWS_SECRET_ACCESS_KEY", T.unpack $ _s3Cache_secretKey s3cache)
-              ]
-          }
+          { env = Just awsEnv }
     runCP copyCP saveAndSend
     liftIO $ saveAndSendStr CiMsg "Finished caching"
 

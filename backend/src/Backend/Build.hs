@@ -204,6 +204,14 @@ addCloneCreds :: Text -> Text -> Text -> Text
 addCloneCreds user pass url =
   T.replace "://" ("://" <> user <> ":" <> pass <> "@") url
 
+isStorePath :: Text -> Bool
+isStorePath t = T.isPrefixOf "/nix/store" t && not (T.isInfixOf " " t)
+
+addCacheJob se sp = do
+  beamQuery se $ do
+    runInsert $ insert (_ciDb_cacheJobs ciDb) $ insertExpressions
+      [CacheJob default_ (val_ sp) (val_ Nothing) (val_ Nothing) (val_ JobPending)]
+
 buildThread
   :: ServerEnv
   -> MVar ExitCode
@@ -234,6 +242,10 @@ buildThread se ecMVar rng repo ca job = do
           let pm = ProcMsg t msgTy msg
           saveAndSend pm
         saveAndSend pm = do
+          let msg = _procMsg_msg pm
+          if isStorePath msg
+            then addCacheJob se msg
+            else return ()
           hPutStrLn lh $! prettyProcMsg pm
           sendOutput se jid pm
 
@@ -245,12 +257,14 @@ buildThread se ecMVar rng repo ca job = do
       let checkout = printf "%s checkout %s" gitBinary (_rbi_commitHash rbi)
       liftIO $ saveAndSendStr CiMsg (toS checkout)
       _ <- runCmd2 checkout repoDir Nothing saveAndSend
-      let buildCmd = printf "%s --show-trace %s" nixBuildBinary (_repo_buildNixFile repo)
       e <- liftIO getEnvironment
       Just cs <- liftIO $ getCiSettings (_serverEnv_db se)
       let buildEnv = M.toList $ M.insert "NIX_PATH" (toS $ _ciSettings_nixPath cs) $ M.fromList e
       liftIO $ saveAndSendStr CiMsg $ "Building with the following environment:"
       liftIO $ saveAndSendStr CiMsg $ T.pack $ show buildEnv
+
+      runProc nixInstantiate [T.unpack $ _repo_buildNixFile repo] repoDir (Just buildEnv) saveAndSend
+
       let buildArgs =
             [ T.unpack (_repo_buildNixFile repo)
             , "--show-trace"
@@ -259,7 +273,6 @@ buildThread se ecMVar rng repo ca job = do
             , "true"
             , "--keep-going"
             ]
-      liftIO $ saveAndSendStr CiMsg (T.pack $ unwords (buildCmd : buildArgs))
       runProc nixBuildBinary buildArgs repoDir (Just buildEnv) saveAndSend
       end <- liftIO getCurrentTime
       let finishMsg = printf "Build finished in %.3f seconds" (realToFrac (diffUTCTime end start) :: Double)
@@ -276,9 +289,7 @@ buildThread se ecMVar rng repo ca job = do
         case msp of
           Nothing -> liftIO $ putStrLn "No build outputs to cache"
           Just sp -> do
-            beamQuery se $ do
-              runInsert $ insert (_ciDb_cacheJobs ciDb) $ insertExpressions
-                [CacheJob default_ (val_ $ T.pack sp) (val_ Nothing) (val_ Nothing) (val_ JobPending)]
+            addCacheJob se $ T.pack sp
             liftIO $ printf "Build succeeded with result storepath %s\n" (show sp)
         putMVar ecMVar ExitSuccess
 
