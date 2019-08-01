@@ -8,11 +8,13 @@ library
   build-depends:
       aeson
     , base
+    , base64-bytestring
     , beam-core
     , beam-migrate
     , bytestring
     , data-default
     , dependent-sum
+    , directory
     , errors
     , lens
     , mtl
