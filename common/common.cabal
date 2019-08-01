@@ -36,6 +36,7 @@ library
     Common.Types.BuildJob
     Common.Types.Builder
     Common.Types.JobStatus
+    Common.Types.NixCacheKeyPair
     Common.Types.ProcMsg
     Common.Types.Repo
     Common.Types.RepoBuildInfo
