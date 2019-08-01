@@ -55,6 +55,7 @@ data Up
   | Up_RerunJobs (Batch BuildJobId)
   | Up_GetCiSettings
   | Up_UpdateCiSettings CiSettings
+  | Up_GetCiInfo
   deriving (Show,Generic)
 
 data Down
@@ -65,6 +66,7 @@ data Down
   | Down_JobOutput (BuildJobId, Text)
   | Down_JobNewOutput (BuildJobId, [ProcMsg])
   | Down_CiSettings (Scrubbed CiSettings)
+  | Down_CiInfo Text
   deriving (Generic)
 
 instance ToJSON Up where

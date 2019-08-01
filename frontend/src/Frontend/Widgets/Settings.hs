@@ -14,7 +14,6 @@ import           Reflex.Network
 import           Common.Types.CiSettings
 import           Frontend.App
 import           Frontend.AppState
-import           Frontend.Widgets.Common
 import           Frontend.Widgets.Form
 ------------------------------------------------------------------------------
 
@@ -22,7 +21,7 @@ settingsWidget
   :: MonadAppIO r t m
   => m ()
 settingsWidget = do
-  pb <- delay 1 =<< getPostBuild
+  pb <- delay 0.01 =<< getPostBuild
   trigger trigger_getCiSettings pb
   el "h1" $ text "Settings"
   dynSettingsForm
@@ -31,7 +30,7 @@ settingsWidget = do
 dynSettingsForm :: MonadApp r t m => m ()
 dynSettingsForm = do
   dcs <- asks _as_ciSettings
-  _ <- networkHold genericLoading $ ffor (fmapMaybe id $ updated dcs) $ \cs -> do
+  _ <- networkHold blank $ ffor (fmapMaybe id $ updated dcs) $ \cs -> do
     semuiForm $ do
       dcsNew <- settingsForm cs never
       (e,_) <- divClass "field" $ elAttr' "button" ("class" =: "ui button") $

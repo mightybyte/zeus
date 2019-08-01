@@ -70,6 +70,7 @@ import           Common.Types.BuildJob
 import           Common.Types.CiSettings
 import           Common.Types.ConnectedAccount
 import           Common.Types.JobStatus
+import           Common.Types.NixCacheKeyPair
 import           Common.Types.Repo
 ------------------------------------------------------------------------------
 
@@ -119,6 +120,11 @@ getSigningKey keyName = do
   Right public <- readKeyFile signingKeyPublicFile
   return $ NixCacheKeyPair secret public
 
+getAppCacheKey :: Text -> IO NixCacheKeyPair
+getAppCacheKey appRoute = do
+  let appDomain = T.takeWhile (\c -> c /= ':' && c /= '/') $ T.drop 3 $ snd $ T.breakOn "://" appRoute
+  getSigningKey $ T.unpack $ appDomain <> "-1"
+
 backend :: Backend BackendRoute FrontendRoute
 backend = Backend
   { _backend_run = \serve -> do
@@ -146,8 +152,7 @@ backend = Backend
             Just s -> return s
       putStrLn $ "read settings: " <> show settings
       listeners <- newIORef mempty
-      let appDomain = T.takeWhile (\c -> c /= ':' && c /= '/') $ T.drop 3 $ snd $ T.breakOn "://" appRoute
-      keyPair <- getSigningKey $ T.unpack $ appDomain <> "-1"
+      keyPair <- getAppCacheKey appRoute
       let env = ServerEnv appRoute settings secretToken dbConn
                           connRepo buildThreads listeners keyPair
       _ <- forkIO $ buildManagerThread env
@@ -226,6 +231,9 @@ talkClient env cid conn = do
           wsSend conn (Down_CiSettings $ scrub cs)
         Right (Up_UpdateCiSettings cs) ->
           setCiSettings (_serverEnv_db env) cs
+        Right Up_GetCiInfo -> do
+          let k = nckToText $ _nixCacheKey_public $ _serverEnv_cacheKey env
+          wsSend conn (Down_CiInfo k)
   where
     cRepo = _serverEnv_connRepo env
     cleanup :: E.SomeException -> IO ()

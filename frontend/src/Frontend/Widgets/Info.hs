@@ -10,8 +10,10 @@ import           Data.Text (Text)
 import qualified Data.Text as T
 import qualified Obelisk.ExecutableConfig as ObConfig
 import           Reflex.Dom
+import           Reflex.Network
 ------------------------------------------------------------------------------
 import           Frontend.App
+import           Frontend.AppState
 import           Frontend.Widgets.Common
 ------------------------------------------------------------------------------
 
@@ -19,9 +21,21 @@ infoWidget
   :: (MonadAppIO r t m, Prerender js t m)
   => m ()
 infoWidget = do
+  pb <- delay 0.01 =<< getPostBuild
+  trigger trigger_getCiInfo pb
+
+  dcs <- asks _as_ciInfo
+  _ <- networkHold blank $ ffor (fmapMaybe id $ updated dcs) $
+         dynInfoWidget
+  return ()
+
+dynInfoWidget
+  :: (MonadAppIO r t m, Prerender js t m)
+  => Text
+  -> m ()
+dynInfoWidget pubkey = do
   Just rootRoute <- liftIO $ ObConfig.get "config/common/route"
   let route = T.strip rootRoute <> "/cache/"
-  Just pubkey <- fmap (fmap T.strip) $ liftIO $ ObConfig.get "config/common/zeus-cache-key.pub"
   _ <- prerender blank $ copyableValue "Cache Address" route
   _ <- prerender blank $ copyableValue "Cache Public Key" pubkey
   el "h4" $ text "To use this cache, put the following in your /etc/nix/nix.conf:"

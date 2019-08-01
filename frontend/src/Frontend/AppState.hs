@@ -57,11 +57,12 @@ data AppTriggers = AppTriggers
     , _trigger_subscribeOutput :: Batch BuildJobId
     , _trigger_getCiSettings :: Batch ()
     , _trigger_updateCiSettings :: Batch CiSettings
+    , _trigger_getCiInfo :: Batch ()
     } deriving Generic
 
 instance Semigroup AppTriggers where
-  (AppTriggers ga1 ca1 da1 gr1 ar1 dr1 gj1 cj1 rj1 so1 gs1 us1)
-    <> (AppTriggers ga2 ca2 da2 gr2 ar2 dr2 gj2 cj2 rj2 so2 gs2 us2) = AppTriggers
+  (AppTriggers ga1 ca1 da1 gr1 ar1 dr1 gj1 cj1 rj1 so1 gs1 us1 gi1)
+    <> (AppTriggers ga2 ca2 da2 gr2 ar2 dr2 gj2 cj2 rj2 so2 gs2 us2 gi2) = AppTriggers
     (ga1 <> ga2)
     (ca1 <> ca2)
     (da1 <> da2)
@@ -74,9 +75,11 @@ instance Semigroup AppTriggers where
     (so1 <> so2)
     (gs1 <> gs2)
     (us1 <> us2)
+    (gi1 <> gi2)
 
 instance Monoid AppTriggers where
     mempty = AppTriggers
+      mempty
       mempty
       mempty
       mempty
@@ -116,6 +119,7 @@ data AppState t = AppState
     , _as_serverAlert :: Event t Text
     , _as_buildOutputs :: Dynamic t (Map BuildJobId (Seq ProcMsg))
     , _as_ciSettings :: Dynamic t (Maybe CiSettings)
+    , _as_ciInfo :: Dynamic t (Maybe Text)
     } deriving Generic
 
 squash
@@ -143,6 +147,7 @@ stateManager route ft = do
           , Up_RerunJobs <$> squash _trigger_rerunJobs ft
           , Up_SubscribeJobOutput <$> squash _trigger_subscribeOutput ft
           , Up_GetCiSettings <$ fmapMaybe (listToMaybe . _trigger_getCiSettings) ft
+          , Up_GetCiInfo <$ fmapMaybe (listToMaybe . _trigger_getCiInfo) ft
           , Up_UpdateCiSettings <$> fmapMaybe (listToMaybe . _trigger_updateCiSettings) ft
           ]
     let cfg = WebSocketConfig upEvent never True []
@@ -158,8 +163,9 @@ stateManager route ft = do
       , fmapMaybe (fmap addToOutput . preview _Down_JobNewOutput) downEvent
       ]
     ciSettings <- holdDyn Nothing $ fmap getScrubbed . preview _Down_CiSettings <$> downEvent
+    ciInfo <- holdDyn Nothing $ preview _Down_CiInfo <$> downEvent
 
-    return $ AppState accounts jobs repos serverAlert buildOutput ciSettings
+    return $ AppState accounts jobs repos serverAlert buildOutput ciSettings ciInfo
 
 startOutput :: (BuildJobId, Text) -> Map BuildJobId (Seq ProcMsg) -> Map BuildJobId (Seq ProcMsg)
 startOutput (jid, msgText) _ = M.singleton jid (parseMessages msgText)

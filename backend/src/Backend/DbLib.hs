@@ -4,7 +4,6 @@ module Backend.DbLib where
 
 ------------------------------------------------------------------------------
 import           Control.Lens
-import qualified Data.Text as T
 import           Database.Beam
 import           Database.SQLite.Simple
 ------------------------------------------------------------------------------
