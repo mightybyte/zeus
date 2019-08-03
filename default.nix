@@ -1,7 +1,10 @@
 { system ? builtins.currentSystem # TODO: Get rid of this system cruft
 , iosSdkVersion ? "10.2"
 }:
-with import ./.obelisk/impl { inherit system iosSdkVersion; };
+with import ./.obelisk/impl {
+  inherit system iosSdkVersion;
+  filterPaths = [ "dist-newstyle" "frontend.jsexe.assets" "static.assets" "result-exe" ];
+};
 project ./. ({ pkgs, ... }: {
   overrides = self: super: with pkgs.haskell.lib;
   let beam-src = pkgs.fetchFromGitHub {
