@@ -44,6 +44,7 @@ let
             script = ''
               ln -sft . '${exe}'/*
               mkdir -p log
+              # Check if changes are happening
               exec ./backend ${backendArgs} </dev/null
             '';
             serviceConfig = {
