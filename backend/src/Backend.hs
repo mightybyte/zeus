@@ -237,6 +237,7 @@ talkClient env cid conn = do
           wsSend conn (Down_CiSettings $ scrub cs)
         Right (Up_UpdateCiSettings cs) ->
           setCiSettings (_serverEnv_db env) cs
+          wsSend conn (Down_CiSettings $ scrub cs)
         Right Up_GetCiInfo -> do
           let k = nckToText $ _nixCacheKey_public $ _serverEnv_cacheKey env
           wsSend conn (Down_CiInfo k)
