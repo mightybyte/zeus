@@ -136,7 +136,7 @@ backend = Backend
       mcs <- getCiSettings dbConn
       case mcs of
         Nothing -> do
-          let c = CiSettings 0 "nixpkgs=/nix/var/nix/profiles/per-user/root/channels/nixos" Nothing
+          let c = CiSettings 0 "nixpkgs=/nix/var/nix/profiles/per-user/root/channels/nixos" Nothing True
           initCiSettings dbConn c
         Just _ -> return ()
       appRoute <- getAppRoute

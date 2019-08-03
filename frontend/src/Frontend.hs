@@ -33,7 +33,6 @@ import           Frontend.AppState
 import           Frontend.Common
 import           Frontend.Nav
 import           Frontend.Widgets.Accounts
-import           Frontend.Widgets.Info
 import           Frontend.Widgets.Jobs
 import           Frontend.Widgets.Repos
 import           Frontend.Widgets.Settings
@@ -102,7 +101,6 @@ appBody = do
       FR_Jobs -> jobsWidget
       FR_Repos -> reposWidget
       FR_Accounts -> accountsWidget
-      FR_Info -> infoWidget
       FR_Settings -> settingsWidget
   serverAlert <- asks _as_serverAlert
   modalExample serverAlert

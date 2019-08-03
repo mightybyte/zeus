@@ -1,5 +1,6 @@
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE RecursiveDo #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 module Frontend.Widgets.Settings where
 
@@ -8,17 +9,19 @@ import           Control.Monad.Reader
 import           Data.Maybe
 import           Data.Text (Text)
 import qualified Data.Text as T
+import qualified Obelisk.ExecutableConfig as ObConfig
 import           Reflex.Dom
 import           Reflex.Network
 ------------------------------------------------------------------------------
 import           Common.Types.CiSettings
 import           Frontend.App
 import           Frontend.AppState
+import           Frontend.Widgets.Common
 import           Frontend.Widgets.Form
 ------------------------------------------------------------------------------
 
 settingsWidget
-  :: MonadAppIO r t m
+  :: (MonadAppIO r t m, Prerender js t m)
   => m ()
 settingsWidget = do
   pb <- delay 0.01 =<< getPostBuild
@@ -27,20 +30,27 @@ settingsWidget = do
   dynSettingsForm
   return ()
 
-dynSettingsForm :: MonadApp r t m => m ()
+dynSettingsForm
+  :: (MonadAppIO r t m, Prerender js t m)
+  => m ()
 dynSettingsForm = do
   dcs <- asks _as_ciSettings
   _ <- networkHold blank $ ffor (fmapMaybe id $ updated dcs) $ \cs -> do
     semuiForm $ do
+      liftIO $ putStrLn $ "Starting with settings: " <> show cs
       dcsNew <- settingsForm cs never
-      (e,_) <- divClass "field" $ elAttr' "button" ("class" =: "ui button") $
+      let mkAttrs cs2 csNew =
+            if cs2 == Just csNew
+              then ("class" =: "ui button disabled")
+              else ("class" =: "ui button")
+      (e,_) <- divClass "field" $ elDynAttr' "button" (mkAttrs <$> dcs <*> dcsNew) $
         text "Update Settings"
       trigger trigger_updateCiSettings $ tag (current dcsNew) (domEvent Click e)
       return ()
   return ()
 
 settingsForm
-  :: (MonadApp r t m)
+  :: (MonadAppIO r t m, Prerender js t m)
   => CiSettings
   -> Event t CiSettings
   -> m (Dynamic t CiSettings)
@@ -55,11 +65,64 @@ settingsForm iv sv = do
       divClass "ui checkbox" $ do
         v <- checkbox (isJust $ _ciSettings_s3Cache iv) $ def
           & setValue .~ (isJust . _ciSettings_s3Cache <$> sv)
-        el "label" $ text "Use S3 Cache"
+        el "label" $ text "Push to S3 Cache"
         return v
     res <- networkView (s3CacheWidget (_ciSettings_s3Cache iv) (_ciSettings_s3Cache <$> sv) <$> value useS3Cache)
     cache <- join <$> holdDyn (constDyn $ _ciSettings_s3Cache iv) res
-    return (CiSettings 0 <$> dnp <*> cache)
+
+    serveLocalCache <- divClass "field" $ do
+      divClass "ui checkbox" $ do
+        v <- checkbox (_ciSettings_serveLocalCache iv) $ def
+          & setValue .~ (isJust . _ciSettings_s3Cache <$> sv)
+        el "label" $ text "Serve Local Cache"
+        return $ value v
+    infoWidget serveLocalCache
+    return (CiSettings 1 <$> dnp <*> cache <*> serveLocalCache)
+
+infoWidget
+  :: (MonadAppIO r t m, Prerender js t m)
+  => Dynamic t Bool
+  -> m ()
+infoWidget serveLocalCache = do
+  pb <- delay 0.01 =<< getPostBuild
+  trigger trigger_getCiInfo pb
+
+  dcs <- asks _as_ciInfo
+  _ <- networkHold blank $ ffor (updated ((,) <$> dcs <*> serveLocalCache)) $
+         dynInfoWidget
+  return ()
+
+dynInfoWidget
+  :: (MonadAppIO r t m, Prerender js t m)
+  => (Maybe Text, Bool)
+  -> m ()
+dynInfoWidget (Just pubkey, True) = divClass "ui segment" $ do
+  Just rootRoute <- liftIO $ ObConfig.get "config/common/route"
+  let route = T.strip rootRoute <> "/cache/"
+  _ <- prerender blank $ copyableValue "Cache Address" route
+  _ <- prerender blank $ copyableValue "Cache Public Key" pubkey
+  el "h4" $ text "To use this cache, put the following in your /etc/nix/nix.conf:"
+  elClass "pre" "ui segment" $ do
+    text $ nixConfExample route pubkey
+dynInfoWidget _ = blank
+
+nixConfExample :: Text -> Text -> Text
+nixConfExample addr pubkey = T.unlines
+  [ "substituters = " <> addr <> " https://cache.nixos.org/"
+  , "trusted-public-keys = " <> pubkey <> " cache.nixos.org-1:6NCHdD59X431o0gWypbMrAU"
+  ]
+
+copyableValue
+  :: (MonadWidget t m)
+  => Text
+  -> Text
+  -> m ()
+copyableValue label val = do
+  el "h4" $ text label
+  el "div" $ mdo
+    _ <- copyButton (_element_raw e)
+    (e,_) <- el' "span" $ text val
+    return ()
 
 s3CacheWidget
   :: MonadApp r t m
@@ -68,7 +131,7 @@ s3CacheWidget
   -> Bool
   -> m (Dynamic t (Maybe S3Cache))
 s3CacheWidget _ _ False = return $ constDyn Nothing
-s3CacheWidget iv sv True = do
+s3CacheWidget iv sv True = divClass "ui segment" $ do
     db :: Dynamic t Text <- divClass "field" $ do
       el "label" $ text "Bucket"
       v <- inputElement $ def

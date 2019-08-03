@@ -58,6 +58,7 @@ data CiSettingsT f = CiSettings
   { _ciSettings_id :: C f Int
   , _ciSettings_nixPath :: C f Text
   , _ciSettings_s3Cache :: C f (Maybe S3Cache)
+  , _ciSettings_serveLocalCache :: C f Bool
   } deriving (Generic)
 
 instance Scrub (CiSettingsT Identity) where
@@ -67,6 +68,7 @@ CiSettings
   (LensFor ciSettings_id)
   (LensFor ciSettings_nixPath)
   (LensFor ciSettings_s3Cache)
+  (LensFor ciSettings_serveLocalCache)
   = tableLenses
 
 type CiSettings = CiSettingsT Identity

@@ -162,7 +162,7 @@ stateManager route ft = do
       [ fmapMaybe (fmap startOutput . preview _Down_JobOutput) downEvent
       , fmapMaybe (fmap addToOutput . preview _Down_JobNewOutput) downEvent
       ]
-    ciSettings <- holdDyn Nothing $ fmap getScrubbed . preview _Down_CiSettings <$> downEvent
+    ciSettings <- holdDyn Nothing $ fmapMaybe id $ fmap (Just . getScrubbed) . preview _Down_CiSettings <$> downEvent
     ciInfo <- holdDyn Nothing $ preview _Down_CiInfo <$> downEvent
 
     return $ AppState accounts jobs repos serverAlert buildOutput ciSettings ciInfo
