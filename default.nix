@@ -1,13 +1,76 @@
 { system ? builtins.currentSystem # TODO: Get rid of this system cruft
 , iosSdkVersion ? "10.2"
 }:
-with import ./.obelisk/impl {
-  inherit system iosSdkVersion;
-  filterPaths = [ "dist-newstyle" "frontend.jsexe.assets" "static.assets" "result-exe"
-                  "zeus-access-token" "zeus-cache-key.pub" "zeus-cache-key.sec" "zeus.db"
-                ];
-};
-project ./. ({ pkgs, ... }: {
+let
+
+  origObelisk = import ./.obelisk/impl {
+    inherit system iosSdkVersion;
+  };
+  extraIgnores =
+    [ "dist-newstyle" "frontend.jsexe.assets" "static.assets" "result-exe"
+      "zeus-access-token" "zeus-cache-key.pub" "zeus-cache-key.sec" "zeus.db"
+    ];
+  newObelisk = origObelisk // {
+    path = builtins.filterSource (path: type: !(builtins.any (x: x == baseNameOf path) ([".git" "tags" "TAGS" "dist"] ++ extraIgnores))) ./.;
+    serverModules = origObelisk.serverModules // {
+      mkObeliskApp =
+        { exe
+        , routeHost
+        , enableHttps
+        , name ? "backend"
+        , user ? name
+        , group ? user
+        , baseUrl ? "/"
+        , internalPort ? 8000
+        , backendArgs ? "--port=${toString internalPort}"
+        , ...
+        }: {...}: {
+          services.nginx = {
+            enable = true;
+            virtualHosts."${routeHost}" = {
+              enableACME = enableHttps;
+              forceSSL = enableHttps;
+              locations.${baseUrl} = {
+                proxyPass = "http://localhost:" + toString internalPort;
+                proxyWebsockets = true;
+              };
+            };
+          };
+          systemd.services.${name} = {
+            wantedBy = [ "multi-user.target" ];
+            after = [ "network.target" ];
+            restartIfChanged = true;
+            path = [ origObelisk.reflex-platform.nixpkgs.gnutar ];
+            script = ''
+              ln -sft . '${exe}'/*
+              mkdir -p log
+              exec ./backend ${backendArgs} </dev/null
+            '';
+            serviceConfig = {
+              User = user;
+              KillMode = "process";
+              WorkingDirectory = "~";
+              Restart = "always";
+              RestartSec = 5;
+            };
+          };
+          users = {
+            users.${user} = {
+              description = "${user} service";
+              home = "/var/lib/${user}";
+              createHome = true;
+              isSystemUser = true;
+              group = group;
+            };
+            groups.${group} = {};
+          };
+        };
+    };
+  };
+
+in
+
+newObelisk.project ./. ({ pkgs, ... }: {
   overrides = self: super: with pkgs.haskell.lib;
   let beam-src = pkgs.fetchFromGitHub {
         owner = "tathougies";
