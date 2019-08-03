@@ -235,7 +235,7 @@ talkClient env cid conn = do
         Right (Up_GetCiSettings) -> do
           Just cs <- getCiSettings (_serverEnv_db env)
           wsSend conn (Down_CiSettings $ scrub cs)
-        Right (Up_UpdateCiSettings cs) ->
+        Right (Up_UpdateCiSettings cs) -> do
           setCiSettings (_serverEnv_db env) cs
           wsSend conn (Down_CiSettings $ scrub cs)
         Right Up_GetCiInfo -> do
