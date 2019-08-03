@@ -178,7 +178,13 @@ serveBackendRoute :: ServerEnv -> R BackendRoute -> Snap ()
 serveBackendRoute env = \case
   BackendRoute_Cache :=> Identity ps -> do
     enforceIpWhitelist (_beSettings_ipWhitelist $ _serverEnv_settings env)
-    nixCacheRoutes env ps
+    mcs <- liftIO $ getCiSettings (_serverEnv_db env)
+    case mcs of
+      Nothing -> liftIO $ putStrLn "Unexpected error: Couldn't get CiSettings"
+      Just cs ->
+        if _ciSettings_serveLocalCache cs
+          then nixCacheRoutes env ps
+          else notFound "Not found"
   BackendRoute_Hook :=> Identity hr -> case hr of
     Hook_GitHub :=> _ -> githubHandler env
     Hook_GitLab :=> _ -> gitlabHandler env
