@@ -3,7 +3,9 @@
 }:
 with import ./.obelisk/impl {
   inherit system iosSdkVersion;
-  filterPaths = [ "dist-newstyle" "frontend.jsexe.assets" "static.assets" "result-exe" ];
+  filterPaths = [ "dist-newstyle" "frontend.jsexe.assets" "static.assets" "result-exe"
+                  "zeus-access-token" "zeus-cache-key.pub" "zeus-cache-key.sec" "zeus.db"
+                ];
 };
 project ./. ({ pkgs, ... }: {
   overrides = self: super: with pkgs.haskell.lib;
