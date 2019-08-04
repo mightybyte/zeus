@@ -1,4 +1,5 @@
 {-# LANGUAGE FlexibleContexts #-}
+{-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE RecursiveDo #-}
 {-# LANGUAGE ScopedTypeVariables #-}
@@ -97,13 +98,16 @@ dynInfoWidget
   => (Maybe Text, Bool)
   -> m ()
 dynInfoWidget (Just pubkey, True) = divClass "ui segment" $ do
-  Just rootRoute <- liftIO $ ObConfig.get "config/common/route"
-  let route = T.strip rootRoute <> "/cache/"
-  _ <- prerender blank $ copyableValue "Cache Address" route
-  _ <- prerender blank $ copyableValue "Cache Public Key" pubkey
-  el "h4" $ text "To use this cache, put the following in your /etc/nix/nix.conf:"
-  elClass "pre" "ui segment" $ do
-    text $ nixConfExample route pubkey
+  mRootRoute <- liftIO $ ObConfig.get "config/common/route"
+  case mRootRoute of
+    Nothing -> text "Can't find server address.  Server not configured properly."
+    Just rootRoute -> do
+      let route = T.strip rootRoute <> "/cache/"
+      void $ prerender blank $ copyableValue "Cache Address" route
+      _ <- prerender blank $ copyableValue "Cache Public Key" pubkey
+      el "h4" $ text "To use this cache, put the following in your /etc/nix/nix.conf:"
+      elClass "pre" "ui segment" $ do
+        text $ nixConfExample route pubkey
 dynInfoWidget _ = blank
 
 nixConfExample :: Text -> Text -> Text
