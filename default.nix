@@ -71,7 +71,8 @@ let
   };
 
   newObelisk = origObelisk // {
-    path = builtins.filterSource (path: type: !(builtins.any (x: x == baseNameOf path) ([".git" "tags" "TAGS" "dist"] ++ extraIgnores))) ./.;
+    path = builtins.filterSource (path: type: !(builtins.any (x: x == baseNameOf path) ([".git" "tags" "TAGS" "dist"] ++ extraIgnores) ||
+                                                builtins.match ".swp$" path)) ./.;
     serverModules = myServerModules;
 
     server = { exe, hostName, adminEmail, routeHost, enableHttps, version }@args:

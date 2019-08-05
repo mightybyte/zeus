@@ -14,6 +14,7 @@ import           Control.Error
 import           Control.Lens
 import           Control.Monad
 import qualified Data.Text as T
+import qualified Data.Text.IO as T
 import           Data.Time
 import           Database.Beam
 import           Database.Beam.Sqlite
@@ -38,7 +39,7 @@ getNextJob :: ServerEnv -> IO (Maybe CacheJob)
 getNextJob se = do
   beamQueryConn (_serverEnv_db se) $
     runSelectReturningOne $
-    select $
+    select $ limit_ 1 $
     orderBy_ (asc_ . _cacheJob_id) $ do
       job <- all_ (_ciDb_cacheJobs ciDb)
       guard_ (job ^. cacheJob_status ==. (val_ JobPending))
@@ -47,6 +48,7 @@ getNextJob se = do
 
 cacheManagerThread :: ServerEnv -> IO ()
 cacheManagerThread se = do
+  putStrLn "Starting cache manager thread"
   forever $ do
     Just cs <- liftIO $ getCiSettings (_serverEnv_db se)
     case _ciSettings_s3Cache cs of
