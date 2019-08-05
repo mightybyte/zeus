@@ -244,6 +244,10 @@ buildThread se ecMVar rng repo ca job = do
           saveAndSend pm
         saveAndSend pm = do
           let msg = _procMsg_msg pm
+          hPutStrLn lh $! prettyProcMsg pm
+          sendOutput se jid pm
+        cachingSaveAndSend pm = do
+          let msg = _procMsg_msg pm
           if isStorePath msg
             then addCacheJob se msg
             else return ()
@@ -264,7 +268,7 @@ buildThread se ecMVar rng repo ca job = do
       liftIO $ saveAndSendStr CiMsg $ "Building with the following environment:"
       liftIO $ saveAndSendStr CiMsg $ T.pack $ show buildEnv
 
-      runProc nixInstantiate [T.unpack $ _repo_buildNixFile repo] repoDir (Just buildEnv) saveAndSend
+      runProc nixInstantiate [T.unpack $ _repo_buildNixFile repo] repoDir (Just buildEnv) cachingSaveAndSend
 
       let buildArgs =
             [ T.unpack (_repo_buildNixFile repo)
