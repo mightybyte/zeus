@@ -94,7 +94,7 @@ infoWidget serveLocalCache = do
   return ()
 
 dynInfoWidget
-  :: (MonadAppIO r t m, Prerender js t m)
+  :: (MonadAppIO r t m)
   => (Maybe Text, Bool)
   -> m ()
 dynInfoWidget (Just pubkey, True) = divClass "ui segment" $ do
@@ -103,8 +103,8 @@ dynInfoWidget (Just pubkey, True) = divClass "ui segment" $ do
     Nothing -> text "Can't find server address.  Server not configured properly."
     Just rootRoute -> do
       let route = T.strip rootRoute <> "/cache/"
-      void $ prerender blank $ copyableValue "Cache Address" route
-      _ <- prerender blank $ copyableValue "Cache Public Key" pubkey
+      _ <- copyableValue "Cache Address" route
+      _ <- copyableValue "Cache Public Key" pubkey
       el "h4" $ text "To use this cache, put the following in your /etc/nix/nix.conf:"
       elClass "pre" "ui segment" $ do
         text $ nixConfExample route pubkey
@@ -117,14 +117,14 @@ nixConfExample addr pubkey = T.unlines
   ]
 
 copyableValue
-  :: (MonadWidget t m)
+  :: (MonadAppIO r t m)
   => Text
   -> Text
   -> m ()
 copyableValue label val = do
   el "h4" $ text label
-  el "div" $ mdo
-    _ <- copyButton (_element_raw e)
+  el "div" $ do
+    -- _ <- copyButton (_element_raw e)
     (e,_) <- el' "span" $ text val
     return ()
 
