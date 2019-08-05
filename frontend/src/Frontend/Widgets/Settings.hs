@@ -22,7 +22,7 @@ import           Frontend.Widgets.Form
 ------------------------------------------------------------------------------
 
 settingsWidget
-  :: (MonadAppIO r t m, Prerender js t m)
+  :: (MonadAppIO r t m)
   => m ()
 settingsWidget = do
   pb <- delay 0.01 =<< getPostBuild
@@ -32,7 +32,7 @@ settingsWidget = do
   return ()
 
 dynSettingsForm
-  :: (MonadAppIO r t m, Prerender js t m)
+  :: (MonadAppIO r t m)
   => m ()
 dynSettingsForm = do
   dcs <- asks _as_ciSettings
@@ -51,7 +51,7 @@ dynSettingsForm = do
   return ()
 
 settingsForm
-  :: (MonadAppIO r t m, Prerender js t m)
+  :: (MonadAppIO r t m)
   => CiSettings
   -> Event t CiSettings
   -> m (Dynamic t CiSettings)
@@ -81,7 +81,7 @@ settingsForm iv sv = do
     return (CiSettings 1 <$> dnp <*> cache <*> serveLocalCache)
 
 infoWidget
-  :: (MonadAppIO r t m, Prerender js t m)
+  :: (MonadAppIO r t m)
   => Dynamic t Bool
   -> m ()
 infoWidget serveLocalCache = do
