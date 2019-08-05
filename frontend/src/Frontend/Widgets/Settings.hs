@@ -22,7 +22,7 @@ import           Frontend.Widgets.Form
 ------------------------------------------------------------------------------
 
 settingsWidget
-  :: (MonadAppIO r t m)
+  :: (MonadAppIO r t m, Prerender js t m)
   => m ()
 settingsWidget = do
   pb <- delay 0.01 =<< getPostBuild
@@ -32,7 +32,7 @@ settingsWidget = do
   return ()
 
 dynSettingsForm
-  :: (MonadAppIO r t m)
+  :: (MonadAppIO r t m, Prerender js t m)
   => m ()
 dynSettingsForm = do
   dcs <- asks _as_ciSettings
@@ -51,7 +51,7 @@ dynSettingsForm = do
   return ()
 
 settingsForm
-  :: (MonadAppIO r t m)
+  :: (MonadAppIO r t m, Prerender js t m)
   => CiSettings
   -> Event t CiSettings
   -> m (Dynamic t CiSettings)
@@ -81,7 +81,7 @@ settingsForm iv sv = do
     return (CiSettings 1 <$> dnp <*> cache <*> serveLocalCache)
 
 infoWidget
-  :: (MonadAppIO r t m)
+  :: (MonadAppIO r t m, Prerender js t m)
   => Dynamic t Bool
   -> m ()
 infoWidget serveLocalCache = do
@@ -94,7 +94,7 @@ infoWidget serveLocalCache = do
   return ()
 
 dynInfoWidget
-  :: (MonadAppIO r t m)
+  :: (MonadAppIO r t m, Prerender js t m)
   => (Maybe Text, Bool)
   -> m ()
 dynInfoWidget (Just pubkey, True) = divClass "ui segment" $ do
@@ -103,8 +103,8 @@ dynInfoWidget (Just pubkey, True) = divClass "ui segment" $ do
     Nothing -> text "Can't find server address.  Server not configured properly."
     Just rootRoute -> do
       let route = T.strip rootRoute <> "/cache/"
-      _ <- copyableValue "Cache Address" route
-      _ <- copyableValue "Cache Public Key" pubkey
+      _ <- prerender blank $ copyableValue "Cache Address" route
+      _ <- prerender blank $ copyableValue "Cache Public Key" pubkey
       el "h4" $ text "To use this cache, put the following in your /etc/nix/nix.conf:"
       elClass "pre" "ui segment" $ do
         text $ nixConfExample route pubkey
@@ -117,7 +117,7 @@ nixConfExample addr pubkey = T.unlines
   ]
 
 copyableValue
-  :: (MonadAppIO r t m)
+  :: (MonadWidget t m)
   => Text
   -> Text
   -> m ()
