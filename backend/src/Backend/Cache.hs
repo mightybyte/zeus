@@ -213,8 +213,8 @@ cacheBuild se s3cache cj = do
           logProcMsg pm
 
     storePaths <- ExceptT $ calcStorePathClosure $ T.unpack $ _cacheJob_storePath cj
-    let toCache = S.difference (S.fromList $ map storePathHash storePaths)
-                               (S.fromList $ map (T.dropEnd 8) os)
+    let toCache = S.difference (S.fromList storePaths)
+                               (S.fromList $ map (("/nix/store/" <>) . T.dropEnd 8) os)
     liftIO $ logStr CiMsg $ T.pack $ printf "Caching %d store paths (of %d in transitive closure)\n" (S.size toCache) (length storePaths)
     nixDbConn <- liftIO $ open nixSqliteDb
     liftIO $ forM_ toCache $ \sp -> do
