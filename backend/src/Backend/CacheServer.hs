@@ -106,7 +106,7 @@ getNarInfo conn secret (StorePath sp) = do
           (stripPath <$> _validPath_deriver vp)
           [mkNixSig secret (T.encodeUtf8 fingerprint)]
     vps -> do
-      putStrLn "Unexpected vps:"
+      putStrLn $ "Unexpected vps returned for store path " <> sp
       print vps
       return Nothing
 
