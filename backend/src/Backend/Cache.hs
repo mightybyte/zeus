@@ -85,12 +85,6 @@ calcStorePathClosure storePath = do
       ExitSuccess -> return $ Right $ T.lines $ T.pack out
       ExitFailure _ -> return $ Left ec
 
---foo :: Text -> IO [Text]
---foo b = do
---  lgr  <- newLogger Debug stdout
---  e <- newEnv Discover -- $ FromKeys access secret
---  listBucket (e & envLogger .~ lgr) b
-
 toAwsRegion :: Region -> AWS.Region
 toAwsRegion = \case
   NorthVirginia -> AWS.NorthVirginia
@@ -119,23 +113,6 @@ listBucket e b r = do
       AWS.send (AWS.listObjectsV2 (AWS.BucketName b))
   let os = resp ^. AWS.lovrsContents
   return $ map (view $ AWS.oKey . AWS._ObjectKey) os
-
---class MonadReader CacheEnv m => MonadZeus m where
---  readLocalFile :: FilePath -> m ByteString
---  writeLocalFile :: FilePath -> ByteString -> m ()
---  listS3Bucket :: Text -> m [Text]
---  saveS3Object :: BucketName -> Text -> ByteString -> m ()
---  vpNarToS3 :: ValidPath -> m ()
---  dumpNar :: StorePath -> m ByteString
---
---cacheStorePath :: StorePath -> m ()
---cacheStorePath sp = do
---  conn <- asks _cacheEnv_nixSqliteConn
---  mvp <- queryStorePathInfo conn sp
---  case mvp of
---    Nothing -> return ()
---    Just vp -> do
---      vpNarToS3 vp
 
 storePathHash :: Text -> Text
 storePathHash = T.takeWhile (/= '-') . T.takeWhileEnd (/= '/')
@@ -239,9 +216,9 @@ cacheBuild se s3cache cj = do
     let toCache = S.difference (S.fromList $ map storePathHash storePaths)
                                (S.fromList $ map (T.dropEnd 8) os)
     liftIO $ logStr CiMsg $ T.pack $ printf "Caching %d store paths (of %d in transitive closure)\n" (S.size toCache) (length storePaths)
+    nixDbConn <- liftIO $ open nixSqliteDb
     liftIO $ forM_ toCache $ \sp -> do
       liftIO $ logStr CiMsg $ T.pack $ printf "Caching %s\n" sp
-      nixDbConn <- open nixSqliteDb
       res <- runExceptT $ cacheStorePath logProcMsg nixDbConn (_serverEnv_cacheKey se) s3cache (StorePath $ T.unpack sp)
       case res of
         Left e -> liftIO $ logStr CiMsg $ T.pack $ printf "Error %s while caching %s\n" (show e) sp
