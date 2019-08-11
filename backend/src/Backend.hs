@@ -37,7 +37,6 @@ import           GitHub.Data.Id
 import           GitHub.Data.Webhooks
 import           GitHub.Endpoints.Repos.Webhooks
 import qualified Network.AWS as AWS
-import qualified Network.AWS.S3 as AWS
 import qualified Network.WebSockets as WS
 import           Obelisk.Backend
 import qualified Obelisk.ExecutableConfig as ObConfig
@@ -48,7 +47,6 @@ import           Snap.Util.FileServe
 import           System.Directory
 import           System.Exit
 import           System.FilePath
-import           System.IO
 import           System.Mem.Weak
 import           System.Process (rawSystem)
 import           Text.Printf
@@ -103,8 +101,6 @@ getSigningKey = do
 
 doesSigningKeyExist :: IO Bool
 doesSigningKeyExist = do
-  let secretFile = signingKeyBaseName <> ".sec"
-      publicFile = signingKeyBaseName <> ".pub"
   secretExists <- doesFileExist signingKeySecretFile
   publicExists <- doesFileExist signingKeyPublicFile
   return $ secretExists && publicExists
@@ -146,12 +142,11 @@ getAppCacheKey appRoute = do
 ------------------------------------------------------------------------------
 foo = do
   conn <- open "../zeus.db"
+  Just s3cache <- (_ciSettings_s3Cache =<<) <$> getCiSettings conn
   nixDbConn <- open nixSqliteDb
   kp <- getSigningKey
-  Just s3cache <- (_ciSettings_s3Cache =<<) <$> getCiSettings conn
   Just cis <- getCiSettings conn
 
-  lgr  <- AWS.newLogger AWS.Debug stdout
   e <- AWS.newEnv $ AWS.FromKeys
     (AWS.AccessKey $ toS $ _s3Cache_accessKey s3cache)
     (AWS.SecretKey $ toS $ _s3Cache_secretKey s3cache)

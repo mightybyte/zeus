@@ -12,11 +12,10 @@ module Backend.Cache where
 ------------------------------------------------------------------------------
 import           Control.Concurrent
 import           Control.Error
+import           Control.Exception
 import           Control.Lens
 import           Control.Monad
 import           Control.Monad.Except
-import qualified Data.Set as S
-import           Data.String.Conv
 import           Data.Text (Text)
 import qualified Data.Text as T
 import           Data.Text.Encoding
@@ -110,9 +109,20 @@ listBucket :: AWS.Env -> Text -> Region -> IO [Text]
 listBucket e b r = do
   resp <- AWS.runResourceT $ AWS.runAWS e $
     AWS.within (toAwsRegion r) $
-      AWS.send (AWS.listObjectsV2 (AWS.BucketName b))
+      AWS.send (AWS.listObjectsV2 (AWS.BucketName b) & AWS.lovPrefix .~ Just "nar/")
   let os = resp ^. AWS.lovrsContents
   return $ map (view $ AWS.oKey . AWS._ObjectKey) os
+
+objectInfo :: AWS.Env -> Text -> Region -> Text -> IO AWS.HeadObjectResponse
+objectInfo e b r k = do
+  AWS.runResourceT $ AWS.runAWS e $
+    AWS.within (toAwsRegion r) $
+      AWS.send (AWS.headObject (AWS.BucketName b) (AWS.ObjectKey k))
+
+doesObjectExist :: AWS.Env -> Text -> Region -> Text -> IO Bool
+doesObjectExist e b r k = do
+  eresp :: Either SomeException AWS.HeadObjectResponse <- try (objectInfo e b r k)
+  return $ either (const False) (const True) eresp
 
 storePathHash :: Text -> Text
 storePathHash = T.takeWhile (/= '-') . T.takeWhileEnd (/= '/')
@@ -141,26 +151,32 @@ cacheStorePath logFunc nixDb cacheKey cache sp@(StorePath spt) = do
         let spHash = storePathHash $ T.pack spt
         --let narDumpCmd = printf "%s --dump %s"
         let oname = "nar/" <> spHash <> ".nar.xz"
-        let narUploadCmd = printf "%s --dump %s | %s --stdout | %s s3 cp - s3://%s/%s"
-              nixStore spt xzBinary awsBinary (_s3Cache_bucket cache) oname
-        runCP (shell narUploadCmd) logFunc
 
-        let niContents = narInfoToString ni
         e <- AWS.newEnv $ AWS.FromKeys
           (AWS.AccessKey $ encodeUtf8 $ _s3Cache_accessKey cache)
           (AWS.SecretKey $ encodeUtf8 $ _s3Cache_secretKey cache)
+        exists <- liftIO $ doesObjectExist e (_s3Cache_bucket cache) (_s3Cache_region cache) oname
 
-        resp <- liftIO $ AWS.runResourceT $ AWS.runAWS e $
-          AWS.within (toAwsRegion $ _s3Cache_region cache) $
-            AWS.send (AWS.putObject (AWS.BucketName $ _s3Cache_bucket cache)
-                     (AWS.ObjectKey (spHash <> ".narinfo"))
-                     (AWS.toBody niContents))
-        let status = resp ^. AWS.porsResponseStatus
-        if status == 200
+        if exists
           then return ()
           else do
-            liftIO $ printf "Error uploading narinfo for %s\n" spt
-            throwError (ExitFailure status)
+            let narUploadCmd = printf "%s --dump %s | %s --stdout | %s s3 cp - s3://%s/%s"
+                  nixStore spt xzBinary awsBinary (_s3Cache_bucket cache) oname
+            runCP (shell narUploadCmd) logFunc
+
+            let niContents = narInfoToString ni
+
+            resp <- liftIO $ AWS.runResourceT $ AWS.runAWS e $
+              AWS.within (toAwsRegion $ _s3Cache_region cache) $
+                AWS.send (AWS.putObject (AWS.BucketName $ _s3Cache_bucket cache)
+                         (AWS.ObjectKey (spHash <> ".narinfo"))
+                         (AWS.toBody niContents))
+            let status = resp ^. AWS.porsResponseStatus
+            if status == 200
+              then return ()
+              else do
+                liftIO $ printf "Error uploading narinfo for %s\n" spt
+                throwError (ExitFailure status)
 
 narInfoToString :: NarInfo -> Text
 narInfoToString (NarInfo sp u c _ _ refs _ sigs) = T.unlines $
@@ -196,14 +212,6 @@ cacheBuild se s3cache cj = do
   createDirectoryIfMissing True outDir
   let outputFile = printf (outDir <> "/%d.txt") (_cacheJob_id cj)
 
-  awsEnv <- AWS.newEnv $ AWS.FromKeys
-    (AWS.AccessKey $ toS $ _s3Cache_accessKey s3cache)
-    (AWS.SecretKey $ toS $ _s3Cache_secretKey s3cache)
-
-  -- TODO Eventually we probably want to cache this locally because caches can
-  -- get really large.
-  os <- listBucket awsEnv (_s3Cache_bucket s3cache) (_s3Cache_region s3cache)
-
   printf "Writing cache output to %s\n" outputFile
   _ <- withLogHandle outputFile $ \lh  -> runExceptT $ do
     let logProcMsg pm = hPutStrLn lh $! prettyProcMsg pm
@@ -212,10 +220,8 @@ cacheBuild se s3cache cj = do
           let pm = ProcMsg t msgTy msg
           logProcMsg pm
 
-    storePaths <- ExceptT $ calcStorePathClosure $ T.unpack $ _cacheJob_storePath cj
-    let toCache = S.difference (S.fromList storePaths)
-                               (S.fromList $ map (("/nix/store/" <>) . T.dropEnd 8) os)
-    liftIO $ logStr CiMsg $ T.pack $ printf "Caching %d store paths (of %d in transitive closure)\n" (S.size toCache) (length storePaths)
+    toCache <- ExceptT $ calcStorePathClosure $ T.unpack $ _cacheJob_storePath cj
+    liftIO $ logStr CiMsg $ T.pack $ printf "Caching %d store paths\n" (length toCache)
     nixDbConn <- liftIO $ open nixSqliteDb
     liftIO $ forM_ toCache $ \sp -> do
       liftIO $ logStr CiMsg $ T.pack $ printf "Caching %s\n" sp
