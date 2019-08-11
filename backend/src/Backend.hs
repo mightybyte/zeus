@@ -18,6 +18,7 @@ import           Control.Monad.Trans
 import qualified Data.Aeson as A
 import           Data.Dependent.Sum (DSum ((:=>)))
 import           Data.IORef
+import           Data.Maybe
 import           Data.RNG
 import qualified Data.Set as S
 import           Data.String.Conv
@@ -35,6 +36,8 @@ import           GitHub.Data.Name
 import           GitHub.Data.Id
 import           GitHub.Data.Webhooks
 import           GitHub.Endpoints.Repos.Webhooks
+import qualified Network.AWS as AWS
+import qualified Network.AWS.S3 as AWS
 import qualified Network.WebSockets as WS
 import           Obelisk.Backend
 import qualified Obelisk.ExecutableConfig as ObConfig
@@ -45,6 +48,7 @@ import           Snap.Util.FileServe
 import           System.Directory
 import           System.Exit
 import           System.FilePath
+import           System.IO
 import           System.Mem.Weak
 import           System.Process (rawSystem)
 import           Text.Printf
@@ -72,6 +76,7 @@ import           Common.Types.ConnectedAccount
 import           Common.Types.JobStatus
 import           Common.Types.NixCacheKeyPair
 import           Common.Types.Repo
+import           Nix.Types
 ------------------------------------------------------------------------------
 
 getSecretToken :: IO Text
@@ -89,19 +94,34 @@ getSecretToken = do
 dbConnectInfo :: String
 dbConnectInfo = "zeus.db"
 
+
+getSigningKey :: IO NixCacheKeyPair
+getSigningKey = do
+  Right secret <- readKeyFile signingKeySecretFile
+  Right public <- readKeyFile signingKeyPublicFile
+  return $ NixCacheKeyPair secret public
+
+doesSigningKeyExist :: IO Bool
+doesSigningKeyExist = do
+  let secretFile = signingKeyBaseName <> ".sec"
+      publicFile = signingKeyBaseName <> ".pub"
+  secretExists <- doesFileExist signingKeySecretFile
+  publicExists <- doesFileExist signingKeyPublicFile
+  return $ secretExists && publicExists
+
+
 ------------------------------------------------------------------------------
 -- | Generates a signing key for the Zeus nix cache.  If there is no key, this
 -- function generates a new one.  The key name parameter is recommended to be
 -- the domain name followed by "-1" (or other number) to allow for key
 -- rotation.
-getSigningKey :: String -> IO NixCacheKeyPair
-getSigningKey keyName = do
-  let secretFile = signingKeyBaseName <> ".sec"
-      publicFile = signingKeyBaseName <> ".pub"
-  secretExists <- doesFileExist signingKeySecretFile
-  publicExists <- doesFileExist signingKeyPublicFile
-  when (not $ secretExists && publicExists) $ do
-    let args =
+getOrCreateSigningKey :: String -> IO NixCacheKeyPair
+getOrCreateSigningKey keyName = do
+  keyExists <- doesSigningKeyExist
+  when (not keyExists) $ do
+    let secretFile = signingKeyBaseName <> ".sec"
+        publicFile = signingKeyBaseName <> ".pub"
+        args =
           [ "--generate-binary-cache-key"
           , keyName
           , secretFile
@@ -115,15 +135,32 @@ getSigningKey keyName = do
       ExitSuccess -> return ()
     renameFile secretFile signingKeySecretFile
     renameFile publicFile signingKeyPublicFile
+  getSigningKey
 
-  Right secret <- readKeyFile signingKeySecretFile
-  Right public <- readKeyFile signingKeyPublicFile
-  return $ NixCacheKeyPair secret public
 
 getAppCacheKey :: Text -> IO NixCacheKeyPair
 getAppCacheKey appRoute = do
   let appDomain = T.takeWhile (\c -> c /= ':' && c /= '/') $ T.drop 3 $ snd $ T.breakOn "://" appRoute
-  getSigningKey $ T.unpack $ appDomain <> "-1"
+  getOrCreateSigningKey $ T.unpack $ appDomain <> "-1"
+
+------------------------------------------------------------------------------
+foo = do
+  conn <- open "../zeus.db"
+  nixDbConn <- open nixSqliteDb
+  kp <- getSigningKey
+  Just s3cache <- (_ciSettings_s3Cache =<<) <$> getCiSettings conn
+  Just cis <- getCiSettings conn
+
+  lgr  <- AWS.newLogger AWS.Debug stdout
+  e <- AWS.newEnv $ AWS.FromKeys
+    (AWS.AccessKey $ toS $ _s3Cache_accessKey s3cache)
+    (AWS.SecretKey $ toS $ _s3Cache_secretKey s3cache)
+  os <- listBucket e (_s3Cache_bucket s3cache) (_s3Cache_region s3cache)
+
+  printf "Bucket has %d items\n" (length os)
+  mapM_ print os
+  runExceptT $ cacheStorePath print nixDbConn kp (fromJust $ _ciSettings_s3Cache cis) (StorePath "/nix/store/001hh2ij318yvshcafmn6cny441qrdcx-hscolour-1.24.4")
+------------------------------------------------------------------------------
 
 backend :: Backend BackendRoute FrontendRoute
 backend = Backend

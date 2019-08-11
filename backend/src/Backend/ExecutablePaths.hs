@@ -21,3 +21,9 @@ nixStore = $(staticWhich "nix-store")
 
 bzip2 :: String
 bzip2 = $(staticWhich "bzip2")
+
+xzBinary :: String
+xzBinary = $(staticWhich "xz")
+
+awsBinary :: String
+awsBinary = $(staticWhich "aws")

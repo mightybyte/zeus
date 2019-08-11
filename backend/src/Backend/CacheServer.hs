@@ -27,27 +27,8 @@ import           Backend.ExecutablePaths
 import qualified Backend.NixBase32 as Base32
 import           Backend.Types.NixCacheKeyPair
 import           Backend.Types.ServerEnv
+import           Nix.Types
 ------------------------------------------------------------------------------
-
-nixSqliteDb :: String
-nixSqliteDb = "/nix/var/nix/db/db.sqlite"
-
-data ValidPath = ValidPath
-  { _validPath_id   :: Int
-  , _validPath_path :: Text
-  , _validPath_hash :: Text
-  , _validPath_registrationTime :: Int
-  , _validPath_deriver :: Maybe Text
-  , _validPath_narSize :: Maybe Int
-  , _validPath_ultimate :: Maybe Int
-  , _validPath_sigs :: Maybe [Text]
-  , _validPath_ca :: Maybe Text
-  } deriving (Eq,Ord,Show,Read)
-
-instance FromRow ValidPath where
-  fromRow = ValidPath <$> field <*> field <*> field
-                      <*> field <*> field <*> field
-                      <*> field <*> (fmap T.words <$> field) <*> field
 
 fingerprintPath :: Text -> Text -> Int -> [Text] -> Either String Text
 fingerprintPath storePath narHash narSize refs = do
@@ -56,6 +37,17 @@ fingerprintPath storePath narHash narSize refs = do
       [ storePath, hashType <> ":" <> hash, T.pack (show narSize)
       , T.intercalate "," refs
       ]
+
+fingerprintVP :: ValidPath -> [Text] -> Either String Text
+fingerprintVP (ValidPath _ p h _ _ s _ _ _) =
+  fingerprintPath p h (fromMaybe 0 s)
+
+------------------------------------------------------------------------------
+-- | Similar to queryPathInfo / queryPathInfoUncached in the Nix C++ code.
+queryStorePathInfo :: Connection -> FilePath -> IO (Maybe ValidPath)
+queryStorePathInfo conn storePath = do
+    vpRes <- query conn "select * from ValidPaths where path = ? limit 1" (Only storePath)
+    return $ listToMaybe vpRes
 
 mkBase32 :: Text -> Either String (Text,Text)
 mkBase32 narHash = (hashType,) <$> base32hash
@@ -83,6 +75,35 @@ nixCacheRoutes se ps = do
 stripPath :: Text -> Text
 stripPath = T.takeWhileEnd (/= '/')
 
+------------------------------------------------------------------------------
+-- | Gets the narinfo for a store path or the hash prefix of a store path,
+-- i.e. /nix/store/00gli0bqsxvxzx90miprdd0gpc2ryhv2
+getNarInfo
+  :: Connection
+  -> NixCacheKey
+  -> StorePath
+  -> IO (Maybe NarInfo)
+getNarInfo conn secret (StorePath sp) = do
+  vpRes <- liftIO $ query conn "select * from ValidPaths where path >= ? limit 1" (Only sp)
+  case vpRes of
+    [vp] -> do
+      refs <- fmap (sort . fmap fromOnly) $ liftIO $ query conn
+        "select path from Refs join ValidPaths on reference = id where referrer = ?"
+        (Only $ _validPath_id vp)
+      let spHash = T.takeWhile (/= '-') $ _validPath_path vp
+      return $ case fingerprintVP vp refs of
+        Left _ -> Nothing
+        Right fingerprint -> Just $ NarInfo
+          (StorePath $ T.unpack $ _validPath_path vp)
+          spHash
+          Xz
+          Nothing
+          Nothing
+          (map stripPath refs)
+          (stripPath <$> _validPath_deriver vp)
+          [mkNixSig secret (T.encodeUtf8 fingerprint)]
+    _ -> return Nothing
+
 otherHandler :: MonadSnap m => ServerEnv -> Text -> m ()
 otherHandler se file = do
   case T.breakOn ".narinfo" file of
@@ -96,11 +117,7 @@ otherHandler se file = do
           refs <- fmap (sort . fmap fromOnly) $ liftIO $ query conn
             "select path from Refs join ValidPaths on reference = id where referrer = ?"
             (Only $ _validPath_id vp)
-          let mf = fingerprintPath (_validPath_path vp)
-                                   (_validPath_hash vp)
-                                   (fromMaybe 0 $ _validPath_narSize vp)
-                                   refs
-          case mf of
+          case fingerprintVP vp refs of
             Left e -> do
               liftIO $ putStrLn $ "otherHandler in Left: " <> e
               modifyResponse $ setResponseStatus 500 "Error constructing fingerprint"

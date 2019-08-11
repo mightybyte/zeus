@@ -129,7 +129,7 @@ copyableValue label val = do
     return ()
 
 s3CacheWidget
-  :: MonadApp r t m
+  :: (MonadApp r t m, Prerender js t m)
   => Maybe S3Cache
   -> Event t (Maybe S3Cache)
   -> Bool
@@ -144,10 +144,14 @@ s3CacheWidget iv sv True = divClass "ui segment" $ do
       return $ value v
     dr <- divClass "field" $ do
       el "label" $ text "Region"
-      v <- inputElement $ def
-        & inputElementConfig_initialValue .~ maybe "" _s3Cache_region iv
-        & inputElementConfig_setValue .~ (maybe "" _s3Cache_region <$> sv)
-      return $ value v
+      filledDropdown (maybe NorthVirginia _s3Cache_region iv)
+                     (maybe NorthVirginia _s3Cache_region <$> sv)
+    --dr <- divClass "field" $ do
+    --  el "label" $ text "Region"
+    --  v <- inputElement $ def
+    --    & inputElementConfig_initialValue .~ maybe "" _s3Cache_region iv
+    --    & inputElementConfig_setValue .~ (maybe "" _s3Cache_region <$> sv)
+    --  return $ value v
     dak <- divClass "field" $ do
       el "label" $ text "Access Key"
       v <- inputElement $ def
@@ -170,6 +174,6 @@ s3CacheWidget iv sv True = divClass "ui segment" $ do
       r <- dr
       ak <- dak
       sk <- dsk
-      if any T.null [b, r, ak]
+      if any T.null [b, ak]
         then pure Nothing
         else pure $ Just $ S3Cache b r ak sk

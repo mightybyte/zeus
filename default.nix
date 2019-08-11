@@ -113,6 +113,7 @@ newObelisk.project ./. ({ pkgs, ... }: {
         pkgs.git
         pkgs.nix
         pkgs.gnutar
+        pkgs.awscli
       ];
     });
     base32-bytestring = (self.callCabal2nix "base32-bytestring" (pkgs.fetchFromGitHub {
@@ -176,6 +177,12 @@ newObelisk.project ./. ({ pkgs, ... }: {
         repo = "snap-server";
         rev = "dad24ba290126b1b93da32ef6019393329b54ed3";
         sha256 = "0fzbvysq6qkbjd39bphbirzd2xaalm3jaxrs91g04ya17nqdaz1i";
+    }) {});
+    streaming-lzma = dontCheck (self.callCabal2nix "streaming-lzma" (pkgs.fetchFromGitHub {
+        owner = "haskell-hvr";
+        repo = "streaming-lzma";
+        rev = "ec8cb2f935ee4f3217c6939684103ba1a6bc4ad1";
+        sha256 = "1w77v9isv6rmajg4py4ry7475d3xjs7471dfaf6bglbwphm0dj8b";
     }) {});
     zeus = addBuildDepends super.zeus [ pkgs.git ];
 

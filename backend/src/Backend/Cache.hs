@@ -1,5 +1,6 @@
 {-# LANGUAGE BangPatterns #-}
 {-# LANGUAGE FlexibleContexts #-}
+{-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE MultiWayIf #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE ScopedTypeVariables #-}
@@ -13,16 +14,25 @@ import           Control.Concurrent
 import           Control.Error
 import           Control.Lens
 import           Control.Monad
+import           Control.Monad.Except
+import qualified Data.Set as S
+import           Data.String.Conv
+import           Data.Text (Text)
 import qualified Data.Text as T
-import qualified Data.Text.IO as T
+import           Data.Text.Encoding
 import           Data.Time
 import           Database.Beam
 import           Database.Beam.Sqlite
+import           Database.SQLite.Simple
+import qualified Network.AWS as AWS
+import qualified Network.AWS.S3 as AWS
 import           System.Directory
+import           System.Exit
 import           System.IO
 import           System.Process
 import           Text.Printf
 ------------------------------------------------------------------------------
+import           Backend.CacheServer
 import           Backend.Db
 import           Backend.DbLib
 import           Backend.ExecutablePaths
@@ -33,6 +43,7 @@ import           Common.Types.CacheJob
 import           Common.Types.CiSettings
 import           Common.Types.JobStatus
 import           Common.Types.ProcMsg
+import           Nix.Types
 ------------------------------------------------------------------------------
 
 getNextJob :: ServerEnv -> IO (Maybe CacheJob)
@@ -61,6 +72,132 @@ cacheManagerThread se = do
               printf "Caching job:\n%s\nto cache:\n%s\n" (show job) (show s3)
               cacheBuild se s3 job
 
+------------------------------------------------------------------------------
+-- Calculate the transitive closure of a nix file.
+calcNixClosure :: FilePath -> IO (Either ExitCode [Text])
+calcNixClosure nixFile = calcStorePathClosure ("$(nix-instantiate " <> nixFile <> ")")
+
+calcStorePathClosure :: FilePath -> IO (Either ExitCode [Text])
+calcStorePathClosure storePath = do
+    let cmd = printf "%s -qR --include-outputs %s" nixStore storePath
+    (ec,out,_) <- readCreateProcessWithExitCode (shell cmd) ""
+    case ec of
+      ExitSuccess -> return $ Right $ T.lines $ T.pack out
+      ExitFailure _ -> return $ Left ec
+
+--foo :: Text -> IO [Text]
+--foo b = do
+--  lgr  <- newLogger Debug stdout
+--  e <- newEnv Discover -- $ FromKeys access secret
+--  listBucket (e & envLogger .~ lgr) b
+
+toAwsRegion :: Region -> AWS.Region
+toAwsRegion = \case
+  NorthVirginia -> AWS.NorthVirginia
+  Ohio -> AWS.Ohio
+  NorthCalifornia -> AWS.NorthCalifornia
+  Oregon -> AWS.Oregon
+  Montreal -> AWS.Montreal
+  Tokyo -> AWS.Tokyo
+  Seoul -> AWS.Seoul
+  Mumbai -> AWS.Mumbai
+  Singapore -> AWS.Singapore
+  Sydney -> AWS.Sydney
+  SaoPaulo -> AWS.SaoPaulo
+  Ireland -> AWS.Ireland
+  London -> AWS.London
+  Frankfurt -> AWS.Frankfurt
+  GovCloud -> AWS.GovCloud
+  GovCloudFIPS -> AWS.GovCloudFIPS
+  Beijing -> AWS.Beijing
+
+
+listBucket :: AWS.Env -> Text -> Region -> IO [Text]
+listBucket e b r = do
+  resp <- AWS.runResourceT $ AWS.runAWS e $
+    AWS.within (toAwsRegion r) $
+      AWS.send (AWS.listObjectsV2 (AWS.BucketName b))
+  let os = resp ^. AWS.lovrsContents
+  return $ map (view $ AWS.oKey . AWS._ObjectKey) os
+
+--class MonadReader CacheEnv m => MonadZeus m where
+--  readLocalFile :: FilePath -> m ByteString
+--  writeLocalFile :: FilePath -> ByteString -> m ()
+--  listS3Bucket :: Text -> m [Text]
+--  saveS3Object :: BucketName -> Text -> ByteString -> m ()
+--  vpNarToS3 :: ValidPath -> m ()
+--  dumpNar :: StorePath -> m ByteString
+--
+--cacheStorePath :: StorePath -> m ()
+--cacheStorePath sp = do
+--  conn <- asks _cacheEnv_nixSqliteConn
+--  mvp <- queryStorePathInfo conn sp
+--  case mvp of
+--    Nothing -> return ()
+--    Just vp -> do
+--      vpNarToS3 vp
+
+storePathHash :: Text -> Text
+storePathHash = T.takeWhile (/= '-') . T.takeWhileEnd (/= '/')
+
+------------------------------------------------------------------------------
+-- | To upload a store path to a binary cache, we have to do two things:
+--
+-- 1. Upload the nar (probably compressed) to nar/<uniqueid>.nar[.xz]
+-- 2. Upload the narinfo as <storepath>.narinfo signed with the store's
+-- private key
+--
+-- The only constraints on uniqueid in the nar filename are that it must be
+-- internally consistent with what is contained in the narinfo.
+cacheStorePath
+  :: (ProcMsg -> IO ())
+  -> Connection
+  -> NixCacheKeyPair
+  -> S3Cache
+  -> StorePath
+  -> ExceptT ExitCode IO ()
+cacheStorePath logFunc nixDb cacheKey cache sp@(StorePath spt) = do
+    mni <- liftIO $ getNarInfo nixDb (_nixCacheKey_secret cacheKey) sp
+    case mni of
+      Nothing -> throwError $ ExitFailure 42
+      Just ni -> do
+        let spHash = storePathHash $ T.pack spt
+        --let narDumpCmd = printf "%s --dump %s"
+        let oname = "nar/" <> spHash <> ".nar.xz"
+        let narUploadCmd = printf "%s --dump %s | %s --stdout | %s s3 cp - s3://%s/%s"
+              nixStore spt xzBinary awsBinary (_s3Cache_bucket cache) oname
+        runCP (shell narUploadCmd) logFunc
+
+        let niContents = narInfoToString ni
+        e <- AWS.newEnv $ AWS.FromKeys
+          (AWS.AccessKey $ encodeUtf8 $ _s3Cache_accessKey cache)
+          (AWS.SecretKey $ encodeUtf8 $ _s3Cache_secretKey cache)
+
+        resp <- liftIO $ AWS.runResourceT $ AWS.runAWS e $
+          AWS.within (toAwsRegion $ _s3Cache_region cache) $
+            AWS.send (AWS.putObject (AWS.BucketName $ _s3Cache_bucket cache)
+                     (AWS.ObjectKey (spHash <> ".narinfo"))
+                     (AWS.toBody niContents))
+        let status = resp ^. AWS.porsResponseStatus
+        if status == 200
+          then return ()
+          else do
+            liftIO $ printf "Error uploading narinfo for %s\n" spt
+            throwError (ExitFailure status)
+
+narInfoToString :: NarInfo -> Text
+narInfoToString (NarInfo sp u c _ _ refs _ sigs) = T.unlines $
+  [ "StorePath: " <> T.pack (unStorePath sp)
+  , "URL: nar/" <> u <> ".nar.xz"
+  , "Compression: " <> T.pack (show c)
+  --, "FileHash: sha256:1g3pf3h89a5l106casdf8wgqjagsr52a5mxlnhv5xykkwf3rf2r6"
+  --, "FileSize: 31476"
+  --, "NarHash: sha256:1c415vhi7zbkxlvgphanjm3q31x8qhbh2zs9ygfnmk57xgrwf3kl"
+  --, "NarSize: 107320"
+  , "References: " <> T.unwords (map stripPath refs)
+  --, "CA: fixed:r:sha256:1c415vhi7zbkxlvgphanjm3q31x8qhbh2zs9ygfnmk57xgrwf3kl"
+  ] ++ map ("Sig: " <>) sigs
+
 cacheBuild
   :: ServerEnv
   -> S3Cache
@@ -81,29 +218,34 @@ cacheBuild se s3cache cj = do
   let outDir = "log/cache"
   createDirectoryIfMissing True outDir
   let outputFile = printf (outDir <> "/%d.txt") (_cacheJob_id cj)
+
+  awsEnv <- AWS.newEnv $ AWS.FromKeys
+    (AWS.AccessKey $ toS $ _s3Cache_accessKey s3cache)
+    (AWS.SecretKey $ toS $ _s3Cache_secretKey s3cache)
+
+  -- TODO Eventually we probably want to cache this locally because caches can
+  -- get really large.
+  os <- listBucket awsEnv (_s3Cache_bucket s3cache) (_s3Cache_region s3cache)
+
   printf "Writing cache output to %s\n" outputFile
   _ <- withLogHandle outputFile $ \lh  -> runExceptT $ do
-    -- nix sign-paths -k ~/cache-key.sec --all && nix copy --to s3://cache.kadena.io $(nix-build)
-    let signCP = proc nixBinary ["sign-paths", "-k", signingKeySecretFile, "--all"]
-    let saveAndSend pm = hPutStrLn lh $! prettyProcMsg pm
-        saveAndSendStr msgTy msg = do
+    let logProcMsg pm = hPutStrLn lh $! prettyProcMsg pm
+        logStr msgTy msg = do
           !t <- getCurrentTime
           let pm = ProcMsg t msgTy msg
-          saveAndSend pm
+          logProcMsg pm
 
-    runCP signCP saveAndSend
-
-    let bucket = T.unpack $ _s3Cache_bucket s3cache
-    let region = T.unpack $ _s3Cache_region s3cache
-    let s3BaseUrl = "s3://" <> bucket
-    let s3url = printf "%s?region=%s" s3BaseUrl region
-    let awsEnv = [ ("AWS_ACCESS_KEY_ID", T.unpack $ _s3Cache_accessKey s3cache)
-                 , ("AWS_SECRET_ACCESS_KEY", T.unpack $ _s3Cache_secretKey s3cache)
-                 ]
-    let copyCP = (proc nixBinary ["copy", "--to", s3url, T.unpack $ _cacheJob_storePath cj])
-          { env = Just awsEnv }
-    runCP copyCP saveAndSend
-    liftIO $ saveAndSendStr CiMsg "Finished caching"
+    storePaths <- ExceptT $ calcStorePathClosure $ T.unpack $ _cacheJob_storePath cj
+    let toCache = S.difference (S.fromList $ map storePathHash storePaths)
+                               (S.fromList $ map (T.dropEnd 8) os)
+    liftIO $ logStr CiMsg $ T.pack $ printf "Caching %d store paths (of %d in transitive closure)\n" (S.size toCache) (length storePaths)
+    liftIO $ forM_ toCache $ \sp -> do
+      liftIO $ logStr CiMsg $ T.pack $ printf "Caching %s\n" sp
+      res <- runExceptT $ cacheStorePath logProcMsg dbConn (_serverEnv_cacheKey se) s3cache (StorePath $ T.unpack sp)
+      case res of
+        Left e -> liftIO $ logStr CiMsg $ T.pack $ printf "Error %s while caching %s\n" (show e) sp
+        Right _ -> return ()
+    liftIO $ logStr CiMsg "Finished caching"
 
   end <- getCurrentTime
   runBeamSqlite dbConn $ do

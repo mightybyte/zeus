@@ -9,6 +9,9 @@ library
     buildable: False
   build-depends:
       aeson                   >= 1.3     && < 1.5
+    , amazonka
+    , amazonka-core
+    , amazonka-s3
     , barbies
     , base                    >= 4.10    && < 4.13
     , base16-bytestring       >= 0.1     && < 0.2
@@ -82,6 +85,7 @@ library
     Backend.Types.ServerEnv
     Backend.WsCmds
     Backend.WsUtils
+    Nix.Types
     Which
   ghc-options: -Wall
 
