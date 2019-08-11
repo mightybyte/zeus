@@ -91,9 +91,12 @@ getNarInfo conn secret (StorePath sp) = do
         "select path from Refs join ValidPaths on reference = id where referrer = ?"
         (Only $ _validPath_id vp)
       let spHash = T.takeWhile (/= '-') $ _validPath_path vp
-      return $ case fingerprintVP vp refs of
-        Left _ -> Nothing
-        Right fingerprint -> Just $ NarInfo
+      case fingerprintVP vp refs of
+        Left _ -> do
+          printf "Couldn't calculate fingerprint: %s\n" (show vp)
+          print refs
+          return Nothing
+        Right fingerprint -> return $ Just $ NarInfo
           (StorePath $ T.unpack $ _validPath_path vp)
           spHash
           Xz
@@ -102,7 +105,11 @@ getNarInfo conn secret (StorePath sp) = do
           (map stripPath refs)
           (stripPath <$> _validPath_deriver vp)
           [mkNixSig secret (T.encodeUtf8 fingerprint)]
-    _ -> return Nothing
+    vps -> do
+      putStrLn "Unexpected vps:"
+      print vps
+      return Nothing
+
 
 otherHandler :: MonadSnap m => ServerEnv -> Text -> m ()
 otherHandler se file = do

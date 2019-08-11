@@ -241,7 +241,8 @@ cacheBuild se s3cache cj = do
     liftIO $ logStr CiMsg $ T.pack $ printf "Caching %d store paths (of %d in transitive closure)\n" (S.size toCache) (length storePaths)
     liftIO $ forM_ toCache $ \sp -> do
       liftIO $ logStr CiMsg $ T.pack $ printf "Caching %s\n" sp
-      res <- runExceptT $ cacheStorePath logProcMsg dbConn (_serverEnv_cacheKey se) s3cache (StorePath $ T.unpack sp)
+      nixDbConn <- open nixSqliteDb
+      res <- runExceptT $ cacheStorePath logProcMsg nixDbConn (_serverEnv_cacheKey se) s3cache (StorePath $ T.unpack sp)
       case res of
         Left e -> liftIO $ logStr CiMsg $ T.pack $ printf "Error %s while caching %s\n" (show e) sp
         Right _ -> return ()
