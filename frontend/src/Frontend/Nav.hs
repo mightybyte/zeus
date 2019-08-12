@@ -26,6 +26,7 @@ leftMenuItems =
   [ Some.This FR_Jobs
   , Some.This FR_Repos
   , Some.This FR_Accounts
+  , Some.This FR_Caches
   ]
 
 nav

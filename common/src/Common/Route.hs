@@ -73,6 +73,7 @@ data FrontendRoute :: * -> * where
   FR_Jobs :: FrontendRoute (R JobRoute)
   FR_Repos :: FrontendRoute (R CrudRoute)
   FR_Accounts :: FrontendRoute (R CrudRoute)
+  FR_Caches :: FrontendRoute (R CrudRoute)
   FR_Settings :: FrontendRoute ()
 
 type FullRoute = Sum BackendRoute (ObeliskRoute FrontendRoute)
@@ -113,6 +114,7 @@ backendRouteEncoder =
       FR_Jobs -> PathSegment "jobs" jobRouteEncoder
       FR_Repos -> PathSegment "repos" crudRouteEncoder
       FR_Accounts -> PathSegment "accounts" crudRouteEncoder
+      FR_Caches -> PathSegment "caches" crudRouteEncoder
       FR_Settings -> PathSegment "settings" $ unitEncoder mempty
 
 concat <$> mapM deriveRouteComponent
@@ -134,6 +136,7 @@ tabTitle sfr@(Some.This sec) = case sec of
   FR_Jobs -> text $ frToText sfr
   FR_Repos -> text $ frToText sfr
   FR_Accounts -> text $ frToText sfr
+  FR_Caches -> text $ frToText sfr
   FR_Settings -> text $ frToText sfr
 
 -- | Provide a human-readable name for a given section
@@ -143,6 +146,7 @@ frToText (Some.This sec) = case sec of
   FR_Jobs -> "Jobs"
   FR_Repos -> "Repos"
   FR_Accounts -> "Accounts"
+  FR_Caches -> "Caches"
   FR_Settings -> "Settings"
 
 
@@ -152,4 +156,5 @@ tabHomepage (Some.This sec) = sec :/ case sec of
   FR_Jobs -> Job_List :/ ()
   FR_Repos -> Crud_List :/ ()
   FR_Accounts -> Crud_List :/ ()
+  FR_Caches -> Crud_List :/ ()
   FR_Settings -> ()

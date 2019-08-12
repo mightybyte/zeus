@@ -11,6 +11,7 @@ import           Data.Text (Text)
 import           Database.Beam
 import           Scrub
 ------------------------------------------------------------------------------
+import           Common.Types.BinaryCache
 import           Common.Types.BuildJob
 import           Common.Types.CiSettings
 import           Common.Types.ConnectedAccount
@@ -56,6 +57,10 @@ data Up
   | Up_GetCiSettings
   | Up_UpdateCiSettings CiSettings
   | Up_GetCiInfo
+
+  | Up_ListCaches
+  | Up_AddCache (Batch (BinaryCacheT Maybe))
+  | Up_DelCaches (Batch BinaryCacheId)
   deriving (Show,Generic)
 
 data Down
@@ -67,6 +72,7 @@ data Down
   | Down_JobNewOutput (BuildJobId, [ProcMsg])
   | Down_CiSettings (Scrubbed CiSettings)
   | Down_CiInfo Text
+  | Down_Caches [BinaryCache]
   deriving (Generic)
 
 instance ToJSON Up where

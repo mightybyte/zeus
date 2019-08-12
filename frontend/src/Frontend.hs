@@ -27,12 +27,12 @@ import           Reflex.Dom.Core
 import           Reflex.Dom.Contrib.CssClass
 ------------------------------------------------------------------------------
 import           Common.Route
-import           Humanizable
 import           Frontend.App
 import           Frontend.AppState
 import           Frontend.Common
 import           Frontend.Nav
 import           Frontend.Widgets.Accounts
+import           Frontend.Widgets.Caches
 import           Frontend.Widgets.Jobs
 import           Frontend.Widgets.Repos
 import           Frontend.Widgets.Settings
@@ -101,6 +101,7 @@ appBody = do
       FR_Jobs -> jobsWidget
       FR_Repos -> reposWidget
       FR_Accounts -> accountsWidget
+      FR_Caches -> cachesWidget
       FR_Settings -> settingsWidget
   serverAlert <- asks _as_serverAlert
   modalExample serverAlert
@@ -119,19 +120,6 @@ appBody = do
 --                 else setRoute $ (FR_Jobs :/ ()) <$ pb
 --  _ <- networkView action
 --  return ()
-
-data MainTabs
-  = JobsTab
-  -- | BuildersTab
-  | ReposTab
-  | AccountsTab
-  deriving (Eq,Ord,Show,Read,Enum,Bounded)
-
-instance Humanizable MainTabs where
-  humanize JobsTab = "Jobs"
-  --humanize BuildersTab = "Builders"
-  humanize ReposTab = "Repos"
-  humanize AccountsTab = "Accounts"
 
 modal
   :: MonadApp r t m

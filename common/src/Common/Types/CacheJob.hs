@@ -23,6 +23,7 @@ import           Data.Text (Text)
 import           Data.Time
 import           Database.Beam
 ------------------------------------------------------------------------------
+import           Common.Types.BinaryCache
 import           Common.Types.JobStatus
 ------------------------------------------------------------------------------
 
@@ -30,6 +31,7 @@ import           Common.Types.JobStatus
 data CacheJobT f = CacheJob
   { _cacheJob_id :: C f Int
   , _cacheJob_storePath :: C f Text
+  , _cacheJob_cache :: PrimaryKey BinaryCacheT (Nullable f)
   , _cacheJob_startedAt :: C f (Maybe UTCTime)
   , _cacheJob_endedAt :: C f (Maybe UTCTime)
   , _cacheJob_status :: C f JobStatus
@@ -38,6 +40,7 @@ data CacheJobT f = CacheJob
 CacheJob
   (LensFor cacheJob_id)
   (LensFor cacheJob_nixPath)
+  (BinaryCacheId (LensFor cacheJob_cache))
   (LensFor cacheJob_startedAt)
   (LensFor cacheJob_endedAt)
   (LensFor cacheJob_status)

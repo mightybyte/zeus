@@ -46,6 +46,7 @@ import           Backend.WsCmds
 import           Common.Api
 import           Common.Types.ConnectedAccount
 import           Backend.Types.ConnRepo
+import           Common.Types.BinaryCache
 import           Common.Types.BuildJob
 import           Common.Types.CacheJob
 import           Common.Types.CiSettings
@@ -207,11 +208,11 @@ addCloneCreds user pass url =
 isStorePath :: Text -> Bool
 isStorePath t = T.isPrefixOf "/nix/store" t && not (T.isInfixOf " " t)
 
-addCacheJob :: ServerEnv -> Text -> IO ()
-addCacheJob se sp = do
+addCacheJob :: ServerEnv -> PrimaryKey BinaryCacheT (Nullable Identity) -> Text -> IO ()
+addCacheJob se cacheId sp = do
   beamQuery se $ do
     runInsert $ insert (_ciDb_cacheJobs ciDb) $ insertExpressions
-      [CacheJob default_ (val_ sp) (val_ Nothing) (val_ Nothing) (val_ JobPending)]
+      [CacheJob default_ (val_ sp) (val_ cacheId) (val_ Nothing) (val_ Nothing) (val_ JobPending)]
 
 buildThread
   :: ServerEnv
@@ -243,13 +244,12 @@ buildThread se ecMVar rng repo ca job = do
           let pm = ProcMsg t msgTy msg
           saveAndSend pm
         saveAndSend pm = do
-          let msg = _procMsg_msg pm
           hPutStrLn lh $! prettyProcMsg pm
           sendOutput se jid pm
         cachingSaveAndSend pm = do
           let msg = _procMsg_msg pm
           if isStorePath msg
-            then addCacheJob se msg
+            then addCacheJob se (_repo_cache repo) msg
             else return ()
           hPutStrLn lh $! prettyProcMsg pm
           sendOutput se jid pm
@@ -294,7 +294,7 @@ buildThread se ecMVar rng repo ca job = do
         case msp of
           Nothing -> liftIO $ putStrLn "No build outputs to cache"
           Just sp -> do
-            addCacheJob se $ T.pack sp
+            addCacheJob se (_repo_cache repo) $ T.pack sp
             liftIO $ printf "Build succeeded with result storepath %s\n" (show sp)
         putMVar ecMVar ExitSuccess
 

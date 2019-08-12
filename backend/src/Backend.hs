@@ -18,7 +18,6 @@ import           Control.Monad.Trans
 import qualified Data.Aeson as A
 import           Data.Dependent.Sum (DSum ((:=>)))
 import           Data.IORef
-import           Data.Maybe
 import           Data.RNG
 import qualified Data.Set as S
 import           Data.String.Conv
@@ -36,7 +35,6 @@ import           GitHub.Data.Name
 import           GitHub.Data.Id
 import           GitHub.Data.Webhooks
 import           GitHub.Endpoints.Repos.Webhooks
-import qualified Network.AWS as AWS
 import qualified Network.WebSockets as WS
 import           Obelisk.Backend
 import qualified Obelisk.ExecutableConfig as ObConfig
@@ -68,13 +66,13 @@ import           Backend.WsCmds
 import           Backend.WsUtils
 import           Common.Api
 import           Common.Route
+import           Common.Types.BinaryCache
 import           Common.Types.BuildJob
 import           Common.Types.CiSettings
 import           Common.Types.ConnectedAccount
 import           Common.Types.JobStatus
 import           Common.Types.NixCacheKeyPair
 import           Common.Types.Repo
-import           Nix.Types
 ------------------------------------------------------------------------------
 
 getSecretToken :: IO Text
@@ -140,21 +138,21 @@ getAppCacheKey appRoute = do
   getOrCreateSigningKey $ T.unpack $ appDomain <> "-1"
 
 ------------------------------------------------------------------------------
-foo = do
-  conn <- open "../zeus.db"
-  Just s3cache <- (_ciSettings_s3Cache =<<) <$> getCiSettings conn
-  nixDbConn <- open nixSqliteDb
-  kp <- getSigningKey
-  Just cis <- getCiSettings conn
-
-  e <- AWS.newEnv $ AWS.FromKeys
-    (AWS.AccessKey $ toS $ _s3Cache_accessKey s3cache)
-    (AWS.SecretKey $ toS $ _s3Cache_secretKey s3cache)
-  os <- listBucket e (_s3Cache_bucket s3cache) (_s3Cache_region s3cache)
-
-  printf "Bucket has %d items\n" (length os)
-  mapM_ print os
-  runExceptT $ cacheStorePath print nixDbConn kp (fromJust $ _ciSettings_s3Cache cis) (StorePath "/nix/store/001hh2ij318yvshcafmn6cny441qrdcx-hscolour-1.24.4")
+--foo = do
+--  conn <- open "../zeus.db"
+--  Just s3cache <- (_ciSettings_s3Cache =<<) <$> getCiSettings conn
+--  nixDbConn <- open nixSqliteDb
+--  kp <- getSigningKey
+--  Just cis <- getCiSettings conn
+--
+--  e <- AWS.newEnv $ AWS.FromKeys
+--    (AWS.AccessKey $ toS $ _s3Cache_accessKey s3cache)
+--    (AWS.SecretKey $ toS $ _s3Cache_secretKey s3cache)
+--  os <- listBucket e (_s3Cache_bucket s3cache) (_s3Cache_region s3cache)
+--
+--  printf "Bucket has %d items\n" (length os)
+--  mapM_ print os
+--  runExceptT $ cacheStorePath print nixDbConn kp (fromJust $ _ciSettings_s3Cache cis) (StorePath "/nix/store/001hh2ij318yvshcafmn6cny441qrdcx-hscolour-1.24.4")
 ------------------------------------------------------------------------------
 
 backend :: Backend BackendRoute FrontendRoute
@@ -168,7 +166,7 @@ backend = Backend
       mcs <- getCiSettings dbConn
       case mcs of
         Nothing -> do
-          let c = CiSettings 0 "nixpkgs=/nix/var/nix/profiles/per-user/root/channels/nixos" Nothing True
+          let c = CiSettings 0 "nixpkgs=/nix/var/nix/profiles/per-user/root/channels/nixos" True
           initCiSettings dbConn c
         Just _ -> return ()
       appRoute <- getAppRoute
@@ -273,6 +271,10 @@ talkClient env cid conn = do
         Right Up_GetCiInfo -> do
           let k = nckToText $ _nixCacheKey_public $ _serverEnv_cacheKey env
           wsSend conn (Down_CiInfo k)
+
+        Right Up_ListCaches -> listCaches env conn
+        Right (Up_AddCache cs) -> mapM_ (addCache env) cs
+        Right (Up_DelCaches cs) -> delCaches env conn cs
   where
     cRepo = _serverEnv_connRepo env
     cleanup :: E.SomeException -> IO ()
@@ -384,7 +386,7 @@ addRepo
   -> IO ()
 addRepo env wsConn
         (Repo _ (ConnectedAccountId (Just o)) (Just n) (Just ns)
-              (Just nf) (Just t) _) = do
+              (Just nf) (Just t) (BinaryCacheId (Just c)) _) = do
   mca <- beamQuery env $ do
     runSelectReturningOne $ select $ do
       account <- all_ (ciDb ^. ciDb_connectedAccounts)
@@ -400,6 +402,7 @@ addRepo env wsConn
                   (val_ ns)
                   (val_ nf)
                   (val_ t)
+                  (val_ $ BinaryCacheId c)
                   (val_ hid)
             ]
   case mca of
@@ -478,3 +481,33 @@ delAccounts env wsConn cas = do
     runDelete $ delete (_ciDb_connectedAccounts ciDb) $
         (\ca -> ca ^. connectedAccount_id `in_` map (val_ . caKeyToInt) cas)
   listAccounts env wsConn
+
+------------------------------------------------------------------------------
+
+listCaches :: ServerEnv -> WS.Connection -> IO ()
+listCaches env wsConn = do
+  accounts <- beamQuery env $
+    runSelectReturningList $ select $ do
+      all_ (_ciDb_binaryCaches
+            ciDb)
+  wsSend wsConn $ Down_Caches $ map (getScrubbed . scrub) accounts
+
+addCache
+  :: ServerEnv
+  -> BinaryCacheT Maybe
+  -> IO ()
+addCache env (BinaryCache _ c) = do
+  beamQuery env $ do
+    runInsert $ insert (_ciDb_binaryCaches ciDb) $ insertExpressions
+           $ maybeToList $ BinaryCache default_
+              <$> (val_ <$> c)
+  as <- beamQuery env $ do
+    runSelectReturningList $ select $ all_ (_ciDb_binaryCaches ciDb)
+  broadcast (_serverEnv_connRepo env) $ Down_Caches $ map (getScrubbed . scrub) as
+
+delCaches :: ServerEnv -> WS.Connection -> [BinaryCacheId] -> IO ()
+delCaches env wsConn cs = do
+  beamQuery env $
+    runDelete $ delete (_ciDb_binaryCaches ciDb) $
+        (\ca -> ca ^. binaryCache_id `in_` map (val_ . binaryCacheKeyToInt) cs)
+  listCaches env wsConn

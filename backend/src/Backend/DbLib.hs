@@ -21,44 +21,21 @@ getCiSettings dbConn = do
       return ci
 
 setCiSettings :: Connection -> CiSettings -> IO ()
-setCiSettings dbConn (CiSettings _ np Nothing slc) = do
+setCiSettings dbConn (CiSettings _ np slc) = do
   beamQueryConn dbConn $ do
+    --ms <- runSelectReturningOne $ select $ do
+    --  ci <- all_ (_ciDb_ciSettings ciDb)
+    --  guard_ (ci ^. ciSettings_id ==. (val_ 1))
+    --  return ci
     runUpdate $
       update (_ciDb_ciSettings ciDb)
              (\ci -> mconcat
                        [ ci ^. ciSettings_nixPath <-. val_ np
-                       , ci ^. ciSettings_s3Cache <-. val_ Nothing
                        , ci ^. ciSettings_serveLocalCache <-. val_ slc
                        ])
              (\ci -> _ciSettings_id ci ==. val_ 1)
-setCiSettings dbConn (CiSettings _ np (Just c) slc) = do
-  beamQueryConn dbConn $ do
-    ms <- runSelectReturningOne $ select $ do
-      ci <- all_ (_ciDb_ciSettings ciDb)
-      guard_ (ci ^. ciSettings_id ==. (val_ 1))
-      return ci
-    case (_ciSettings_s3Cache =<< ms, _s3Cache_secretKey c) of
-      (Just old, "") -> do
-        runUpdate $
-          update (_ciDb_ciSettings ciDb)
-                 (\ci -> let c2 = c { _s3Cache_secretKey = _s3Cache_secretKey old }
-                          in mconcat
-                               [ ci ^. ciSettings_nixPath <-. val_ np
-                               , ci ^. ciSettings_s3Cache <-. val_ (Just c2)
-                               , ci ^. ciSettings_serveLocalCache <-. val_ slc
-                               ])
-                 (\ci -> _ciSettings_id ci ==. val_ 1)
-      (_, _) -> do
-        runUpdate $
-          update (_ciDb_ciSettings ciDb)
-                 (\ci -> mconcat
-                           [ ci ^. ciSettings_nixPath <-. val_ np
-                           , ci ^. ciSettings_s3Cache <-. val_ (Just c)
-                           , ci ^. ciSettings_serveLocalCache <-. val_ slc
-                           ])
-                 (\ci -> _ciSettings_id ci ==. val_ 1)
 
 initCiSettings :: Connection -> CiSettings -> IO ()
-initCiSettings dbConn (CiSettings _ a b slc) = do
+initCiSettings dbConn (CiSettings _ a slc) = do
   beamQueryConn dbConn $ runInsert $ insert (_ciDb_ciSettings ciDb) $
-    insertExpressions [CiSettings default_ (val_ a) (val_ b) (val_ slc)]
+    insertExpressions [CiSettings default_ (val_ a) (val_ slc)]

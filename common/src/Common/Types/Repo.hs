@@ -21,6 +21,7 @@ import           Data.Aeson
 import           Data.Text (Text)
 import           Database.Beam
 ------------------------------------------------------------------------------
+import           Common.Types.BinaryCache
 import           Common.Types.ConnectedAccount
 ------------------------------------------------------------------------------
 
@@ -37,6 +38,7 @@ data RepoT f = Repo
   , _repo_buildNixFile :: C f Text
   , _repo_timeout :: C f Int
   -- ^ Build timeout in seconds
+  , _repo_cache :: PrimaryKey BinaryCacheT (Nullable f)
   , _repo_hookId :: C f Int
   -- ^ Allows us to delete the webhook
   } deriving Generic
@@ -45,8 +47,10 @@ repoFullName :: Repo -> Text
 repoFullName r = _repo_namespace r <> "/" <> _repo_name r
 
 repoToMaybe :: RepoT Identity -> RepoT Maybe
-repoToMaybe (Repo i (ConnectedAccountId o) on rn bf t h) = Repo (Just i)
-    (ConnectedAccountId $ Just o) (Just on) (Just rn) (Just bf) (Just t) (Just h)
+repoToMaybe (Repo i (ConnectedAccountId o) on rn bf t (BinaryCacheId c) h) = Repo (Just i)
+    (ConnectedAccountId $ Just o) (Just on) (Just rn) (Just bf) (Just t) (BinaryCacheId $ Just c) (Just h)
+--  where
+--    f (BinaryCacheId i) = BinaryCacheId $ Just i
 
 Repo
   (LensFor repo_id)
@@ -55,6 +59,7 @@ Repo
   (LensFor repo_namespace)
   (LensFor repo_buildNixFile)
   (LensFor repo_timeout)
+  (BinaryCacheId (LensFor repo_cache))
   (LensFor repo_hookId)
   = tableLenses
 

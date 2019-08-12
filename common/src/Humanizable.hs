@@ -6,8 +6,8 @@ module Humanizable where
 import           Data.Text (Text)
 import qualified Data.Text as T
 ------------------------------------------------------------------------------
-import           Common.Types.CiSettings
 import           Common.Types.ConnectedAccount
+import           Common.Types.S3Cache
 ------------------------------------------------------------------------------
 
 class Humanizable a where

@@ -36,6 +36,7 @@ import           Reflex.Dom
 import           Scrub
 ------------------------------------------------------------------------------
 import           Common.Api
+import           Common.Types.BinaryCache
 import           Common.Types.BuildJob
 import           Common.Types.CiSettings
 import           Common.Types.ConnectedAccount
@@ -58,11 +59,15 @@ data AppTriggers = AppTriggers
     , _trigger_getCiSettings :: Batch ()
     , _trigger_updateCiSettings :: Batch CiSettings
     , _trigger_getCiInfo :: Batch ()
+
+    , _trigger_listCaches :: Batch ()
+    , _trigger_addCache :: Batch (BinaryCacheT Maybe)
+    , _trigger_delCaches :: Batch BinaryCacheId
     } deriving Generic
 
 instance Semigroup AppTriggers where
-  (AppTriggers ga1 ca1 da1 gr1 ar1 dr1 gj1 cj1 rj1 so1 gs1 us1 gi1)
-    <> (AppTriggers ga2 ca2 da2 gr2 ar2 dr2 gj2 cj2 rj2 so2 gs2 us2 gi2) = AppTriggers
+  (AppTriggers ga1 ca1 da1 gr1 ar1 dr1 gj1 cj1 rj1 so1 gs1 us1 gi1 lc1 ac1 dc1)
+    <> (AppTriggers ga2 ca2 da2 gr2 ar2 dr2 gj2 cj2 rj2 so2 gs2 us2 gi2 lc2 ac2 dc2) = AppTriggers
     (ga1 <> ga2)
     (ca1 <> ca2)
     (da1 <> da2)
@@ -76,9 +81,15 @@ instance Semigroup AppTriggers where
     (gs1 <> gs2)
     (us1 <> us2)
     (gi1 <> gi2)
+    (lc1 <> lc2)
+    (ac1 <> ac2)
+    (dc1 <> dc2)
 
 instance Monoid AppTriggers where
     mempty = AppTriggers
+      mempty
+      mempty
+      mempty
       mempty
       mempty
       mempty
@@ -120,6 +131,7 @@ data AppState t = AppState
     , _as_buildOutputs :: Dynamic t (Map BuildJobId (Seq ProcMsg))
     , _as_ciSettings :: Dynamic t (Maybe CiSettings)
     , _as_ciInfo :: Dynamic t (Maybe Text)
+    , _as_caches :: Dynamic t (BeamMap Identity BinaryCacheT)
     } deriving Generic
 
 squash
@@ -149,6 +161,11 @@ stateManager route ft = do
           , Up_GetCiSettings <$ fmapMaybe (listToMaybe . _trigger_getCiSettings) ft
           , Up_GetCiInfo <$ fmapMaybe (listToMaybe . _trigger_getCiInfo) ft
           , Up_UpdateCiSettings <$> fmapMaybe (listToMaybe . _trigger_updateCiSettings) ft
+
+          , Up_ListCaches <$ fmapMaybe (listToMaybe . _trigger_listCaches) ft
+          , Up_AddCache <$> squash _trigger_addCache ft
+          , Up_DelCaches <$> squash _trigger_delCaches ft
+
           ]
     let cfg = WebSocketConfig upEvent never True []
     ws <- startWebsocket route cfg
@@ -164,8 +181,10 @@ stateManager route ft = do
       ]
     ciSettings <- holdDyn Nothing $ fmapMaybe id $ fmap (Just . getScrubbed) . preview _Down_CiSettings <$> downEvent
     ciInfo <- holdDyn Nothing $ preview _Down_CiInfo <$> downEvent
+    caches <- holdDyn mempty $
+      fmapMaybe (fmap listToBeamMap . preview _Down_Caches) downEvent
 
-    return $ AppState accounts jobs repos serverAlert buildOutput ciSettings ciInfo
+    return $ AppState accounts jobs repos serverAlert buildOutput ciSettings ciInfo caches
 
 startOutput :: (BuildJobId, Text) -> Map BuildJobId (Seq ProcMsg) -> Map BuildJobId (Seq ProcMsg)
 startOutput (jid, msgText) _ = M.singleton jid (parseMessages msgText)

@@ -32,7 +32,9 @@ library
   exposed-modules:
     Common.Api
     Common.Route
+    Common.Types.BinaryCache
     Common.Types.CacheJob
+    Common.Types.CachedHash
     Common.Types.CiSettings
     Common.Types.ConnectedAccount
     Common.Types.BuildJob
@@ -42,4 +44,5 @@ library
     Common.Types.ProcMsg
     Common.Types.Repo
     Common.Types.RepoBuildInfo
+    Common.Types.S3Cache
     Humanizable

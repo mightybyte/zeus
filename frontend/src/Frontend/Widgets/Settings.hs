@@ -7,7 +7,6 @@ module Frontend.Widgets.Settings where
 
 ------------------------------------------------------------------------------
 import           Control.Monad.Reader
-import           Data.Maybe
 import           Data.Text (Text)
 import qualified Data.Text as T
 import qualified Obelisk.ExecutableConfig as ObConfig
@@ -62,23 +61,15 @@ settingsForm iv sv = do
         & inputElementConfig_initialValue .~ _ciSettings_nixPath iv
         & inputElementConfig_setValue .~ (_ciSettings_nixPath <$> sv)
       return $ value ie
-    useS3Cache <- divClass "field" $ do
-      divClass "ui checkbox" $ do
-        v <- checkbox (isJust $ _ciSettings_s3Cache iv) $ def
-          & setValue .~ (isJust . _ciSettings_s3Cache <$> sv)
-        el "label" $ text "Push to S3 Cache"
-        return v
-    res <- networkView (s3CacheWidget (_ciSettings_s3Cache iv) (_ciSettings_s3Cache <$> sv) <$> value useS3Cache)
-    cache <- join <$> holdDyn (constDyn $ _ciSettings_s3Cache iv) res
 
     serveLocalCache <- divClass "field" $ do
       divClass "ui checkbox" $ do
         v <- checkbox (_ciSettings_serveLocalCache iv) $ def
-          & setValue .~ (isJust . _ciSettings_s3Cache <$> sv)
+          & setValue .~ (_ciSettings_serveLocalCache <$> sv)
         el "label" $ text "Serve Local Cache"
         return $ value v
     infoWidget serveLocalCache
-    return (CiSettings 1 <$> dnp <*> cache <*> serveLocalCache)
+    return (CiSettings 1 <$> dnp <*> serveLocalCache)
 
 infoWidget
   :: (MonadAppIO r t m, Prerender js t m)
@@ -127,53 +118,3 @@ copyableValue label val = do
     _ <- copyButton (_element_raw e)
     (e,_) <- el' "span" $ text val
     return ()
-
-s3CacheWidget
-  :: (MonadApp r t m, Prerender js t m)
-  => Maybe S3Cache
-  -> Event t (Maybe S3Cache)
-  -> Bool
-  -> m (Dynamic t (Maybe S3Cache))
-s3CacheWidget _ _ False = return $ constDyn Nothing
-s3CacheWidget iv sv True = divClass "ui segment" $ do
-    db :: Dynamic t Text <- divClass "field" $ do
-      el "label" $ text "Bucket"
-      v <- inputElement $ def
-        & inputElementConfig_initialValue .~ maybe "" _s3Cache_bucket iv
-        & inputElementConfig_setValue .~ (maybe "" _s3Cache_bucket <$> sv)
-      return $ value v
-    dr <- divClass "field" $ do
-      el "label" $ text "Region"
-      filledDropdown (maybe NorthVirginia _s3Cache_region iv)
-                     (maybe NorthVirginia _s3Cache_region <$> sv)
-    --dr <- divClass "field" $ do
-    --  el "label" $ text "Region"
-    --  v <- inputElement $ def
-    --    & inputElementConfig_initialValue .~ maybe "" _s3Cache_region iv
-    --    & inputElementConfig_setValue .~ (maybe "" _s3Cache_region <$> sv)
-    --  return $ value v
-    dak <- divClass "field" $ do
-      el "label" $ text "Access Key"
-      v <- inputElement $ def
-        & inputElementConfig_initialValue .~ maybe "" _s3Cache_accessKey iv
-        & inputElementConfig_setValue .~ (maybe "" _s3Cache_accessKey <$> sv)
-      return $ value v
-    dsk <- divClass "field" $ do
-      el "label" $ do
-        text "Secret Key "
-        let tip = "Secret key not shown for security.  Leaving it empty will not clear it."
-        elAttr "span" ("data-tooltip" =: tip <> "data-position" =: "top left") $
-          elAttr "i" ("class" =: "info circle icon") blank
-
-      v <- inputElement $ def
-        & inputElementConfig_initialValue .~ maybe "" _s3Cache_secretKey iv
-        & inputElementConfig_setValue .~ (maybe "" _s3Cache_secretKey <$> sv)
-      return $ value v
-    return $ do
-      b <- db
-      r <- dr
-      ak <- dak
-      sk <- dsk
-      if any T.null [b, ak]
-        then pure Nothing
-        else pure $ Just $ S3Cache b r ak sk
