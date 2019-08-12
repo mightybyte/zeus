@@ -118,11 +118,6 @@ objectInfo e b r k = do
     AWS.within (toAwsRegion r) $
       AWS.send (AWS.headObject (AWS.BucketName b) (AWS.ObjectKey k))
 
-doesObjectExist :: AWS.Env -> Text -> Region -> Text -> IO Bool
-doesObjectExist e b r k = do
-  eresp :: Either SomeException AWS.HeadObjectResponse <- try (objectInfo e b r k)
-  return $ either (const False) (const True) eresp
-
 storePathHash :: Text -> Text
 storePathHash = T.takeWhile (/= '-') . T.takeWhileEnd (/= '/')
 
@@ -153,10 +148,8 @@ cacheStorePath se logFunc nixDb cacheKey cache sp@(StorePath spt) = do
         let oname = "nar/" <> spHash <> ".nar.xz"
 
         let s3cache = _binaryCache_s3Cache cache
-        e <- AWS.newEnv $ AWS.FromKeys
-          (AWS.AccessKey $ encodeUtf8 $ _s3Cache_accessKey s3cache)
-          (AWS.SecretKey $ encodeUtf8 $ _s3Cache_secretKey s3cache)
-        exists <- liftIO $ doesObjectExist e (_s3Cache_bucket s3cache) (_s3Cache_region s3cache) oname
+        --exists <- liftIO $ doesObjectExist e (_s3Cache_bucket s3cache) (_s3Cache_region s3cache) oname
+        exists <- liftIO $ doesObjectExist se (primaryKey cache) oname
 
         if exists
           then return ()
@@ -167,6 +160,9 @@ cacheStorePath se logFunc nixDb cacheKey cache sp@(StorePath spt) = do
 
             let niContents = narInfoToString ni
 
+            e <- AWS.newEnv $ AWS.FromKeys
+              (AWS.AccessKey $ encodeUtf8 $ _s3Cache_accessKey s3cache)
+              (AWS.SecretKey $ encodeUtf8 $ _s3Cache_secretKey s3cache)
             resp <- liftIO $ AWS.runResourceT $ AWS.runAWS e $
               AWS.within (toAwsRegion $ _s3Cache_region s3cache) $
                 AWS.send (AWS.putObject (AWS.BucketName $ _s3Cache_bucket s3cache)
@@ -179,6 +175,26 @@ cacheStorePath se logFunc nixDb cacheKey cache sp@(StorePath spt) = do
                 liftIO $ printf "Error uploading narinfo for %s\n" spt
                 throwError (ExitFailure status)
             liftIO $ storeCachedHash se (primaryKey cache) spHash
+
+
+--doesObjectExist :: AWS.Env -> Text -> Region -> Text -> IO Bool
+--doesObjectExist e b r k = do
+--  eresp :: Either SomeException AWS.HeadObjectResponse <- try (objectInfo e b r k)
+--  return $ either (const False) (const True) eresp
+
+doesObjectExist :: ServerEnv -> PrimaryKey BinaryCacheT Identity -> Text -> IO Bool
+doesObjectExist se cache hash = do
+  isJust <$> getCachedHash se cache hash
+
+getCachedHash :: ServerEnv -> PrimaryKey BinaryCacheT Identity -> Text -> IO (Maybe CachedHash)
+getCachedHash se cache hash = do
+  beamQuery se $
+    runSelectReturningOne $
+    select $ do
+      ch <- all_ (_ciDb_cachedHashes ciDb)
+      guard_ (ch ^. cachedHash_cache ==. val_ (binaryCacheKeyToInt cache) &&.
+              ch ^. cachedHash_hash ==. val_ hash)
+      return ch
 
 storeCachedHash :: ServerEnv -> PrimaryKey BinaryCacheT Identity -> Text -> IO ()
 storeCachedHash se cache hash = do
