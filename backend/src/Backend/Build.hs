@@ -226,7 +226,7 @@ buildThread se ecMVar rng repo ca job = do
   let outputFile = printf "%s/%d.txt" buildOutputDir jid
   printf "Writing build output to %s\n" outputFile
   withLogHandle outputFile $ \lh  -> do
-    let cloneCmd = printf "%s clone %s" gitBinary url
+    let cloneCmd = printf "%s clone --recurse-submodules %s" gitBinary url
         saveAndSendStr msgTy msg = do
           !t <- getCurrentTime
           let pm = ProcMsg t msgTy msg
