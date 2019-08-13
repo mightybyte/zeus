@@ -137,24 +137,6 @@ getAppCacheKey appRoute = do
   let appDomain = T.takeWhile (\c -> c /= ':' && c /= '/') $ T.drop 3 $ snd $ T.breakOn "://" appRoute
   getOrCreateSigningKey $ T.unpack $ appDomain <> "-1"
 
-------------------------------------------------------------------------------
---foo = do
---  conn <- open "../zeus.db"
---  Just s3cache <- (_ciSettings_s3Cache =<<) <$> getCiSettings conn
---  nixDbConn <- open nixSqliteDb
---  kp <- getSigningKey
---  Just cis <- getCiSettings conn
---
---  e <- AWS.newEnv $ AWS.FromKeys
---    (AWS.AccessKey $ toS $ _s3Cache_accessKey s3cache)
---    (AWS.SecretKey $ toS $ _s3Cache_secretKey s3cache)
---  os <- listBucket e (_s3Cache_bucket s3cache) (_s3Cache_region s3cache)
---
---  printf "Bucket has %d items\n" (length os)
---  mapM_ print os
---  runExceptT $ cacheStorePath print nixDbConn kp (fromJust $ _ciSettings_s3Cache cis) (StorePath "/nix/store/001hh2ij318yvshcafmn6cny441qrdcx-hscolour-1.24.4")
-------------------------------------------------------------------------------
-
 backend :: Backend BackendRoute FrontendRoute
 backend = Backend
   { _backend_run = \serve -> do
