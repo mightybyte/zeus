@@ -17,8 +17,11 @@ module Frontend where
 import           Control.Monad.Identity
 import           Control.Monad.Reader
 import           Control.Monad.Ref
+import           Data.ByteString (ByteString)
 import           Data.Maybe
+import           Data.Map (Map)
 import           Data.Text (Text)
+import           Obelisk.Configs
 import           Obelisk.Frontend
 import           Obelisk.Generated.Static
 import           Obelisk.Route
@@ -43,8 +46,25 @@ frontend :: Frontend (R FrontendRoute)
 frontend = Frontend
   { _frontend_head = appHead
   , _frontend_body = do
-      route <- liftIO getAppRoute
-      runApp route appBody
+      --route <- getAppRoute
+      --cfgs <- getConfigs
+      --runApp undefined (appBody undefined)
+      runApp undefined $ do
+        pb <- getPostBuild
+        divClass "ui fixed menu" $ do
+          elAttr "div" ("class" =: "inverted header item") $ text "Zeus CI"
+          nav
+        divClass "ui main container" $ do
+          subRoute_ $ \case
+            FR_Home -> setRoute ((FR_Jobs :/ Job_List :/ ()) <$ pb)
+            FR_Jobs -> jobsWidget
+            FR_Repos -> reposWidget
+            FR_Accounts -> accountsWidget
+            FR_Caches -> cachesWidget
+            FR_Settings -> settingsWidget
+        serverAlert <- asks _as_serverAlert
+        modalExample serverAlert
+        return ()
   }
 
 
@@ -82,8 +102,9 @@ appBody
       SetRoute t (R FrontendRoute) m, MonadIO m, MonadIO (Performable m),
       Prerender js t m
      )
-  => App (R FrontendRoute) t m ()
-appBody = do
+  => Map Text ByteString
+  -> App (R FrontendRoute) t m ()
+appBody cfgs = do
   --dpb <- prerender (pure never) (getPostBuild)
   --let pb = switch $ current pb
   --pb <- switch . current <$> prerender (DOM.liftJSM getPostBuild) getPostBuild

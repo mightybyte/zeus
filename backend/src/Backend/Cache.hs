@@ -233,7 +233,6 @@ cacheBuild se cache cj = do
   let outDir = "log/cache"
   createDirectoryIfMissing True outDir
   let outputFile = printf (outDir <> "/%d.txt") (_cacheJob_id cj)
-
   printf "Writing cache output to %s\n" outputFile
   _ <- withLogHandle outputFile $ \lh  -> runExceptT $ do
     let logProcMsg pm = hPutStrLn lh $! prettyProcMsg pm

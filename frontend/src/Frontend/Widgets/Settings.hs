@@ -9,7 +9,8 @@ module Frontend.Widgets.Settings where
 import           Control.Monad.Reader
 import           Data.Text (Text)
 import qualified Data.Text as T
-import qualified Obelisk.ExecutableConfig as ObConfig
+import           Data.Text.Encoding
+import           Obelisk.Configs
 import           Reflex.Dom
 import           Reflex.Network
 ------------------------------------------------------------------------------
@@ -90,11 +91,11 @@ dynInfoWidget
   -> m ()
 dynInfoWidget (Just pubkey, True) = divClass "ui segment" $ do
   -- TODO !!! Try removing "config/"
-  mRootRoute <- liftIO $ ObConfig.get "config/common/route"
+  mRootRoute <- undefined --getConfig "common/route"
   case mRootRoute of
     Nothing -> text "Can't find server address.  Server not configured properly."
     Just rootRoute -> do
-      let route = T.strip rootRoute <> "/cache/"
+      let route = T.strip (decodeUtf8 rootRoute) <> "/cache/"
       void $ prerender blank $ copyableValue "Cache Address" route
       _ <- prerender blank $ copyableValue "Cache Public Key" pubkey
       el "h4" $ text "To use this cache, put the following in your /etc/nix/nix.conf:"

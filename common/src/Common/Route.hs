@@ -24,8 +24,9 @@ import           Data.Some (Some)
 import qualified Data.Some as Some
 import           Data.Text (Text)
 import qualified Data.Text as T
+import           Data.Text.Encoding
 import           Data.Functor.Sum
-import qualified Obelisk.ExecutableConfig as ObConfig
+import           Obelisk.Configs
 import           Obelisk.Route
 import           Obelisk.Route.TH
 import           Reflex.Dom
@@ -122,12 +123,12 @@ concat <$> mapM deriveRouteComponent
   , ''FrontendRoute
   ]
 
-getAppRoute :: IO Text
+getAppRoute :: HasConfigs m => m Text
 getAppRoute = do
-    mroute <- ObConfig.get "config/common/route"
+    mroute <- getConfig "common/route"
     case mroute of
       Nothing -> fail "Error getAppRoute: config/common/route not defined"
-      Just r -> return $ T.dropWhileEnd (== '/') $ T.strip r
+      Just r -> return $ T.dropWhileEnd (== '/') $ T.strip $ decodeUtf8 r
 
 -- | Provide a human-readable name for a given section
 tabTitle :: DomBuilder t m => Some FrontendRoute -> m ()

@@ -40,7 +40,7 @@ library
     , mtl                     >= 2.2.2   && < 2.3
     , network                 >= 2.6     && < 2.7
     , obelisk-backend
-    , obelisk-executable-config
+    , obelisk-executable-config-lookup
     , obelisk-route
     , process
     , readable                >= 0.3.1   && < 0.4

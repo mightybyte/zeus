@@ -24,6 +24,7 @@ import           Data.String.Conv
 import           Data.Text (Text)
 import qualified Data.Text as T
 import qualified Data.Text.IO as T
+import           Data.Text.Encoding
 import           Data.Time
 import           Database.Beam
 import           Database.Beam.Sqlite
@@ -37,7 +38,7 @@ import           GitHub.Data.Webhooks
 import           GitHub.Endpoints.Repos.Webhooks
 import qualified Network.WebSockets as WS
 import           Obelisk.Backend
-import qualified Obelisk.ExecutableConfig as ObConfig
+import           Obelisk.ExecutableConfig.Lookup
 import           Obelisk.Route
 import           Scrub
 import           Snap.Core
@@ -169,18 +170,19 @@ backend = Backend
           let c = CiSettings 0 "nixpkgs=/nix/var/nix/profiles/per-user/root/channels/nixos" True
           initCiSettings dbConn c
         Just _ -> return ()
-      appRoute <- getAppRoute
       secretToken <- getSecretToken
       connRepo <- newConnRepo
       buildThreads <- newIORef mempty
-      let settingsFile = "config/backend/settings.json" :: String
-      settings <- ObConfig.get (toS settingsFile) >>= \case
+      let settingsFile = "backend/settings.json" :: String
+      allConfigs <- getConfigs
+      settings <- case M.lookup (toS settingsFile) allConfigs of
         Nothing -> return $ BackendSettings Nothing []
         Just bs -> do
           case A.decode $ toS bs of
             Nothing -> error ("Error parsing " <> settingsFile)
             Just s -> return s
       putStrLn $ "read settings: " <> show settings
+      let Just appRoute = decodeUtf8 <$> M.lookup "common/route" allConfigs
       listeners <- newIORef mempty
       keyPair <- getAppCacheKey appRoute
       let env = ServerEnv appRoute settings secretToken dbConn

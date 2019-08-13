@@ -19,7 +19,7 @@ library
     , lens
     , lens-aeson
     , mtl
-    , obelisk-executable-config
+    , obelisk-executable-config-lookup
     , obelisk-frontend
     , obelisk-generated-static
     , obelisk-route

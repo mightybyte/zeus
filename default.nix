@@ -137,7 +137,7 @@ newObelisk.project ./. ({ pkgs, ... }: {
         sha256 = "1yaln3xisqacw0arxmclncay9a4xj2i6fpacjnpdaigxakl9xdwv";
     }) {});
     beam-core = dontCheck (self.callCabal2nix "beam-core" "${beam-src}/beam-core" {});
-    beam-migrate = dontCheck (self.callCabal2nix "beam-migrate" "${beam-src}/beam-migrate" {});
+    beam-migrate = doJailbreak (dontCheck (self.callCabal2nix "beam-migrate" "${beam-src}/beam-migrate" {}));
     beam-sqlite = dontCheck (self.callCabal2nix "beam-sqlite" "${beam-src}/beam-sqlite" {});
 
     github = dontHaddock (doJailbreak (dontCheck (self.callCabal2nix "github" (pkgs.fetchFromGitHub {
