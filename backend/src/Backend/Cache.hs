@@ -132,13 +132,14 @@ storePathHash = T.takeWhile (/= '-') . T.takeWhileEnd (/= '/')
 -- internally consistent with what is contained in the narinfo.
 cacheStorePath
   :: ServerEnv
+  -> AWS.Env
   -> (ProcMsg -> IO ())
   -> Connection
   -> NixCacheKeyPair
   -> BinaryCache
   -> StorePath
   -> ExceptT ExitCode IO ()
-cacheStorePath se logFunc nixDb cacheKey cache sp@(StorePath spt) = do
+cacheStorePath se awsEnv logFunc nixDb cacheKey cache sp@(StorePath spt) = do
     mni <- liftIO $ getNarInfo nixDb (_nixCacheKey_secret cacheKey) sp
     case mni of
       Nothing -> throwError $ ExitFailure 42
@@ -148,10 +149,9 @@ cacheStorePath se logFunc nixDb cacheKey cache sp@(StorePath spt) = do
         let oname = "nar/" <> spHash <> ".nar.xz"
 
         let s3cache = _binaryCache_s3Cache cache
-        --exists <- liftIO $ doesObjectExist e (_s3Cache_bucket s3cache) (_s3Cache_region s3cache) oname
-        exists <- liftIO $ doesObjectExist se (primaryKey cache) oname
+        haveUploaded <- liftIO $ haveUploadedObject se (primaryKey cache) oname
 
-        if exists
+        if haveUploaded
           then return ()
           else do
             let narUploadCmd = printf "%s --dump %s | %s --stdout | %s s3 cp - s3://%s/%s"
@@ -160,10 +160,7 @@ cacheStorePath se logFunc nixDb cacheKey cache sp@(StorePath spt) = do
 
             let niContents = narInfoToString ni
 
-            e <- AWS.newEnv $ AWS.FromKeys
-              (AWS.AccessKey $ encodeUtf8 $ _s3Cache_accessKey s3cache)
-              (AWS.SecretKey $ encodeUtf8 $ _s3Cache_secretKey s3cache)
-            resp <- liftIO $ AWS.runResourceT $ AWS.runAWS e $
+            resp <- liftIO $ AWS.runResourceT $ AWS.runAWS awsEnv $
               AWS.within (toAwsRegion $ _s3Cache_region s3cache) $
                 AWS.send (AWS.putObject (AWS.BucketName $ _s3Cache_bucket s3cache)
                          (AWS.ObjectKey (spHash <> ".narinfo"))
@@ -177,13 +174,13 @@ cacheStorePath se logFunc nixDb cacheKey cache sp@(StorePath spt) = do
             liftIO $ storeCachedHash se (primaryKey cache) spHash
 
 
---doesObjectExist :: AWS.Env -> Text -> Region -> Text -> IO Bool
---doesObjectExist e b r k = do
---  eresp :: Either SomeException AWS.HeadObjectResponse <- try (objectInfo e b r k)
---  return $ either (const False) (const True) eresp
+doesObjectExist :: AWS.Env -> Text -> Region -> Text -> IO Bool
+doesObjectExist e b r k = do
+  eresp :: Either SomeException AWS.HeadObjectResponse <- try (objectInfo e b r k)
+  return $ either (const False) (const True) eresp
 
-doesObjectExist :: ServerEnv -> PrimaryKey BinaryCacheT Identity -> Text -> IO Bool
-doesObjectExist se cache hash = do
+haveUploadedObject :: ServerEnv -> PrimaryKey BinaryCacheT Identity -> Text -> IO Bool
+haveUploadedObject se cache hash = do
   isJust <$> getCachedHash se cache hash
 
 getCachedHash :: ServerEnv -> PrimaryKey BinaryCacheT Identity -> Text -> IO (Maybe CachedHash)
@@ -248,9 +245,30 @@ cacheBuild se cache cj = do
     toCache <- ExceptT $ calcStorePathClosure $ T.unpack $ _cacheJob_storePath cj
     liftIO $ logStr CiMsg $ T.pack $ printf "Caching %d store paths" (length toCache)
     nixDbConn <- liftIO $ open nixSqliteDb
+
+    let s3cache = _binaryCache_s3Cache cache
+    e <- AWS.newEnv $ AWS.FromKeys
+      (AWS.AccessKey $ encodeUtf8 $ _s3Cache_accessKey s3cache)
+      (AWS.SecretKey $ encodeUtf8 $ _s3Cache_secretKey s3cache)
+    nixCacheInfoExists <- liftIO $ doesObjectExist e
+      (_s3Cache_bucket s3cache) (_s3Cache_region s3cache) "nix-cache-info"
+    when (not nixCacheInfoExists) $ do
+      cacheInfo <- liftIO getCacheInfo
+      resp <- liftIO $ AWS.runResourceT $ AWS.runAWS e $
+        AWS.within (toAwsRegion $ _s3Cache_region s3cache) $
+          AWS.send (AWS.putObject (AWS.BucketName $ _s3Cache_bucket s3cache)
+                   (AWS.ObjectKey "nix-cache-info")
+                   (AWS.toBody cacheInfo))
+      let status = resp ^. AWS.porsResponseStatus
+      if status == 200
+        then return ()
+        else do
+          liftIO $ putStrLn "Error uploading nix-cache-info\n"
+          throwError (ExitFailure status)
+
     liftIO $ forM_ toCache $ \sp -> do
       liftIO $ logStr CiMsg $ T.pack $ printf "Caching %s" sp
-      res <- runExceptT $ cacheStorePath se logProcMsg nixDbConn (_serverEnv_cacheKey se) cache (StorePath $ T.unpack sp)
+      res <- runExceptT $ cacheStorePath se e logProcMsg nixDbConn (_serverEnv_cacheKey se) cache (StorePath $ T.unpack sp)
       case res of
         Left e -> liftIO $ logStr CiMsg $ T.pack $ printf "Error %s while caching %s" (show e) sp
         Right _ -> return ()

@@ -10,6 +10,7 @@ let
   extraIgnores =
     [ "dist-newstyle" "frontend.jsexe.assets" "static.assets" "result-exe"
       "zeus-access-token" "zeus-cache-key.pub" "zeus-cache-key.sec" "zeus.db"
+      "migrations.md"
     ];
 
 
