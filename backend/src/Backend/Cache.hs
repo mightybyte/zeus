@@ -50,8 +50,8 @@ getNextJob :: Connection -> IO (Maybe (CacheJob, BinaryCache))
 getNextJob conn = do
   beamQueryConn conn $
     runSelectReturningOne $
-    select $ do
-      job <- limit_ 1 $ orderBy_ (asc_ . _cacheJob_id) $
+    select $ limit_ 1 $ do
+      job <- orderBy_ (asc_ . _cacheJob_id) $
         all_ (_ciDb_cacheJobs ciDb)
       guard_ (job ^. cacheJob_status ==. (val_ JobPending))
 

@@ -248,7 +248,7 @@ buildThread se ecMVar rng repo ca job = do
           sendOutput se jid pm
         cachingSaveAndSend pm = do
           let msg = _procMsg_msg pm
-          if isStorePath msg
+          if isStorePath msg && _procMsg_source pm == StdoutMsg
             then addCacheJob se (_repo_cache repo) msg
             else return ()
           hPutStrLn lh $! prettyProcMsg pm
