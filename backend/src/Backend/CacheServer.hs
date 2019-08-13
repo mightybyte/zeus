@@ -169,9 +169,16 @@ getNixConfigAttr attr = do
 cacheInfoHandler :: MonadSnap m => m ()
 cacheInfoHandler = do
   modifyResponse (setContentType "text/plain")
-  sd <- read <$> liftIO (getNixConfigAttr "nixStoreDir")
-  writeText $ T.unlines
-    [ "StoreDir: " <> sd
+  writeText =<< liftIO getCacheInfo
+
+getCacheInfo :: IO Text
+getCacheInfo = do
+  sd <- read <$> getNixConfigAttr "nixStoreDir"
+  return $ cacheInfo sd
+
+cacheInfo :: Text -> Text
+cacheInfo storeDir = T.unlines
+    [ "StoreDir: " <> storeDir
     , "WantMassQuery: 1"
     , "Priority: 30"
     ]

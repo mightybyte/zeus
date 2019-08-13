@@ -89,6 +89,7 @@ dynInfoWidget
   => (Maybe Text, Bool)
   -> m ()
 dynInfoWidget (Just pubkey, True) = divClass "ui segment" $ do
+  -- TODO !!! Try removing "config/"
   mRootRoute <- liftIO $ ObConfig.get "config/common/route"
   case mRootRoute of
     Nothing -> text "Can't find server address.  Server not configured properly."
