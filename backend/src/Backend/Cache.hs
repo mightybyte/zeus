@@ -181,12 +181,12 @@ doesObjectExist e b r k = do
 
 haveUploadedObject :: Connection -> PrimaryKey BinaryCacheT Identity -> Text -> IO Bool
 haveUploadedObject conn cache hash = do
-  not . null <$> getCachedHash conn cache hash
+  isJust <$> getCachedHash conn cache hash
 
-getCachedHash :: Connection -> PrimaryKey BinaryCacheT Identity -> Text -> IO [CachedHash]
+getCachedHash :: Connection -> PrimaryKey BinaryCacheT Identity -> Text -> IO (Maybe CachedHash)
 getCachedHash conn cache hash = do
   beamQueryConn conn $
-    runSelectReturningList $
+    runSelectReturningOne $
     select $ do
       ch <- all_ (_ciDb_cachedHashes ciDb)
       guard_ (ch ^. cachedHash_hash ==. val_ hash)
