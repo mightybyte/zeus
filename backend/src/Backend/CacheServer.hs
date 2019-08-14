@@ -75,6 +75,9 @@ nixCacheRoutes se ps = do
 stripPath :: Text -> Text
 stripPath = T.takeWhileEnd (/= '/')
 
+storePathHash :: Text -> Text
+storePathHash = T.takeWhile (/= '-') . T.takeWhileEnd (/= '/')
+
 ------------------------------------------------------------------------------
 -- | Gets the narinfo for a store path or the hash prefix of a store path,
 -- i.e. /nix/store/00gli0bqsxvxzx90miprdd0gpc2ryhv2
@@ -84,13 +87,14 @@ getNarInfo
   -> StorePath
   -> IO (Maybe NarInfo)
 getNarInfo conn secret (StorePath sp) = do
-  vpRes <- liftIO $ query conn "select * from ValidPaths where path >= ? limit 1" (Only sp)
+  vpRes <- liftIO $ query conn "select * from ValidPaths where path >= ? limit 1"
+    (Only $ storePathHash $ T.pack sp)
   case vpRes of
     [vp] -> do
       refs <- fmap (sort . fmap fromOnly) $ liftIO $ query conn
         "select path from Refs join ValidPaths on reference = id where referrer = ?"
         (Only $ _validPath_id vp)
-      let spHash = T.takeWhile (/= '-') $ _validPath_path vp
+      let spHash = T.takeWhile (/= '-') $ T.dropWhileEnd (/= '/') $ _validPath_path vp
       case fingerprintVP vp refs of
         Left _ -> do
           printf "Couldn't calculate fingerprint: %s\n" (show vp)

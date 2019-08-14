@@ -126,9 +126,6 @@ objectInfo e b r k = do
     AWS.within (toAwsRegion r) $
       AWS.send (AWS.headObject (AWS.BucketName b) (AWS.ObjectKey k))
 
-storePathHash :: Text -> Text
-storePathHash = T.takeWhile (/= '-') . T.takeWhileEnd (/= '/')
-
 ------------------------------------------------------------------------------
 -- | To upload a store path to a binary cache, we have to do two things:
 --
