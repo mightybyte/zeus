@@ -214,9 +214,10 @@ narInfoToString (NarInfo sp u c _ _ refs _ sigs) = T.unlines $
   --, "FileSize: 31476"
   --, "NarHash: sha256:1c415vhi7zbkxlvgphanjm3q31x8qhbh2zs9ygfnmk57xgrwf3kl"
   --, "NarSize: 107320"
-  , "References: " <> T.unwords (map stripPath refs)
   --, "CA: fixed:r:sha256:1c415vhi7zbkxlvgphanjm3q31x8qhbh2zs9ygfnmk57xgrwf3kl"
-  ] ++ map ("Sig: " <>) sigs
+
+  ] ++ (if null refs then [] else ["References: " <> T.unwords (map stripPath refs)])
+    ++ map ("Sig: " <>) sigs
 
 cacheBuild
   :: ServerEnv
