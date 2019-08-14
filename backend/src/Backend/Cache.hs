@@ -156,7 +156,7 @@ cacheStorePath se awsEnv logFunc nixDb cacheKey cache sp@(StorePath spt) = do
         let oname = "nar/" <> spHash <> ".nar.xz"
 
         let s3cache = _binaryCache_s3Cache cache
-        haveUploaded <- liftIO $ haveUploadedObject (_serverEnv_db se) (primaryKey cache) oname
+        haveUploaded <- liftIO $ haveUploadedObject (_serverEnv_db se) (primaryKey cache) spHash
 
         if haveUploaded
           then return ()
