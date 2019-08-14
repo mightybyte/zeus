@@ -24,6 +24,7 @@ import           Data.RNG
 import           Data.String.Conv
 import           Data.Text (Text)
 import qualified Data.Text as T
+import qualified Data.Text.IO as T
 import qualified Data.Text.Encoding as T
 import           Data.Time
 import           Database.Beam
@@ -210,6 +211,7 @@ isStorePath t = T.isPrefixOf "/nix/store" t && not (T.isInfixOf " " t)
 
 addCacheJob :: ServerEnv -> PrimaryKey BinaryCacheT (Nullable Identity) -> Text -> IO ()
 addCacheJob se cacheId sp = do
+  T.putStrLn $ "Adding job to cache " <> sp
   beamQuery se $ do
     runInsert $ insert (_ciDb_cacheJobs ciDb) $ insertExpressions
       [CacheJob default_ (val_ sp) (val_ cacheId) (val_ Nothing) (val_ Nothing) (val_ JobPending)]

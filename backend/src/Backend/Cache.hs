@@ -67,8 +67,15 @@ cacheManagerThread se = do
     case mjob of
       Nothing -> threadDelay 5000000
       Just (job, cache) -> do
-        printf "Caching store path %s to cache: %s\n" (_cacheJob_storePath job) (_s3Cache_bucket $ _binaryCache_s3Cache cache)
-        cacheBuild se cache job
+        printf "Caching store path %s to cache: %s\n"
+          (_cacheJob_storePath job)
+          (_s3Cache_bucket $ _binaryCache_s3Cache cache)
+        res <- try $ cacheBuild se cache job
+        case res of
+  	  Left (e :: SomeException) ->
+            printf "Cache job for %s threw an exception!\n"
+              (_cacheJob_storePath job)
+  	  Right _ -> putStrLn "Finished cache job"
 
 ------------------------------------------------------------------------------
 -- Calculate the transitive closure of a nix file.
@@ -167,12 +174,12 @@ cacheStorePath se awsEnv logFunc nixDb cacheKey cache sp@(StorePath spt) = do
                          (AWS.toBody niContents))
             let status = resp ^. AWS.porsResponseStatus
             if status == 200
-              then return ()
+              then do
+                liftIO $ logFunc =<< textProcMsg "Writing to CachedHash table"
+                liftIO $ storeCachedHash (_serverEnv_db se) (primaryKey cache) spHash
               else do
-                liftIO $ printf "Error uploading narinfo for %s\n" spt
+                liftIO $ logFunc =<< textProcMsg ("Error uploading narinfo for " <> T.pack spt)
                 throwError (ExitFailure status)
-            liftIO $ storeCachedHash (_serverEnv_db se) (primaryKey cache) spHash
-
 
 doesObjectExist :: AWS.Env -> Text -> Region -> Text -> IO Bool
 doesObjectExist e b r k = do
@@ -185,7 +192,7 @@ haveUploadedObject conn cache hash = do
 
 getCachedHash :: Connection -> PrimaryKey BinaryCacheT Identity -> Text -> IO (Maybe CachedHash)
 getCachedHash conn cache hash = do
-  beamQueryConn conn $
+  runBeamSqliteDebug putStrLn conn $
     runSelectReturningOne $
     select $ do
       ch <- all_ (_ciDb_cachedHashes ciDb)
@@ -195,7 +202,7 @@ getCachedHash conn cache hash = do
 storeCachedHash :: Connection -> PrimaryKey BinaryCacheT Identity -> Text -> IO ()
 storeCachedHash conn cache hash = do
   t <- getCurrentTime
-  beamQueryConn conn $ do
+  runBeamSqliteDebug putStrLn conn $ do
     runInsert $ insert (_ciDb_cachedHashes ciDb) $ insertExpressions
       [CachedHash (val_ hash) (val_ cache) (val_ t)]
 
@@ -220,7 +227,7 @@ cacheBuild
 cacheBuild se cache cj = do
   let dbConn = _serverEnv_db se
   start <- getCurrentTime
-  runBeamSqlite dbConn $ do
+  runBeamSqliteDebug putStrLn dbConn $ do
     runUpdate $
       update (_ciDb_cacheJobs ciDb)
              (\job -> mconcat
@@ -274,7 +281,7 @@ cacheBuild se cache cj = do
     liftIO $ logStr CiMsg "Finished caching"
 
   end <- getCurrentTime
-  runBeamSqlite dbConn $ do
+  runBeamSqliteDebug putStrLn dbConn $ do
     runUpdate $
       update (_ciDb_cacheJobs ciDb)
              (\job -> mconcat
