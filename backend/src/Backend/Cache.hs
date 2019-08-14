@@ -72,10 +72,11 @@ cacheManagerThread se = do
           (_s3Cache_bucket $ _binaryCache_s3Cache cache)
         res <- try $ cacheBuild se cache job
         case res of
-  	  Left (e :: SomeException) ->
+          Left (e :: SomeException) -> do
             printf "Cache job for %s threw an exception!\n"
               (_cacheJob_storePath job)
-  	  Right _ -> putStrLn "Finished cache job"
+            print e
+          Right _ -> putStrLn "Finished cache job"
 
 ------------------------------------------------------------------------------
 -- Calculate the transitive closure of a nix file.
@@ -152,7 +153,6 @@ cacheStorePath se awsEnv logFunc nixDb cacheKey cache sp@(StorePath spt) = do
       Nothing -> throwError $ ExitFailure 42
       Just ni -> do
         let spHash = storePathHash $ T.pack spt
-        --let narDumpCmd = printf "%s --dump %s"
         let oname = "nar/" <> spHash <> ".nar.xz"
 
         let s3cache = _binaryCache_s3Cache cache
@@ -161,6 +161,7 @@ cacheStorePath se awsEnv logFunc nixDb cacheKey cache sp@(StorePath spt) = do
         if haveUploaded
           then return ()
           else do
+            liftIO $ logFunc =<< textProcMsg ("Caching " <> T.pack spt)
             let narUploadCmd = printf "%s --dump %s | %s --stdout | %s s3 cp - s3://%s/%s"
                   nixStore spt xzBinary awsBinary (_s3Cache_bucket s3cache) oname
             runCP (shell narUploadCmd) logFunc
@@ -191,18 +192,19 @@ haveUploadedObject conn cache hash = do
   isJust <$> getCachedHash conn cache hash
 
 getCachedHash :: Connection -> PrimaryKey BinaryCacheT Identity -> Text -> IO (Maybe CachedHash)
-getCachedHash conn cache hash = do
-  runBeamSqliteDebug putStrLn conn $
+getCachedHash conn (BinaryCacheId cache) hash = do
+  runBeamSqlite conn $
     runSelectReturningOne $
     select $ do
       ch <- all_ (_ciDb_cachedHashes ciDb)
-      guard_ (ch ^. cachedHash_hash ==. val_ hash)
+      guard_ (ch ^. cachedHash_hash ==. val_ hash &&.
+              ch ^. cachedHash_cache ==. val_ cache)
       return ch
 
 storeCachedHash :: Connection -> PrimaryKey BinaryCacheT Identity -> Text -> IO ()
 storeCachedHash conn cache hash = do
   t <- getCurrentTime
-  runBeamSqliteDebug putStrLn conn $ do
+  runBeamSqlite conn $ do
     runInsert $ insert (_ciDb_cachedHashes ciDb) $ insertExpressions
       [CachedHash (val_ hash) (val_ cache) (val_ t)]
 
@@ -227,7 +229,7 @@ cacheBuild
 cacheBuild se cache cj = do
   let dbConn = _serverEnv_db se
   start <- getCurrentTime
-  runBeamSqliteDebug putStrLn dbConn $ do
+  runBeamSqlite dbConn $ do
     runUpdate $
       update (_ciDb_cacheJobs ciDb)
              (\job -> mconcat
@@ -249,22 +251,23 @@ cacheBuild se cache cj = do
           logProcMsg pm
 
     toCache <- ExceptT $ calcStorePathClosure $ T.unpack $ _cacheJob_storePath cj
-    liftIO $ logStr CiMsg $ T.pack $ printf "Caching %d store paths" (length toCache)
+    let s3cache = _binaryCache_s3Cache cache
+    liftIO $ logStr CiMsg $ T.pack $ printf "Caching %d store paths to s3://%s"
+      (length toCache) (_s3Cache_bucket s3cache)
     nixDbConn <- liftIO $ open nixSqliteDb
 
-    let s3cache = _binaryCache_s3Cache cache
     e <- AWS.newEnv $ AWS.FromKeys
       (AWS.AccessKey $ encodeUtf8 $ _s3Cache_accessKey s3cache)
       (AWS.SecretKey $ encodeUtf8 $ _s3Cache_secretKey s3cache)
     nixCacheInfoExists <- liftIO $ doesObjectExist e
       (_s3Cache_bucket s3cache) (_s3Cache_region s3cache) "nix-cache-info"
     when (not nixCacheInfoExists) $ do
-      cacheInfo <- liftIO getCacheInfo
+      ci <- liftIO getCacheInfo
       resp <- liftIO $ AWS.runResourceT $ AWS.runAWS e $
         AWS.within (toAwsRegion $ _s3Cache_region s3cache) $
           AWS.send (AWS.putObject (AWS.BucketName $ _s3Cache_bucket s3cache)
                    (AWS.ObjectKey "nix-cache-info")
-                   (AWS.toBody cacheInfo))
+                   (AWS.toBody ci))
       let status = resp ^. AWS.porsResponseStatus
       if status == 200
         then return ()
@@ -273,15 +276,14 @@ cacheBuild se cache cj = do
           throwError (ExitFailure status)
 
     liftIO $ forM_ toCache $ \sp -> do
-      liftIO $ logStr CiMsg $ T.pack $ printf "Caching %s" sp
       res <- runExceptT $ cacheStorePath se e logProcMsg nixDbConn (_serverEnv_cacheKey se) cache (StorePath $ T.unpack sp)
       case res of
-        Left e -> liftIO $ logStr CiMsg $ T.pack $ printf "Error %s while caching %s" (show e) sp
+        Left er -> liftIO $ logStr CiMsg $ T.pack $ printf "Error %s while caching %s" (show er) sp
         Right _ -> return ()
     liftIO $ logStr CiMsg "Finished caching"
 
   end <- getCurrentTime
-  runBeamSqliteDebug putStrLn dbConn $ do
+  runBeamSqlite dbConn $ do
     runUpdate $
       update (_ciDb_cacheJobs ciDb)
              (\job -> mconcat
