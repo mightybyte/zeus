@@ -149,7 +149,7 @@ cacheStorePath se awsEnv logFunc nixDb cacheKey cache sp@(StorePath spt) = do
         let oname = "nar/" <> spHash <> ".nar.xz"
 
         let s3cache = _binaryCache_s3Cache cache
-        haveUploaded <- liftIO $ haveUploadedObject se (primaryKey cache) oname
+        haveUploaded <- liftIO $ haveUploadedObject (_serverEnv_db se) (primaryKey cache) oname
 
         if haveUploaded
           then return ()
@@ -171,7 +171,7 @@ cacheStorePath se awsEnv logFunc nixDb cacheKey cache sp@(StorePath spt) = do
               else do
                 liftIO $ printf "Error uploading narinfo for %s\n" spt
                 throwError (ExitFailure status)
-            liftIO $ storeCachedHash se (primaryKey cache) spHash
+            liftIO $ storeCachedHash (_serverEnv_db se) (primaryKey cache) spHash
 
 
 doesObjectExist :: AWS.Env -> Text -> Region -> Text -> IO Bool
@@ -179,24 +179,23 @@ doesObjectExist e b r k = do
   eresp :: Either SomeException AWS.HeadObjectResponse <- try (objectInfo e b r k)
   return $ either (const False) (const True) eresp
 
-haveUploadedObject :: ServerEnv -> PrimaryKey BinaryCacheT Identity -> Text -> IO Bool
-haveUploadedObject se cache hash = do
-  isJust <$> getCachedHash se cache hash
+haveUploadedObject :: Connection -> PrimaryKey BinaryCacheT Identity -> Text -> IO Bool
+haveUploadedObject conn cache hash = do
+  not . null <$> getCachedHash conn cache hash
 
-getCachedHash :: ServerEnv -> PrimaryKey BinaryCacheT Identity -> Text -> IO (Maybe CachedHash)
-getCachedHash se cache hash = do
-  beamQuery se $
-    runSelectReturningOne $
+getCachedHash :: Connection -> PrimaryKey BinaryCacheT Identity -> Text -> IO [CachedHash]
+getCachedHash conn cache hash = do
+  beamQueryConn conn $
+    runSelectReturningList $
     select $ do
       ch <- all_ (_ciDb_cachedHashes ciDb)
-      guard_ (ch ^. cachedHash_cache ==. val_ (binaryCacheKeyToInt cache) &&.
-              ch ^. cachedHash_hash ==. val_ hash)
+      guard_ (ch ^. cachedHash_hash ==. val_ hash)
       return ch
 
-storeCachedHash :: ServerEnv -> PrimaryKey BinaryCacheT Identity -> Text -> IO ()
-storeCachedHash se cache hash = do
+storeCachedHash :: Connection -> PrimaryKey BinaryCacheT Identity -> Text -> IO ()
+storeCachedHash conn cache hash = do
   t <- getCurrentTime
-  beamQuery se $ do
+  beamQueryConn conn $ do
     runInsert $ insert (_ciDb_cachedHashes ciDb) $ insertExpressions
       [CachedHash default_ (val_ cache) (val_ hash) (val_ t)]
 
