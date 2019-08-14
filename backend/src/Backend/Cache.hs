@@ -197,7 +197,7 @@ storeCachedHash conn cache hash = do
   t <- getCurrentTime
   beamQueryConn conn $ do
     runInsert $ insert (_ciDb_cachedHashes ciDb) $ insertExpressions
-      [CachedHash default_ (val_ cache) (val_ hash) (val_ t)]
+      [CachedHash (val_ hash) (val_ cache) (val_ t)]
 
 narInfoToString :: NarInfo -> Text
 narInfoToString (NarInfo sp u c _ _ refs _ sigs) = T.unlines $
