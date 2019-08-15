@@ -198,7 +198,7 @@ cacheStorePath se awsEnv logFunc nixDb cacheKey cache sp@(StorePath spt) = do
                   awsBinary xzPath (_s3Cache_bucket s3cache) ("nar" </> xzFilename)
             runCP (shell uploadCmd) logFunc
 
-            narSize <- liftIO $ getFileSize narPath
+            !narSize <- liftIO $ getFileSize narPath
 
             let res = do
                   fingerprint <- fingerprintVP vp refs
@@ -207,6 +207,11 @@ cacheStorePath se awsEnv logFunc nixDb cacheKey cache sp@(StorePath spt) = do
                     (storePathHash $ _validPath_path vp)
                     Xz (_validPath_hash vp) (fromIntegral narSize) refs
                     [mkNixSig (_nixCacheKey_secret cacheKey) (encodeUtf8 fingerprint)]
+            
+            liftIO $ do
+              removePathForcibly xzFilename
+              removePathForcibly narPath
+
             case res of
               Left e -> liftIO $ putStrLn e
               Right niContents -> do
