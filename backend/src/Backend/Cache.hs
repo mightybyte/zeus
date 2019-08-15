@@ -61,7 +61,6 @@ getNextJob conn = do
       cache <- all_ (_ciDb_binaryCaches ciDb)
       return (job, cache)
 
-
 cacheManagerThread :: ServerEnv -> IO ()
 cacheManagerThread se = do
   putStrLn "Starting cache manager thread"
