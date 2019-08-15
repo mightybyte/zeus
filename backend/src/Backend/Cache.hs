@@ -16,10 +16,12 @@ import           Control.Exception
 import           Control.Lens
 import           Control.Monad
 import           Control.Monad.Except
+import           Data.List (sort)
 import           Data.Text (Text)
 import qualified Data.Text as T
 import           Data.Text.Encoding
 import           Data.Time
+import           Data.Word
 import           Database.Beam
 import           Database.Beam.Sqlite
 import           Database.SQLite.Simple
@@ -27,6 +29,7 @@ import qualified Network.AWS as AWS
 import qualified Network.AWS.S3 as AWS
 import           System.Directory
 import           System.Exit
+import           System.FilePath
 import           System.IO
 import           System.Process
 import           Text.Printf
@@ -127,6 +130,27 @@ objectInfo e b r k = do
       AWS.send (AWS.headObject (AWS.BucketName b) (AWS.ObjectKey k))
 
 ------------------------------------------------------------------------------
+-- | Gets the narinfo for a store path or the hash prefix of a store path,
+-- i.e. /nix/store/00gli0bqsxvxzx90miprdd0gpc2ryhv2
+getVpAndRefs
+  :: Connection
+  -> StorePath
+  -> IO (Maybe (ValidPath, [Text]))
+getVpAndRefs conn (StorePath sp) = do
+  vpRes <- liftIO $ query conn "select * from ValidPaths where path >= ? limit 1"
+    (Only $ T.takeWhile (/= '-') $ T.pack sp)
+  case vpRes of
+    [vp] -> do
+      refs <- fmap (sort . fmap fromOnly) $ liftIO $ query conn
+        "select path from Refs join ValidPaths on reference = id where referrer = ?"
+        (Only $ _validPath_id vp)
+      return $ Just (vp, refs)
+    vps -> do
+      printf "Expected exactly one ValidPath for %s, got %d" sp (length vps)
+      return Nothing
+
+
+------------------------------------------------------------------------------
 -- | To upload a store path to a binary cache, we have to do two things:
 --
 -- 1. Upload the nar (probably compressed) to nar/<uniqueid>.nar[.xz]
@@ -145,10 +169,12 @@ cacheStorePath
   -> StorePath
   -> ExceptT ExitCode IO ()
 cacheStorePath se awsEnv logFunc nixDb cacheKey cache sp@(StorePath spt) = do
-    mni <- liftIO $ getNarInfo nixDb (_nixCacheKey_secret cacheKey) sp
-    case mni of
-      Nothing -> throwError $ ExitFailure 42
-      Just ni -> do
+    mpair <- liftIO $ getVpAndRefs nixDb sp
+    case mpair of
+      Nothing -> do
+        liftIO $ putStrLn "getVpAndRefs failed"
+        throwError $ ExitFailure 42
+      Just (vp, refs) -> do
         let spHash = storePathHash $ T.pack spt
         let oname = "nar/" <> spHash <> ".nar.xz"
 
@@ -159,25 +185,45 @@ cacheStorePath se awsEnv logFunc nixDb cacheKey cache sp@(StorePath spt) = do
           then return ()
           else do
             liftIO $ logFunc =<< textProcMsg ("Caching " <> T.pack spt)
-            let narUploadCmd = printf "%s --dump %s | %s --stdout | %s s3 cp - s3://%s/%s"
-                  nixStore spt xzBinary awsBinary (_s3Cache_bucket s3cache) oname
-            runCP (shell narUploadCmd) logFunc
+            let tmpDir = "/tmp/zeus-tmp"
+            liftIO $ createDirectoryIfMissing True tmpDir
+            let narFilename = T.unpack spHash <> ".nar"
+            let narPath = tmpDir </> narFilename
+            let dumpCmd = printf "%s --dump %s > %s" nixStore spt narPath
+            runCP (shell dumpCmd) logFunc
+            let compressCmd = printf "%s -k %s" xzBinary narPath
+            runCP (shell compressCmd) logFunc
+            let xzFilename = narFilename <> ".xz"
+            let xzPath = tmpDir </> xzFilename
+            let uploadCmd = printf "%s s3 cp %s s3://%s/%s"
+                  awsBinary xzPath (_s3Cache_bucket s3cache) ("nar" </> xzFilename)
+            runCP (shell uploadCmd) logFunc
 
-            let niContents = narInfoToString ni
+            narSize <- liftIO $ getFileSize narPath
 
-            resp <- liftIO $ AWS.runResourceT $ AWS.runAWS awsEnv $
-              AWS.within (toAwsRegion $ _s3Cache_region s3cache) $
-                AWS.send (AWS.putObject (AWS.BucketName $ _s3Cache_bucket s3cache)
-                         (AWS.ObjectKey (spHash <> ".narinfo"))
-                         (AWS.toBody niContents))
-            let status = resp ^. AWS.porsResponseStatus
-            if status == 200
-              then do
-                liftIO $ logFunc =<< textProcMsg "Writing to CachedHash table"
-                liftIO $ storeCachedHash (_serverEnv_db se) (primaryKey cache) spHash
-              else do
-                liftIO $ logFunc =<< textProcMsg ("Error uploading narinfo for " <> T.pack spt)
-                throwError (ExitFailure status)
+            let res = do
+                  fingerprint <- fingerprintVP vp refs
+                  narInfoToString
+                    (StorePath $ T.unpack $ _validPath_path vp)
+                    (storePathHash $ _validPath_path vp)
+                    Xz (_validPath_hash vp) (fromIntegral narSize) refs
+                    [mkNixSig (_nixCacheKey_secret cacheKey) (encodeUtf8 fingerprint)]
+            case res of
+              Left e -> liftIO $ putStrLn e
+              Right niContents -> do
+                resp <- liftIO $ AWS.runResourceT $ AWS.runAWS awsEnv $
+                  AWS.within (toAwsRegion $ _s3Cache_region s3cache) $
+                    AWS.send (AWS.putObject (AWS.BucketName $ _s3Cache_bucket s3cache)
+                             (AWS.ObjectKey (spHash <> ".narinfo"))
+                             (AWS.toBody niContents))
+                let status = resp ^. AWS.porsResponseStatus
+                if status == 200
+                  then do
+                    liftIO $ logFunc =<< textProcMsg "Writing to CachedHash table"
+                    liftIO $ storeCachedHash (_serverEnv_db se) (primaryKey cache) spHash
+                  else do
+                    liftIO $ logFunc =<< textProcMsg ("Error uploading narinfo for " <> T.pack spt)
+                    throwError (ExitFailure status)
 
 doesObjectExist :: AWS.Env -> Text -> Region -> Text -> IO Bool
 doesObjectExist e b r k = do
@@ -205,19 +251,30 @@ storeCachedHash conn cache hash = do
     runInsert $ insert (_ciDb_cachedHashes ciDb) $ insertExpressions
       [CachedHash (val_ hash) (val_ cache) (val_ t)]
 
-narInfoToString :: NarInfo -> Text
-narInfoToString (NarInfo sp u c _ _ refs _ sigs) = T.unlines $
-  [ "StorePath: " <> T.pack (unStorePath sp)
-  , "URL: nar/" <> u <> ".nar.xz"
-  , "Compression: " <> T.pack (show c)
-  --, "FileHash: sha256:1g3pf3h89a5l106casdf8wgqjagsr52a5mxlnhv5xykkwf3rf2r6"
-  --, "FileSize: 31476"
-  --, "NarHash: sha256:1c415vhi7zbkxlvgphanjm3q31x8qhbh2zs9ygfnmk57xgrwf3kl"
-  --, "NarSize: 107320"
-  --, "CA: fixed:r:sha256:1c415vhi7zbkxlvgphanjm3q31x8qhbh2zs9ygfnmk57xgrwf3kl"
+narInfoToString
+  :: StorePath
+  -> Text
+  -> NarCompression
+  -> Text
+  -> Word64
+  -> [Text]
+  -> [Text]
+  -> Either String Text
+narInfoToString sp u c narHash narSize refs sigs =
+  case mkBase32 narHash of
+    Left e -> Left e
+    Right (hashType, hash) -> Right $ T.unlines $
+      [ "StorePath: " <> T.pack (unStorePath sp)
+      , "URL: nar/" <> u <> ".nar.xz"
+      , "Compression: " <> T.pack (show c)
+      --, "FileHash: sha256:1g3pf3h89a5l106casdf8wgqjagsr52a5mxlnhv5xykkwf3rf2r6"
+      --, "FileSize: 31476"
+      , "NarHash: " <> hashType <> ":" <> hash
+      , "NarSize: " <> T.pack (show narSize)
+      --, "CA: fixed:r:sha256:1c415vhi7zbkxlvgphanjm3q31x8qhbh2zs9ygfnmk57xgrwf3kl"
 
-  ] ++ (if null refs then [] else ["References: " <> T.unwords (map stripPath refs)])
-    ++ map ("Sig: " <>) sigs
+      ] ++ (if null refs then [] else ["References: " <> T.unwords (map stripPath refs)])
+        ++ map ("Sig: " <>) sigs
 
 cacheBuild
   :: ServerEnv

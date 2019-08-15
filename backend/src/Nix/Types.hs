@@ -58,8 +58,8 @@ data NarInfo = NarInfo
   { _narInfo_storePath :: StorePath
   , _narInfo_urlHash :: Text
   , _narInfo_compression :: NarCompression
-  , _narInfo_narHash :: Maybe Text
-  , _narInfo_narSize :: Maybe Word64
+  , _narInfo_narHash :: Text
+  , _narInfo_narSize :: Word64
   , _narInfo_references :: [Text]
   , _narInfo_deriver :: Maybe Text
   , _narInfo_sigs :: [Text]

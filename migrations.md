@@ -29,3 +29,12 @@ CREATE TABLE IF NOT EXISTS "ciDb_ciSettings"("ciSettings_id" INTEGER NOT NULL , 
 INSERT INTO "ciDb_ciSettings" SELECT "ciSettings_id", "ciSettings_nixPath", "ciSettings_serveLocalCache" FROM "ciDb_ciSettings_old_0";
 DROP TABLE ciDb_ciSettings_old_0;
 ```
+
+#### Removed CachedHash autoincrementing ID
+
+```
+ALTER TABLE "ciDb_cachedHashes" RENAME TO "ciDb_cachedHashes_old_0";
+CREATE TABLE IF NOT EXISTS "ciDb_cachedHashes"("cachedHash_hash" VARCHAR NOT NULL , "cachedHash_cache__binaryCache_id" INTEGER NOT NULL , "cachedHash_time" TIMESTAMP WITH TIME ZONE NOT NULL , PRIMARY KEY("cachedHash_hash"));
+INSERT INTO "ciDb_cachedHashes" SELECT distinct("cachedHash_hash"), max("cachedHash_cache__binaryCache_id"), max("cachedHash_time") FROM "ciDb_cachedHashes_old_0" GROUP BY "cachedHash_hash";
+DROP TABLE "ciDb_cachedHashes_old_0";
+```

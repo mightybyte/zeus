@@ -24,7 +24,6 @@ import           Reflex.Dom.Contrib.CssClass
 import           Reflex.Dom.Contrib.Utils
 import           Reflex.Dom.Core
 import qualified Reflex.Dom.SemanticUI as SemUI
-import           Reflex.Network
 ------------------------------------------------------------------------------
 import           Common.Route
 import           Common.Types.BinaryCache

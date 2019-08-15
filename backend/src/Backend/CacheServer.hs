@@ -39,8 +39,9 @@ fingerprintPath storePath narHash narSize refs = do
       ]
 
 fingerprintVP :: ValidPath -> [Text] -> Either String Text
-fingerprintVP (ValidPath _ p h _ _ s _ _ _) =
-  fingerprintPath p h (fromMaybe 0 s)
+fingerprintVP (ValidPath _ p h _ _ (Just s) _ _ _) refs =
+  fingerprintPath p h s refs
+fingerprintVP _ _ = Left "NarSize not available"
 
 ------------------------------------------------------------------------------
 -- | Similar to queryPathInfo / queryPathInfoUncached in the Nix C++ code.
@@ -77,43 +78,6 @@ stripPath = T.takeWhileEnd (/= '/')
 
 storePathHash :: Text -> Text
 storePathHash = T.takeWhile (/= '-') . T.takeWhileEnd (/= '/')
-
-------------------------------------------------------------------------------
--- | Gets the narinfo for a store path or the hash prefix of a store path,
--- i.e. /nix/store/00gli0bqsxvxzx90miprdd0gpc2ryhv2
-getNarInfo
-  :: Connection
-  -> NixCacheKey
-  -> StorePath
-  -> IO (Maybe NarInfo)
-getNarInfo conn secret (StorePath sp) = do
-  vpRes <- liftIO $ query conn "select * from ValidPaths where path >= ? limit 1"
-    (Only $ T.takeWhile (/= '-') $ T.pack sp)
-  case vpRes of
-    [vp] -> do
-      refs <- fmap (sort . fmap fromOnly) $ liftIO $ query conn
-        "select path from Refs join ValidPaths on reference = id where referrer = ?"
-        (Only $ _validPath_id vp)
-      let spHash = storePathHash $ _validPath_path vp
-      case fingerprintVP vp refs of
-        Left _ -> do
-          printf "Couldn't calculate fingerprint: %s\n" (show vp)
-          print refs
-          return Nothing
-        Right fingerprint -> return $ Just $ NarInfo
-          (StorePath $ T.unpack $ _validPath_path vp)
-          spHash
-          Xz
-          Nothing
-          Nothing
-          (map stripPath refs)
-          (stripPath <$> _validPath_deriver vp)
-          [mkNixSig secret (T.encodeUtf8 fingerprint)]
-    vps -> do
-      putStrLn $ "Unexpected vps returned for store path " <> sp
-      print vps
-      return Nothing
-
 
 otherHandler :: MonadSnap m => ServerEnv -> Text -> m ()
 otherHandler se file = do
