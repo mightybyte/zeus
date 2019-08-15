@@ -217,9 +217,7 @@ cacheStorePath se awsEnv logFunc nixDb cacheKey cache sp@(StorePath spt) = do
                              (AWS.toBody niContents))
                 let status = resp ^. AWS.porsResponseStatus
                 if status == 200
-                  then do
-                    liftIO $ logFunc =<< textProcMsg "Writing to CachedHash table"
-                    liftIO $ storeCachedHash (_serverEnv_db se) (primaryKey cache) spHash
+                  then liftIO $ storeCachedHash (_serverEnv_db se) (primaryKey cache) spHash
                   else do
                     liftIO $ logFunc =<< textProcMsg ("Error uploading narinfo for " <> T.pack spt)
                     throwError (ExitFailure status)
