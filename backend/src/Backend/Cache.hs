@@ -193,7 +193,7 @@ cacheStorePath se awsEnv logFunc nixDb cache sp@(StorePath spt) = do
             runCP (shell compressCmd) logFunc
             let xzFilename = narFilename <> ".xz"
             let xzPath = tmpDir </> xzFilename
-            let uploadCmd = printf "%s s3 cp %s s3://%s/%s"
+            let uploadCmd = printf "%s s3 cp --quiet %s s3://%s/%s"
                   awsBinary xzPath (_s3Cache_bucket s3cache) ("nar" </> xzFilename)
             runCP (shell uploadCmd) logFunc
 
