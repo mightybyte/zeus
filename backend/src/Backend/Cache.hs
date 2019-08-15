@@ -163,11 +163,10 @@ cacheStorePath
   -> AWS.Env
   -> (ProcMsg -> IO ())
   -> Connection
-  -> NixCacheKeyPair
   -> BinaryCache
   -> StorePath
   -> ExceptT ExitCode IO ()
-cacheStorePath se awsEnv logFunc nixDb cacheKey cache sp@(StorePath spt) = do
+cacheStorePath se awsEnv logFunc nixDb cache sp@(StorePath spt) = do
     mpair <- liftIO $ getVpAndRefs nixDb sp
     case mpair of
       Nothing -> do
@@ -206,7 +205,8 @@ cacheStorePath se awsEnv logFunc nixDb cacheKey cache sp@(StorePath spt) = do
                     (StorePath $ T.unpack $ _validPath_path vp)
                     (storePathHash $ _validPath_path vp)
                     Xz (_validPath_hash vp) (fromIntegral narSize) refs
-                    [mkNixSig (_nixCacheKey_secret cacheKey) (encodeUtf8 fingerprint)]
+                    (_validPath_deriver vp)
+                    [mkNixSig (_nixCacheKey_secret $ _serverEnv_cacheKey se) (encodeUtf8 fingerprint)]
             case res of
               Left e -> liftIO $ putStrLn e
               Right niContents -> do
@@ -257,9 +257,10 @@ narInfoToString
   -> Text
   -> Word64
   -> [Text]
+  -> Maybe Text
   -> [Text]
   -> Either String Text
-narInfoToString sp u c narHash narSize refs sigs =
+narInfoToString sp u c narHash narSize refs deriver sigs =
   case mkBase32 narHash of
     Left e -> Left e
     Right (hashType, hash) -> Right $ T.unlines $
@@ -273,6 +274,7 @@ narInfoToString sp u c narHash narSize refs sigs =
       --, "CA: fixed:r:sha256:1c415vhi7zbkxlvgphanjm3q31x8qhbh2zs9ygfnmk57xgrwf3kl"
 
       ] ++ (if null refs then [] else ["References: " <> T.unwords (map stripPath refs)])
+        ++ (maybe [] (\d -> ["Deriver: " <> stripPath d]) deriver)
         ++ map ("Sig: " <>) sigs
 
 cacheBuild
@@ -330,7 +332,7 @@ cacheBuild se cache cj = do
           throwError (ExitFailure status)
 
     liftIO $ forM_ toCache $ \sp -> do
-      res <- runExceptT $ cacheStorePath se e logProcMsg nixDbConn (_serverEnv_cacheKey se) cache (StorePath $ T.unpack sp)
+      res <- runExceptT $ cacheStorePath se e logProcMsg nixDbConn cache (StorePath $ T.unpack sp)
       case res of
         Left er -> liftIO $ logStr CiMsg $ T.pack $ printf "Error %s while caching %s" (show er) sp
         Right _ -> return ()
