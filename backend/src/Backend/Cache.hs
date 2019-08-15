@@ -197,7 +197,7 @@ cacheStorePath se awsEnv logFunc nixDb cache sp@(StorePath spt) = do
                   awsBinary xzPath (_s3Cache_bucket s3cache) ("nar" </> xzFilename)
             runCP (shell uploadCmd) logFunc
 
-            narSize <- liftIO $ getFileSize narPath
+            !narSize <- liftIO $ getFileSize narPath
 
             let res = do
                   fingerprint <- fingerprintVP vp refs
@@ -207,6 +207,11 @@ cacheStorePath se awsEnv logFunc nixDb cache sp@(StorePath spt) = do
                     Xz (_validPath_hash vp) (fromIntegral narSize) refs
                     (_validPath_deriver vp)
                     [mkNixSig (_nixCacheKey_secret $ _serverEnv_cacheKey se) (encodeUtf8 fingerprint)]
+
+            liftIO $ do
+              removePathForcibly xzFilename
+              removePathForcibly narPath
+
             case res of
               Left e -> liftIO $ putStrLn e
               Right niContents -> do
@@ -217,9 +222,7 @@ cacheStorePath se awsEnv logFunc nixDb cache sp@(StorePath spt) = do
                              (AWS.toBody niContents))
                 let status = resp ^. AWS.porsResponseStatus
                 if status == 200
-                  then do
-                    liftIO $ logFunc =<< textProcMsg "Writing to CachedHash table"
-                    liftIO $ storeCachedHash (_serverEnv_db se) (primaryKey cache) spHash
+                  then liftIO $ storeCachedHash (_serverEnv_db se) (primaryKey cache) spHash
                   else do
                     liftIO $ logFunc =<< textProcMsg ("Error uploading narinfo for " <> T.pack spt)
                     throwError (ExitFailure status)
