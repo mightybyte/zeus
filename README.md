@@ -24,8 +24,10 @@ Zeus makes it drop dead simple to get blazing fast CI for Nix projects **today**
 providing the following features:
 
 * Automatically sets up webhooks for both GitHub and GitLab repositories.
-* All builds made available as a Nix binary cache so all your infrastructure
-  from development to deployment rebuilds as little as possible.
+* All builds made available from the Zeus machine as a Nix binary cache so all
+  your infrastructure from development to deployment rebuilds as little as
+  possible.
+* Support for pushing build outputs to a Nix cache hosted on S3.
 * Organizations with closed source software can limit server and cache access to
   specific IP addresses / subnets.
 
@@ -33,7 +35,6 @@ providing the following features:
 
 The following features are high priority and planned for the very near future:
 
-* Support for pushing build outputs to a Nix cache hosted on S3
 * Ability to distribute builds to multiple build slaves
 * Proper support for merge requests and control of GitHub/GitLab status lights
   with a safe solution to the problem of anyone on the internet having arbitrary
@@ -219,6 +220,52 @@ the namespace will be "acme-corp/frontend-team" and the name will be
 Fill out the rest of the form as appropriate, then click "Add Repo" and you
 should be good to go! Zeus will now run a build every time someone pushes to
 your repo.
+
+### Setting up as S3 cache
+
+1. Create an Amazon S3 bucket to store your cache
+2. Go to the bucket's "Properties" tab, click on "Static website hosting", and
+   check "Use this bucket to host a website".
+3. Go to "Permissions" -> "Block public access", click "Edit", and uncheck all
+   the boxes.
+4. In "Permissions" -> "Bucket Policy", set the following policy:
+
+```
+{
+    "Version": "2012-10-17",
+    "Id": "DirectReads",
+    "Statement": [
+        {
+            "Sid": "AllowDirectReads",
+            "Effect": "Allow",
+            "Principal": "*",
+            "Action": [
+                "s3:ListBucket",
+                "s3:GetObject",
+                "s3:GetBucketLocation"
+            ],
+            "Resource": [
+                "arn:aws:s3:::my-nix-cache-bucket-name",
+                "arn:aws:s3:::my-nix-cache-bucket-name/*"
+            ]
+        }
+    ]
+}
+```
+
+   ...substituting `my-nix-cache-bucket-name` with the name of your bucket.
+
+5. Go to the "Caches" tab, click "Add Cache", fill in the form with information
+   for your cache, and click "Connect Cache".
+6. Create a new repo in the "Repos" tab and select the S3 cache you just
+   created.
+7. To enable this cache, edit `/etc/nix/nix.conf` and add
+   `s3://my-nix-cache-bucket-name` to the `substituters` line.
+
+NOTE: The first time you do a build that pushes to your S3 cache, it will
+probably take several hours to upload the full transitive closure of all the
+dependencies. After that first time, it will be much faster because most of the
+dependencies will already be there.
 
 ### Migrations
 
