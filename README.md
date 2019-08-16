@@ -253,14 +253,15 @@ your repo.
 }
 ```
 
-   ...substituting `my-nix-cache-bucket-name` with the name of your bucket.
+...substituting `my-nix-cache-bucket-name` with the name of your bucket.
 
 5. Go to the "Caches" tab, click "Add Cache", fill in the form with information
    for your cache, and click "Connect Cache".
 6. Create a new repo in the "Repos" tab and select the S3 cache you just
    created.
-7. To enable this cache, edit `/etc/nix/nix.conf` and add
-   `s3://my-nix-cache-bucket-name` to the `substituters` line.
+7. To enable this cache on your machine, edit `/etc/nix/nix.conf` and add
+   `s3://my-nix-cache-bucket-name` to the `substituters` line and add the Zeus
+   Cache Public Key (viewable in the Settings tab) to `trusted-public-keys`.
 
 NOTE: The first time you do a build that pushes to your S3 cache, it will
 probably take several hours to upload the full transitive closure of all the
