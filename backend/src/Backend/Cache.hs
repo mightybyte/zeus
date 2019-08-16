@@ -195,7 +195,12 @@ cacheStorePath se awsEnv logFunc nixDb cache sp@(StorePath spt) = do
             let xzPath = tmpDir </> xzFilename
             let uploadCmd = printf "%s s3 cp --quiet %s s3://%s/%s"
                   awsBinary xzPath (_s3Cache_bucket s3cache) ("nar" </> xzFilename)
-            runCP (shell uploadCmd) logFunc
+                uploadCP = (shell uploadCmd) {
+                  env = Just [ ("AWS_ACCESS_KEY_ID", T.unpack $ _s3Cache_accessKey s3cache)
+                             , ("AWS_SECRET_ACCESS_KEY", T.unpack $ _s3Cache_secretKey s3cache)
+                             ]
+                }
+            runCP uploadCP logFunc
 
             !narSize <- liftIO $ getFileSize narPath
 
