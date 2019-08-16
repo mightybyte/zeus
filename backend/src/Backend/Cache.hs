@@ -214,7 +214,7 @@ cacheStorePath se awsEnv logFunc nixDb cache sp@(StorePath spt) = do
                     [mkNixSig (_nixCacheKey_secret $ _serverEnv_cacheKey se) (encodeUtf8 fingerprint)]
 
             liftIO $ do
-              removePathForcibly xzFilename
+              removePathForcibly xzPath
               removePathForcibly narPath
 
             case res of
