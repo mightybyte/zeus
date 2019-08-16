@@ -2,6 +2,7 @@
 {-# LANGUAGE DeriveGeneric#-}
 {-# LANGUAGE GADTs #-}
 {-# LANGUAGE TemplateHaskell #-}
+{-# LANGUAGE UndecidableInstances #-}
 module Common.Api where
 
 ------------------------------------------------------------------------------
@@ -42,10 +43,40 @@ instance FromJSON a => FromJSON (Scrubbed a) where
 --   | CrudDelete (Batch (PrimaryKey itemT))
 --   | CrudList
 
+--data CrudUpMsg entityT
+--  = CrudUp_List
+--  | CrudUp_Create (Batch (entityT Maybe))
+--  | CrudUp_Update (Batch (entityT Identity))
+--  | CrudUp_Delete (Batch (PrimaryKey entityT Identity))
+
+data CrudUpMsg entityT where
+  CrudUp_List :: CrudUpMsg entityT
+  CrudUp_Create :: Batch (entityT Maybe) -> CrudUpMsg entityT
+  CrudUp_Update :: Batch (entityT Identity) -> CrudUpMsg entityT
+  CrudUp_Delete :: Batch (PrimaryKey entityT Identity) -> CrudUpMsg entityT
+  deriving Generic
+
+instance Show (CrudUpMsg eT) where
+  show CrudUp_List = "list"
+  show (CrudUp_Create _) = "new"
+  show (CrudUp_Update _) = "edit"
+  show (CrudUp_Delete _) = "delete"
+
+instance ToJSON (f Identity) => ToJSON (CrudUpMsg f) where
+    toEncoding = genericToEncoding defaultOptions
+
+instance FromJSON (f Identity) => FromJSON (CrudUpMsg f)
+
+instance ToJSON (f Maybe) => ToJSON (CrudUpMsg f) where
+    toEncoding = genericToEncoding defaultOptions
+
+instance FromJSON (f Maybe) => FromJSON (CrudUpMsg f)
+
 data Up
   = Up_ListAccounts
   | Up_ConnectAccount (Batch (ConnectedAccountT Maybe))
   | Up_DelAccounts (Batch ConnectedAccountId)
+--  | Up_Repo (CrudUpMsg RepoT)
   | Up_ListRepos
   | Up_AddRepo (Batch (RepoT Maybe))
   | Up_DelRepos (Batch RepoId)

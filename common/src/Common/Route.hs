@@ -48,7 +48,7 @@ deriveRouteComponent ''HookRoute
 data CrudRoute :: * -> * where
   Crud_List :: CrudRoute ()
   Crud_Create :: CrudRoute ()
-  --Crud_Update :: CrudRoute Int
+  Crud_Update :: CrudRoute Int
   --Crud_Delete :: CrudRoute Int
 
 deriveRouteComponent ''CrudRoute

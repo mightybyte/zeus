@@ -96,7 +96,7 @@ newAccountForm
   -> Event t (Maybe (ConnectedAccountT Maybe))
   -> m (Dynamic t (Maybe (ConnectedAccountT Maybe)))
 newAccountForm iv sv = do
-  dn <- labelledAs "Name of the account that owns the repositories to test" $
+  dn <- labelledAs "Name of the account that you want to use to access the repositories to test" $
     textField
     (fromMaybe "" $ _connectedAccount_name =<< iv)
     (fromMaybe "" . (_connectedAccount_name =<<) <$> sv)

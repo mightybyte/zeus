@@ -47,6 +47,7 @@ reposWidget = mdo
   subRoute_ $ \case
     Crud_List -> reposList (_as_repos as)
     Crud_Create -> addRepo
+    --Crud_Update i -> editRepo i
   return ()
 
 textDynColumn
@@ -79,7 +80,7 @@ reposList as = do
 addRepo :: MonadAppIO r t m => m ()
 addRepo = do
   semuiForm $ do
-    dr <- newRepoForm unfilledRepo never
+    dr <- repoForm unfilledRepo never
     divClass "field" $ do
       let as = addClassWhen "disabled" (not . isValidRepo <$> dr)
                  (manyClasses ["ui", "button"])
@@ -90,15 +91,30 @@ addRepo = do
         [domEvent Click e1, domEvent Click e2]
       return ()
 
+--editRepo :: MonadAppIO r t m => Int -> m ()
+--editRepo pk = do
+--  trigger trigger_
+--  semuiForm $ do
+--    dr <- repoForm unfilledRepo never
+--    divClass "field" $ do
+--      let as = addClassWhen "disabled" (not . isValidRepo <$> dr)
+--                 (manyClasses ["ui", "button"])
+--      (e1,_) <- elDynKlass' "button" as $ text "Add Repo"
+--      (e2,_) <- elAttr' "button" ("class" =: "ui button") $ text "Cancel"
+--      trigger trigger_addRepo $ tag (current dr) (domEvent Click e1)
+--      setRoute $ (FR_Repos :/ Crud_List :/ ()) <$ leftmost
+--        [domEvent Click e1, domEvent Click e2]
+--      return ()
+
 unfilledRepo :: RepoT Maybe
 unfilledRepo = Repo Nothing (ConnectedAccountId Nothing) Nothing Nothing Nothing Nothing (BinaryCacheId Nothing) Nothing
 
-newRepoForm
+repoForm
   :: MonadAppIO r t m
   => RepoT Maybe
   -> Event t (RepoT Maybe)
   -> m (Dynamic t (RepoT Maybe))
-newRepoForm iv sv = do
+repoForm iv sv = do
     accounts <- asks _as_accounts
     dmca <- labelledAs "Access Account" $
       accountDropdown accounts Nothing never
@@ -129,16 +145,6 @@ newRepoForm iv sv = do
     caches <- asks _as_caches
     dcache <- labelledAs "S3 Cache" $
       cacheDropdown caches Nothing never
-    --let f (BinaryCacheId cid) = cid
-    --useS3Cache <- divClass "field" $ do
-    --  divClass "ui checkbox" $ do
-    --    v <- checkbox (isJust $ f $ _repo_cache iv) $ def
-    --      & setValue .~ (isJust . f . _repo_cache <$> sv)
-    --    el "label" $ text "Push to S3 Cache"
-    --    return v
-    --res <- networkView (s3CacheWidget (_repo_cache iv) (_repo_cache <$> sv) <$> value useS3Cache)
-    --let res = undefined
-    --dcache <- join <$> holdDyn (constDyn $ _repo_cache iv) res
 
     dnf <- divClass "field" $ do
       el "label" $ bnfLabel
@@ -146,9 +152,6 @@ newRepoForm iv sv = do
         & inputElementConfig_initialValue .~ (fromMaybe "default.nix" $ _repo_buildNixFile iv)
         & inputElementConfig_setValue .~ (fromMaybe "default.nix" . _repo_buildNixFile <$> sv)
       return $ value ie
-    --dcm <- labelledAs "Clone Method" $ filledDropdown
-    --  (fromMaybe HttpClone $ _repo_cloneMethod iv)
-    --  (fmapMaybe id $ _repo_cloneMethod <$> sv)
     dt <- labelledAs "Timeout (in seconds)" $ readableField Nothing
       (maybe (Just 3600) Just $ _repo_timeout iv)
       (_repo_timeout <$> sv)

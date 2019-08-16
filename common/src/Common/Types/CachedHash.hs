@@ -64,13 +64,7 @@ instance FromJSON (CachedHashT Maybe)
 
 instance Beamable CachedHashT
 
---instance Table CachedHashT where
---  data PrimaryKey CachedHashT f = CachedHashId (Columnar f Text)
---    deriving (Generic, Beamable)
---  primaryKey = CachedHashId . _cachedHash_hash
-
 instance Table CachedHashT where
   data PrimaryKey CachedHashT f = CachedHashId (PrimaryKey BinaryCacheT f) (Columnar f Text)
     deriving (Generic, Beamable)
   primaryKey ch = CachedHashId (_cachedHash_cache ch) (_cachedHash_hash ch)
-
