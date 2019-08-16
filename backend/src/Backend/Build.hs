@@ -62,7 +62,7 @@ getNextJob se = do
   beamQueryConn (_serverEnv_db se) $
     runSelectReturningOne $
     select $
-    orderBy_ (asc_ . _buildJob_id) $ do
+    orderBy_ (asc_ . _buildJob_id) $ limit_ 1 $ do
       job <- all_ (_ciDb_buildJobs ciDb)
       guard_ (job ^. buildJob_status ==. (val_ JobPending))
       return job
