@@ -27,13 +27,12 @@ import           Reflex.Dom.Core
 import           Reflex.Dom.Contrib.CssClass
 ------------------------------------------------------------------------------
 import           Common.Route
-import           Humanizable
 import           Frontend.App
 import           Frontend.AppState
 import           Frontend.Common
 import           Frontend.Nav
 import           Frontend.Widgets.Accounts
-import           Frontend.Widgets.Info
+import           Frontend.Widgets.Caches
 import           Frontend.Widgets.Jobs
 import           Frontend.Widgets.Repos
 import           Frontend.Widgets.Settings
@@ -72,9 +71,6 @@ jsScript url = elAttr "script" ("src" =: url <> "type" =: "text/javascript") bla
 script :: DomBuilder t m =>  Text -> m ()
 script code = elAttr "script" ("type" =: "text/javascript") $ text code
 
---pr :: PostBuild t n => m a -> n a -> m (Dynamic t a)
---pr a = prerender a a
-
 -- TODO Remove prerender constraint after updating reflex-dom-contrib
 appBody
   :: forall js t m. (PostBuild t m, DomBuilder t m, MonadHold t m, MonadFix m,
@@ -85,14 +81,7 @@ appBody
      )
   => App (R FrontendRoute) t m ()
 appBody = do
-  --dpb <- prerender (pure never) (getPostBuild)
-  --let pb = switch $ current pb
-  --pb <- switch . current <$> prerender (DOM.liftJSM getPostBuild) getPostBuild
   pb <- getPostBuild
-  --performEvent_ (liftIO (putStrLn "appBody postBuild") <$ pb)
-  --trigger trigger_getAccounts $ traceEvent "---postbuild---" pb
-  --trigger trigger_getJobs pb
-  --trigger trigger_getRepos pb
   divClass "ui fixed menu" $ do
     elAttr "div" ("class" =: "inverted header item") $ text "Zeus CI"
     nav
@@ -102,7 +91,7 @@ appBody = do
       FR_Jobs -> jobsWidget
       FR_Repos -> reposWidget
       FR_Accounts -> accountsWidget
-      FR_Info -> infoWidget
+      FR_Caches -> cachesWidget
       FR_Settings -> settingsWidget
   serverAlert <- asks _as_serverAlert
   modalExample serverAlert
@@ -121,19 +110,6 @@ appBody = do
 --                 else setRoute $ (FR_Jobs :/ ()) <$ pb
 --  _ <- networkView action
 --  return ()
-
-data MainTabs
-  = JobsTab
-  -- | BuildersTab
-  | ReposTab
-  | AccountsTab
-  deriving (Eq,Ord,Show,Read,Enum,Bounded)
-
-instance Humanizable MainTabs where
-  humanize JobsTab = "Jobs"
-  --humanize BuildersTab = "Builders"
-  humanize ReposTab = "Repos"
-  humanize AccountsTab = "Accounts"
 
 modal
   :: MonadApp r t m

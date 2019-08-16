@@ -1,7 +1,8 @@
 {
-  "owner": "mightybyte",
+  "owner": "obsidiansystems",
   "repo": "obelisk",
-  "branch": "tar-in-backend-path-2",
-  "rev": "96415ed7799c7886577a509a7405570d41abc473",
-  "sha256": "1800d849rkyysh7ld61zqcppi75518k19p3fzrjw2737nds44bg2"
+  "branch": "develop",
+  "rev": "e32cbc6cefc9f230c1eb56f983ddffbade65c2f1",
+  "sha256": "17fc3l7rwygi8hs9adg6iyfy49xn5ff76d8s9ydm95dl0s6aqkg7"
+
 }

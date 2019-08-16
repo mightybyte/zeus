@@ -50,9 +50,11 @@ import           System.Process (rawSystem)
 import           Text.Printf
 ------------------------------------------------------------------------------
 import           Backend.Build
+import           Backend.Cache
 import           Backend.CacheServer
 import           Backend.Common
 import           Backend.Db
+import           Backend.DbLib
 import           Backend.ExecutablePaths
 import           Backend.Github
 import           Backend.Gitlab
@@ -64,10 +66,12 @@ import           Backend.WsCmds
 import           Backend.WsUtils
 import           Common.Api
 import           Common.Route
+import           Common.Types.BinaryCache
 import           Common.Types.BuildJob
 import           Common.Types.CiSettings
 import           Common.Types.ConnectedAccount
 import           Common.Types.JobStatus
+import           Common.Types.NixCacheKeyPair
 import           Common.Types.Repo
 ------------------------------------------------------------------------------
 
@@ -86,22 +90,32 @@ getSecretToken = do
 dbConnectInfo :: String
 dbConnectInfo = "zeus.db"
 
+
+getSigningKey :: IO NixCacheKeyPair
+getSigningKey = do
+  Right secret <- readKeyFile signingKeySecretFile
+  Right public <- readKeyFile signingKeyPublicFile
+  return $ NixCacheKeyPair secret public
+
+doesSigningKeyExist :: IO Bool
+doesSigningKeyExist = do
+  secretExists <- doesFileExist signingKeySecretFile
+  publicExists <- doesFileExist signingKeyPublicFile
+  return $ secretExists && publicExists
+
+
 ------------------------------------------------------------------------------
 -- | Generates a signing key for the Zeus nix cache.  If there is no key, this
 -- function generates a new one.  The key name parameter is recommended to be
 -- the domain name followed by "-1" (or other number) to allow for key
 -- rotation.
-getSigningKey :: String -> IO NixCacheKeyPair
-getSigningKey keyName = do
-  let baseName = "zeus-cache-key"
-      secretFile = baseName <> ".sec"
-      publicFile = baseName <> ".pub"
-      secretPath = "config/backend/" <> secretFile
-      publicPath = "config/common/" <> publicFile
-  secretExists <- doesFileExist secretPath
-  publicExists <- doesFileExist publicPath
-  when (not $ secretExists && publicExists) $ do
-    let args =
+getOrCreateSigningKey :: String -> IO NixCacheKeyPair
+getOrCreateSigningKey keyName = do
+  keyExists <- doesSigningKeyExist
+  when (not keyExists) $ do
+    let secretFile = signingKeyBaseName <> ".sec"
+        publicFile = signingKeyBaseName <> ".pub"
+        args =
           [ "--generate-binary-cache-key"
           , keyName
           , secretFile
@@ -113,12 +127,15 @@ getSigningKey keyName = do
     case ec of
       ExitFailure c -> error $ printf "Error %d: Could not generate nix cache key" c
       ExitSuccess -> return ()
-    renameFile secretFile secretPath
-    renameFile publicFile publicPath
+    renameFile secretFile signingKeySecretFile
+    renameFile publicFile signingKeyPublicFile
+  getSigningKey
 
-  Right secret <- readKeyFile secretPath
-  Right public <- readKeyFile publicPath
-  return $ NixCacheKeyPair secret public
+
+getAppCacheKey :: Text -> IO NixCacheKeyPair
+getAppCacheKey appRoute = do
+  let appDomain = T.takeWhile (\c -> c /= ':' && c /= '/') $ T.drop 3 $ snd $ T.breakOn "://" appRoute
+  getOrCreateSigningKey $ T.unpack $ appDomain <> "-1"
 
 backend :: Backend BackendRoute FrontendRoute
 backend = Backend
@@ -128,6 +145,12 @@ backend = Backend
       -- very low priority.
       dbConn <- open dbConnectInfo
       runBeamSqlite dbConn $ autoMigrate migrationBackend ciDbChecked
+      mcs <- getCiSettings dbConn
+      case mcs of
+        Nothing -> do
+          let c = CiSettings 0 "nixpkgs=/nix/var/nix/profiles/per-user/root/channels/nixos" True
+          initCiSettings dbConn c
+        Just _ -> return ()
       appRoute <- getAppRoute
       secretToken <- getSecretToken
       connRepo <- newConnRepo
@@ -141,12 +164,11 @@ backend = Backend
             Just s -> return s
       putStrLn $ "read settings: " <> show settings
       listeners <- newIORef mempty
-      cs <- newIORef $ CiSettings "nixpkgs=/nix/var/nix/profiles/per-user/root/channels/nixos"
-      let appDomain = T.takeWhile (\c -> c /= ':' && c /= '/') $ T.drop 3 $ snd $ T.breakOn "://" appRoute
-      keyPair <- getSigningKey $ T.unpack $ appDomain <> "-1"
+      keyPair <- getAppCacheKey appRoute
       let env = ServerEnv appRoute settings secretToken dbConn
-                          connRepo buildThreads listeners cs keyPair
+                          connRepo buildThreads listeners keyPair
       _ <- forkIO $ buildManagerThread env
+      _ <- forkIO $ cacheManagerThread env
       serve $ serveBackendRoute env
   , _backend_routeEncoder = backendRouteEncoder
   }
@@ -168,7 +190,13 @@ serveBackendRoute :: ServerEnv -> R BackendRoute -> Snap ()
 serveBackendRoute env = \case
   BackendRoute_Cache :=> Identity ps -> do
     enforceIpWhitelist (_beSettings_ipWhitelist $ _serverEnv_settings env)
-    nixCacheRoutes env ps
+    mcs <- liftIO $ getCiSettings (_serverEnv_db env)
+    case mcs of
+      Nothing -> liftIO $ putStrLn "Unexpected error: Couldn't get CiSettings"
+      Just cs ->
+        if _ciSettings_serveLocalCache cs
+          then nixCacheRoutes env ps
+          else notFound "Not found"
   BackendRoute_Hook :=> Identity hr -> case hr of
     Hook_GitHub :=> _ -> githubHandler env
     Hook_GitLab :=> _ -> gitlabHandler env
@@ -217,10 +245,18 @@ talkClient env cid conn = do
         Right (Up_RerunJobs jids) -> do
           mapM_ (rerunJob env) jids
         Right (Up_GetCiSettings) -> do
-          cs <- readIORef (_serverEnv_ciSettings env)
-          wsSend conn (Down_CiSettings cs)
+          Just cs <- getCiSettings (_serverEnv_db env)
+          wsSend conn (Down_CiSettings $ scrub cs)
         Right (Up_UpdateCiSettings cs) -> do
-          writeIORef (_serverEnv_ciSettings env) cs
+          setCiSettings (_serverEnv_db env) cs
+          wsSend conn (Down_CiSettings $ scrub cs)
+        Right Up_GetCiInfo -> do
+          let k = nckToText $ _nixCacheKey_public $ _serverEnv_cacheKey env
+          wsSend conn (Down_CiInfo k)
+
+        Right Up_ListCaches -> listCaches env conn
+        Right (Up_AddCache cs) -> mapM_ (addCache env) cs
+        Right (Up_DelCaches cs) -> delCaches env conn cs
   where
     cRepo = _serverEnv_connRepo env
     cleanup :: E.SomeException -> IO ()
@@ -242,7 +278,7 @@ unsubscribeJob env connId (BuildJobId jidInt) = do
 rerunJob :: ServerEnv -> BuildJobId -> IO ()
 rerunJob se (BuildJobId jid) = do
     let dbConn = _serverEnv_db se
-    mjob <- beamQueryConn (_serverEnv_db se) $
+    mjob <- beamQueryConn dbConn $
       runSelectReturningOne $ select $ do
         job <- all_ (_ciDb_buildJobs ciDb)
         guard_ (job ^. buildJob_id ==. (val_ jid))
@@ -332,7 +368,7 @@ addRepo
   -> IO ()
 addRepo env wsConn
         (Repo _ (ConnectedAccountId (Just o)) (Just n) (Just ns)
-              (Just nf) (Just t) _) = do
+              (Just nf) (Just t) (BinaryCacheId (Just c)) _) = do
   mca <- beamQuery env $ do
     runSelectReturningOne $ select $ do
       account <- all_ (ciDb ^. ciDb_connectedAccounts)
@@ -348,6 +384,7 @@ addRepo env wsConn
                   (val_ ns)
                   (val_ nf)
                   (val_ t)
+                  (val_ $ BinaryCacheId c)
                   (val_ hid)
             ]
   case mca of
@@ -426,3 +463,33 @@ delAccounts env wsConn cas = do
     runDelete $ delete (_ciDb_connectedAccounts ciDb) $
         (\ca -> ca ^. connectedAccount_id `in_` map (val_ . caKeyToInt) cas)
   listAccounts env wsConn
+
+------------------------------------------------------------------------------
+
+listCaches :: ServerEnv -> WS.Connection -> IO ()
+listCaches env wsConn = do
+  accounts <- beamQuery env $
+    runSelectReturningList $ select $ do
+      all_ (_ciDb_binaryCaches
+            ciDb)
+  wsSend wsConn $ Down_Caches $ map (getScrubbed . scrub) accounts
+
+addCache
+  :: ServerEnv
+  -> BinaryCacheT Maybe
+  -> IO ()
+addCache env (BinaryCache _ c) = do
+  beamQuery env $ do
+    runInsert $ insert (_ciDb_binaryCaches ciDb) $ insertExpressions
+           $ maybeToList $ BinaryCache default_
+              <$> (val_ <$> c)
+  as <- beamQuery env $ do
+    runSelectReturningList $ select $ all_ (_ciDb_binaryCaches ciDb)
+  broadcast (_serverEnv_connRepo env) $ Down_Caches $ map (getScrubbed . scrub) as
+
+delCaches :: ServerEnv -> WS.Connection -> [BinaryCacheId] -> IO ()
+delCaches env wsConn cs = do
+  beamQuery env $
+    runDelete $ delete (_ciDb_binaryCaches ciDb) $
+        (\ca -> ca ^. binaryCache_id `in_` map (val_ . binaryCacheKeyToInt) cs)
+  listCaches env wsConn

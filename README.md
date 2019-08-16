@@ -31,11 +31,17 @@ providing the following features:
 
 ### Roadmap
 
-The following features are planned for the very near future:
+The following features are high priority and planned for the very near future:
 
 * Support for pushing build outputs to a Nix cache hosted on S3
 * Ability to distribute builds to multiple build slaves
 * Proper support for merge requests and control of GitHub/GitLab status lights
+  with a safe solution to the problem of anyone on the internet having arbitrary
+  code execution on non-ephemeral build servers.
+
+Other tasks
+
+* Fully automated DB migrations
 
 ## Installing
 
@@ -213,3 +219,13 @@ the namespace will be "acme-corp/frontend-team" and the name will be
 Fill out the rest of the form as appropriate, then click "Add Repo" and you
 should be good to go! Zeus will now run a build every time someone pushes to
 your repo.
+
+### Migrations
+
+Fully automated migration handling isn't planned until core CI features have
+been implemented. In the meantime we will put all the necessary SQL code for
+migrations in [migrations.md](migrations.md). If you encounter a migration that
+cannot be automated, the backend server will fail to start. The easiest way to
+solve this is to delete `zeus.db` and restart the server. Or, if you want to
+preserve your existing Zeus database, run the migrations from `migrations.db`
+manually.

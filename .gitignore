@@ -13,3 +13,6 @@ log
 webhook-baseurl
 frontend.jsexe.assets
 static.assets
+*.swp
+*.pub
+*.sec

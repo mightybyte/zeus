@@ -26,6 +26,7 @@ leftMenuItems =
   [ Some.This FR_Jobs
   , Some.This FR_Repos
   , Some.This FR_Accounts
+  , Some.This FR_Caches
   ]
 
 nav
@@ -40,7 +41,6 @@ nav = do
   forM_ leftMenuItems $ menuItem currentTab
 
   divClass "right menu" $ do
-    menuItem currentTab (Some.This FR_Info)
     menuItem currentTab (Some.This FR_Settings)
     -- _ <- elClass "span" "clickable item" $ element "a" def (text "Logout")
     return ()

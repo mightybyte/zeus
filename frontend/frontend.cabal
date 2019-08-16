@@ -28,6 +28,7 @@ library
     , reflex
     , reflex-dom
     , reflex-dom-contrib
+    , scrub
     , semantic-reflex
     , text
     , time
@@ -41,10 +42,10 @@ library
     Frontend.Common
     Frontend.Nav
     Frontend.Widgets.Accounts
+    Frontend.Widgets.Caches
     Frontend.Widgets.Common
     Frontend.Widgets.Jobs
     Frontend.Widgets.Form
-    Frontend.Widgets.Info
     Frontend.Widgets.Repos
     Frontend.Widgets.Settings
   ghc-options: -Wall

@@ -26,8 +26,10 @@ import           Reflex.Dom.Core
 import qualified Reflex.Dom.SemanticUI as SemUI
 ------------------------------------------------------------------------------
 import           Common.Route
+import           Common.Types.BinaryCache
 import           Common.Types.ConnectedAccount
 import           Common.Types.Repo
+import           Common.Types.S3Cache
 import           Frontend.App
 import           Frontend.AppState
 import           Frontend.Common
@@ -89,7 +91,7 @@ addRepo = do
       return ()
 
 unfilledRepo :: RepoT Maybe
-unfilledRepo = Repo Nothing (ConnectedAccountId Nothing) Nothing Nothing Nothing Nothing Nothing
+unfilledRepo = Repo Nothing (ConnectedAccountId Nothing) Nothing Nothing Nothing Nothing (BinaryCacheId Nothing) Nothing
 
 newRepoForm
   :: MonadAppIO r t m
@@ -123,6 +125,21 @@ newRepoForm iv sv = do
           text "Build Nix File "
           elAttr "span" ("data-tooltip" =: tip <> "data-position" =: "top left") $
             elAttr "i" ("class" =: "info circle icon") blank
+
+    caches <- asks _as_caches
+    dcache <- labelledAs "S3 Cache" $
+      cacheDropdown caches Nothing never
+    --let f (BinaryCacheId cid) = cid
+    --useS3Cache <- divClass "field" $ do
+    --  divClass "ui checkbox" $ do
+    --    v <- checkbox (isJust $ f $ _repo_cache iv) $ def
+    --      & setValue .~ (isJust . f . _repo_cache <$> sv)
+    --    el "label" $ text "Push to S3 Cache"
+    --    return v
+    --res <- networkView (s3CacheWidget (_repo_cache iv) (_repo_cache <$> sv) <$> value useS3Cache)
+    --let res = undefined
+    --dcache <- join <$> holdDyn (constDyn $ _repo_cache iv) res
+
     dnf <- divClass "field" $ do
       el "label" $ bnfLabel
       ie <- inputElement $ def
@@ -142,12 +159,17 @@ newRepoForm iv sv = do
         --cm <- dcm
         t <- dt
         mca <- dmca
+        c <- dcache
         pure $ case mca of
           Nothing -> unfilledRepo
           Just a -> do
             let aid = _connectedAccount_id a
                 maid = ConnectedAccountId $ Just aid
-             in Repo Nothing maid (Just rn) (Just rns) (Just nf) t Nothing
+             in Repo Nothing maid (Just rn) (Just rns) (Just nf) t (cachePrimaryKey c) Nothing
+
+cachePrimaryKey :: Maybe BinaryCache -> PrimaryKey BinaryCacheT (Nullable Maybe)
+cachePrimaryKey Nothing = BinaryCacheId Nothing
+cachePrimaryKey (Just (BinaryCache i _)) = BinaryCacheId (Just $ Just i)
 
 accountDropdown
   :: forall r t m. MonadApp r t m
@@ -165,32 +187,26 @@ accountDropdown accounts iv sv = do
 
   return $ value d
 
---accountDropdown
---  :: MonadApp r t m
---  => Dynamic t (BeamMap Identity ConnectedAccountT)
---  -> PrimaryKey ConnectedAccountT Maybe
---  -> Event t (PrimaryKey ConnectedAccountT Maybe)
---  -> m (Dynamic t (Maybe ConnectedAccount))
---accountDropdown accounts iv sv = do
---  ed <- networkView $ ffor accounts $ \as -> do
---    let scfg = SelectElementConfig
---                 (maybe "" tshow $ caKeyMaybeToId iv)
---                 (Just $ tshow . caKeyToInt <$> fmapMaybe caKeyMaybeToId sv)
---                 def
---    (se,_) <- selectElement scfg $ do
---      forM_ (M.toList as) $ \(k,a) -> do
---        let cfg = def
---                  & elementConfig_initialAttributes .~ (AttributeName Nothing "value" =: tshow k)
---        element "option" cfg $ text $ providerUrl (_connectedAccount_provider a) <> "/" <> _connectedAccount_name a
---    return $ join . fmap ((\aid -> M.lookup aid as)  . intToCaKey) . fromText <$> _selectElement_value se
---  dyndyn <- holdDyn (constDyn Nothing) ed
---  return $ join dyndyn
+cacheDropdown
+  :: forall r t m. MonadApp r t m
+  => Dynamic t (BeamMap Identity BinaryCacheT)
+  -> Maybe BinaryCache
+  -> Event t (Maybe BinaryCache)
+  -> m (Dynamic t (Maybe BinaryCache))
+cacheDropdown caches iv sv = do
+  let vals = M.fromList . map mkPair . (Nothing:) . map Just . M.elems <$> caches
+      mkPair Nothing = (Nothing,"")
+      mkPair (Just a) = (Just a, "s3://" <> _s3Cache_bucket (_binaryCache_s3Cache a))
+  d <- dropdown iv vals $ def
+         & setValue .~ sv
+         & attributes .~ constDyn ("class" =: "ui dropdown selection")
 
+  return $ value d
 
 mkFullName :: AccountProvider -> Text -> Text -> Text
 mkFullName GitHub owner name = owner <> "/" <> name
 mkFullName GitLab owner name = owner <> "/" <> name
 
 isValidRepo :: RepoT Maybe -> Bool
-isValidRepo (Repo _ (ConnectedAccountId (Just _)) (Just _) (Just _) (Just _) (Just _) _) = True
+isValidRepo (Repo _ (ConnectedAccountId (Just _)) (Just _) (Just _) (Just _) (Just _) (BinaryCacheId (Just _)) _) = True
 isValidRepo _ = False

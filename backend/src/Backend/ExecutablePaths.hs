@@ -7,6 +7,9 @@ import Which
 gitBinary :: String
 gitBinary = $(staticWhich "git")
 
+nixBinary :: String
+nixBinary = $(staticWhich "nix")
+
 nixBuildBinary :: String
 nixBuildBinary = $(staticWhich "nix-build")
 
@@ -18,3 +21,9 @@ nixStore = $(staticWhich "nix-store")
 
 bzip2 :: String
 bzip2 = $(staticWhich "bzip2")
+
+xzBinary :: String
+xzBinary = $(staticWhich "xz")
+
+awsBinary :: String
+awsBinary = $(staticWhich "aws")

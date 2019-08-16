@@ -30,6 +30,10 @@ import           Database.Beam.Migrate.Simple
 import           Database.Beam.Sqlite.Connection
 import           Database.SQLite.Simple
 ------------------------------------------------------------------------------
+import           Common.Types.BinaryCache
+import           Common.Types.CacheJob
+import           Common.Types.CachedHash
+import           Common.Types.CiSettings
 import           Common.Types.ConnectedAccount
 import           Common.Types.Builder
 import           Common.Types.BuildJob
@@ -44,6 +48,10 @@ data CiDb f = CiDb
   , _ciDb_repos :: f (TableEntity RepoT)
   , _ciDb_builders :: f (TableEntity BuilderT)
   , _ciDb_buildJobs :: f (TableEntity BuildJobT)
+  , _ciDb_ciSettings :: f (TableEntity CiSettingsT)
+  , _ciDb_cacheJobs :: f (TableEntity CacheJobT)
+  , _ciDb_binaryCaches :: f (TableEntity BinaryCacheT)
+  , _ciDb_cachedHashes :: f (TableEntity CachedHashT)
   } deriving (Generic, Database be)
 
 --ciDbChecked :: BeamMigrateSqlBackend be => CheckedDatabaseSettings be CiDb
@@ -61,6 +69,10 @@ CiDb (TableLens ciDb_connectedAccounts)
      (TableLens ciDb_repos)
      (TableLens ciDb_builders)
      (TableLens ciDb_buildJobs)
+     (TableLens ciDb_ciSettings)
+     (TableLens ciDb_cacheJobs)
+     (TableLens ciDb_binaryCache)
+     (TableLens ciDb_cachedHash)
      = dbLenses
 
 populateDb :: Connection -> IO ()
@@ -77,12 +89,3 @@ populateDb conn = do
     runInsert $ insert (_ciDb_buildJobs ciDb) $ insertExpressions
       [ BuildJob default_ (val_ rbi) (val_ start) (val_ $ Just start) (val_ $ Just now) (val_ JobSucceeded)
       ]
-
-{-
-Migration for removing clone method column
-
-ALTER TABLE "ciDb_repos" RENAME TO "ciDb_repos_old_0";
-CREATE TABLE IF NOT EXISTS "ciDb_repos"("repo_id" INTEGER NOT NULL , "repo_accessAccount__connectedAccount_id" INTEGER NOT NULL , "repo_name" VARCHAR NOT NULL , "repo_namespace" VARCHAR NOT NULL , "repo_buildNixFile" VARCHAR NOT NULL , "repo_timeout" INTEGER NOT NULL , "repo_hookId" INTEGER NOT NULL , PRIMARY KEY("repo_id"));
-INSERT INTO "ciDb_repos" SELECT "repo_id", "repo_accessAccount__connectedAccount_id", "repo_name", "repo_namespace", "repo_buildNixFile", "repo_timeout", "repo_hookId" FROM "ciDb_repos_old_0";
-DROP TABLE ciDb_repos_old_0;
--}

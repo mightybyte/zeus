@@ -1,8 +1,100 @@
 { system ? builtins.currentSystem # TODO: Get rid of this system cruft
 , iosSdkVersion ? "10.2"
 }:
-with import ./.obelisk/impl { inherit system iosSdkVersion; };
-project ./. ({ pkgs, ... }: {
+let
+
+  origObelisk = import ./.obelisk/impl {
+    inherit system iosSdkVersion;
+  };
+  opkgs = origObelisk.reflex-platform.nixpkgs;
+  extraIgnores =
+    [ "dist-newstyle" "frontend.jsexe.assets" "static.assets" "result-exe"
+      "zeus-access-token" "zeus-cache-key.pub" "zeus-cache-key.sec" "zeus.db"
+      "migrations.md"
+    ];
+
+
+  myMkObeliskApp =
+    { exe
+    , routeHost
+    , enableHttps
+    , name ? "backend"
+    , user ? name
+    , group ? user
+    , baseUrl ? "/"
+    , internalPort ? 8000
+    , backendArgs ? "--port=${toString internalPort}"
+    , ...
+    }: {...}: {
+      services.nginx = {
+        enable = true;
+        virtualHosts."${routeHost}" = {
+          enableACME = enableHttps;
+          forceSSL = enableHttps;
+          locations.${baseUrl} = {
+            proxyPass = "http://localhost:" + toString internalPort;
+            proxyWebsockets = true;
+          };
+        };
+      };
+      systemd.services.${name} = {
+        wantedBy = [ "multi-user.target" ];
+        after = [ "network.target" ];
+        restartIfChanged = true;
+        path = [ opkgs.gnutar ];
+        script = ''
+          ln -sft . '${exe}'/*
+          mkdir -p log
+          exec ./backend ${backendArgs} </dev/null
+        '';
+        serviceConfig = {
+          User = user;
+          KillMode = "process";
+          WorkingDirectory = "~";
+          Restart = "always";
+          RestartSec = 5;
+        };
+      };
+      users = {
+        users.${user} = {
+          description = "${user} service";
+          home = "/var/lib/${user}";
+          createHome = true;
+          isSystemUser = true;
+          group = group;
+        };
+        groups.${group} = {};
+      };
+    };
+
+  myServerModules = origObelisk.serverModules // {
+    mkObeliskApp = myMkObeliskApp;
+  };
+
+  newObelisk = origObelisk // {
+    path = builtins.filterSource (path: type: !(builtins.any (x: x == baseNameOf path) ([".git" "tags" "TAGS" "dist"] ++ extraIgnores) ||
+                                                builtins.match ".swp$" path)) ./.;
+    serverModules = myServerModules;
+
+    server = { exe, hostName, adminEmail, routeHost, enableHttps, version }@args:
+      let
+        nixos = import (opkgs.path + /nixos);
+      in nixos {
+        system = "x86_64-linux";
+        configuration = {
+          imports = [
+            (origObelisk.serverModules.mkBaseEc2 args)
+            (myMkObeliskApp args)
+          ];
+        };
+      };
+
+
+  };
+
+in
+
+newObelisk.project ./. ({ pkgs, ... }: {
   overrides = self: super: with pkgs.haskell.lib;
   let beam-src = pkgs.fetchFromGitHub {
         owner = "tathougies";
@@ -22,6 +114,7 @@ project ./. ({ pkgs, ... }: {
         pkgs.git
         pkgs.nix
         pkgs.gnutar
+        pkgs.awscli
       ];
     });
     base32-bytestring = (self.callCabal2nix "base32-bytestring" (pkgs.fetchFromGitHub {
@@ -85,6 +178,12 @@ project ./. ({ pkgs, ... }: {
         repo = "snap-server";
         rev = "dad24ba290126b1b93da32ef6019393329b54ed3";
         sha256 = "0fzbvysq6qkbjd39bphbirzd2xaalm3jaxrs91g04ya17nqdaz1i";
+    }) {});
+    streaming-lzma = dontCheck (self.callCabal2nix "streaming-lzma" (pkgs.fetchFromGitHub {
+        owner = "haskell-hvr";
+        repo = "streaming-lzma";
+        rev = "ec8cb2f935ee4f3217c6939684103ba1a6bc4ad1";
+        sha256 = "1w77v9isv6rmajg4py4ry7475d3xjs7471dfaf6bglbwphm0dj8b";
     }) {});
     zeus = addBuildDepends super.zeus [ pkgs.git ];
 

@@ -1,6 +1,7 @@
 {-# LANGUAGE DataKinds #-}
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE FlexibleInstances #-}
+{-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE ScopedTypeVariables #-}
@@ -185,3 +186,17 @@ copyButton e = do
       , " } catch(e) { console.log('Copy failed!'); return false; }"
       , "})"
       ]
+
+accordionItem
+  :: (DomBuilder t m, PostBuild t m, MonadHold t m, MonadFix m)
+  => m () -> m () -> m ()
+accordionItem title content = do
+  (e,_) <- elAttr' "div" ("class" =: "title") $ do
+    elClass "i" "dropdown icon" blank
+    title
+  expanded <- toggle False $ domEvent Click e
+  let mkAttrs = \case
+        False -> ("class" =: "content")
+        True -> ("class" =: "active content")
+  _ <- elDynAttr "div" (mkAttrs <$> expanded) content
+  divClass "content" content

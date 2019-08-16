@@ -8,11 +8,13 @@ library
   build-depends:
       aeson
     , base
+    , base64-bytestring
     , beam-core
     , beam-migrate
     , bytestring
     , data-default
     , dependent-sum
+    , directory
     , errors
     , lens
     , mtl
@@ -21,6 +23,7 @@ library
     , readable
     , reflex-dom
     , scrub
+    , string-conv
     , text
     , time
   default-extensions:
@@ -29,12 +32,17 @@ library
   exposed-modules:
     Common.Api
     Common.Route
+    Common.Types.BinaryCache
+    Common.Types.CacheJob
+    Common.Types.CachedHash
     Common.Types.CiSettings
     Common.Types.ConnectedAccount
     Common.Types.BuildJob
     Common.Types.Builder
     Common.Types.JobStatus
+    Common.Types.NixCacheKeyPair
     Common.Types.ProcMsg
     Common.Types.Repo
     Common.Types.RepoBuildInfo
+    Common.Types.S3Cache
     Humanizable
