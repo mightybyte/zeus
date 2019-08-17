@@ -29,3 +29,22 @@ CREATE TABLE IF NOT EXISTS "ciDb_ciSettings"("ciSettings_id" INTEGER NOT NULL , 
 INSERT INTO "ciDb_ciSettings" SELECT "ciSettings_id", "ciSettings_nixPath", "ciSettings_serveLocalCache" FROM "ciDb_ciSettings_old_0";
 DROP TABLE ciDb_ciSettings_old_0;
 ```
+
+#### Removed CachedHash autoincrementing ID
+
+```
+ALTER TABLE "ciDb_cachedHashes" RENAME TO "ciDb_cachedHashes_old_0";
+CREATE TABLE IF NOT EXISTS "ciDb_cachedHashes"("cachedHash_hash" VARCHAR NOT NULL , "cachedHash_cache__binaryCache_id" INTEGER NOT NULL , "cachedHash_time" TIMESTAMP WITH TIME ZONE NOT NULL , PRIMARY KEY("cachedHash_hash"));
+INSERT INTO "ciDb_cachedHashes" SELECT distinct("cachedHash_hash"), max("cachedHash_cache__binaryCache_id"), max("cachedHash_time") FROM "ciDb_cachedHashes_old_0" GROUP BY "cachedHash_hash";
+DROP TABLE "ciDb_cachedHashes_old_0";
+```
+
+#### Add repo build attributes column
+
+```
+ALTER TABLE "ciDb_repos" RENAME TO "ciDb_repos_old_2";
+CREATE TABLE IF NOT EXISTS "ciDb_repos"("repo_id" INTEGER NOT NULL , "repo_accessAccount__connectedAccount_id" INTEGER NOT NULL , "repo_name" VARCHAR NOT NULL , "repo_namespace" VARCHAR NOT NULL , "repo_buildNixFile" VARCHAR NOT NULL , "repo_attributesToBuild" VARCHAR NOT NULL , "repo_timeout" INTEGER NOT NULL , "repo_cache__binaryCache_id" INTEGER, "repo_hookId" INTEGER NOT NULL , PRIMARY KEY("repo_id"));
+INSERT INTO ciDb_repos SELECT repo_id, repo_accessAccount__connectedAccount_id, repo_name, repo_namespace, repo_buildNixFile, '[]', repo_timeout, repo_cache__binaryCache_id, repo_hookId FROM ciDb_repos_old_2;
+DROP TABLE ciDb_repos_old_2;
+```
+

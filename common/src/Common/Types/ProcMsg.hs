@@ -56,6 +56,11 @@ parseProcMsg msg = do
     (srcText, time) = T.breakOn " [" a
     t = T.unpack $ T.drop 2 time
 
+textProcMsg :: Text -> IO ProcMsg
+textProcMsg msg = do
+    t <- getCurrentTime
+    return $ ProcMsg t CiMsg msg
+
 instance ToJSON ProcMsg where
     toEncoding = genericToEncoding defaultOptions
 

@@ -24,10 +24,12 @@ import           Data.RNG
 import           Data.String.Conv
 import           Data.Text (Text)
 import qualified Data.Text as T
+import qualified Data.Text.IO as T
 import qualified Data.Text.Encoding as T
 import           Data.Time
 import           Database.Beam
 import           Database.Beam.Sqlite
+import           Database.SQLite.Simple
 import           System.Directory
 import           System.Environment
 import           System.Exit
@@ -61,11 +63,31 @@ getNextJob se = do
   beamQueryConn (_serverEnv_db se) $
     runSelectReturningOne $
     select $
-    orderBy_ (asc_ . _buildJob_id) $ do
+    orderBy_ (asc_ . _buildJob_id) $ limit_ 1 $ do
       job <- all_ (_ciDb_buildJobs ciDb)
       guard_ (job ^. buildJob_status ==. (val_ JobPending))
       return job
 
+setJobStatus :: Connection -> UTCTime -> JobStatus -> BuildJob -> IO ()
+setJobStatus dbConn t status incomingJob = do
+  runBeamSqlite dbConn $ do
+    runUpdate $
+      update (_ciDb_buildJobs ciDb)
+             (\job -> case status of
+                JobPending -> mconcat
+                  [ job ^. buildJob_receivedAt <-. val_ t
+                  , job ^. buildJob_status <-. val_ status
+                  ]
+                JobInProgress -> mconcat
+                  [ job ^. buildJob_startedAt <-. val_ (Just t)
+                  , job ^. buildJob_status <-. val_ status
+                  ]
+                _ -> mconcat
+                  [ job ^. buildJob_endedAt <-. val_ (Just t)
+                  , job ^. buildJob_status <-. val_ status
+                  ])
+             (\job -> _buildJob_id job ==. val_ (_buildJob_id incomingJob))
+    return ()
 
 buildManagerThread :: ServerEnv -> IO ()
 buildManagerThread se = do
@@ -94,7 +116,12 @@ buildManagerThread se = do
                 guard_ (account ^. connectedAccount_id ==. repo ^. repo_accessAccount)
                 return (repo, account)
             case ras of
-              [] -> putStrLn "Warning: Got a webhook for a repo that is not in our DB.  Is the DB corrupted?"
+              [] -> do
+                putStrLn "Warning: Got a webhook for a repo that is not in our DB.  Is the DB corrupted?"
+                beamQueryConn (_serverEnv_db se) $
+                  runDelete $ delete (_ciDb_buildJobs ciDb)
+                    (\j -> j ^. buildJob_id ==. val_ (_buildJob_id job))
+                return ()
               [(r,a)] -> runBuild se rng r a job
               _ -> printf "Warning: Got more repos than expected.  Why isn't %s/%s unique?\n"
                           (_rbi_repoNamespace rbi) (_rbi_repoName rbi)
@@ -110,14 +137,7 @@ runBuild se rng repo ca incomingJob = do
   let dbConn = _serverEnv_db se
       connRepo = _serverEnv_connRepo se
   start <- getCurrentTime
-  runBeamSqlite dbConn $ do
-    runUpdate $
-      update (_ciDb_buildJobs ciDb)
-             (\job -> mconcat
-                        [ job ^. buildJob_startedAt <-. val_ (Just start)
-                        , job ^. buildJob_status <-. val_ JobInProgress ])
-             (\job -> _buildJob_id job ==. val_ (_buildJob_id incomingJob))
-    return ()
+  setJobStatus dbConn start JobInProgress incomingJob
   broadcastJobs dbConn connRepo
 
   ecMVar <- newEmptyMVar
@@ -210,6 +230,7 @@ isStorePath t = T.isPrefixOf "/nix/store" t && not (T.isInfixOf " " t)
 
 addCacheJob :: ServerEnv -> PrimaryKey BinaryCacheT (Nullable Identity) -> Text -> IO ()
 addCacheJob se cacheId sp = do
+  T.putStrLn $ "Adding job to cache " <> sp
   beamQuery se $ do
     runInsert $ insert (_ciDb_cacheJobs ciDb) $ insertExpressions
       [CacheJob default_ (val_ sp) (val_ cacheId) (val_ Nothing) (val_ Nothing) (val_ JobPending)]
@@ -233,12 +254,18 @@ buildThread se ecMVar rng repo ca job = do
   let timeStr = formatTime defaultTimeLocale "%Y%m%d%H%M%S" start
   let buildId = printf "build-%s-%s" timeStr (toS tok :: String) :: String
   let cloneDir = printf "/tmp/zeus-builds/%s" buildId :: String
+  let repoDir = cloneDir </> toS (_repo_name repo)
   createDirectoryIfMissing True cloneDir
   createDirectoryIfMissing True buildOutputDir
   let outputFile = printf "%s/%d.txt" buildOutputDir jid
   printf "Writing build output to %s\n" outputFile
+
+  e <- liftIO getEnvironment
+  Just cs <- liftIO $ getCiSettings (_serverEnv_db se)
+  let buildEnv = M.toList $ M.insert "NIX_PATH" (toS $ _ciSettings_nixPath cs) $ M.fromList e
+
   withLogHandle outputFile $ \lh  -> do
-    let cloneCmd = printf "%s clone %s" gitBinary url
+    let cloneCmd = printf "%s clone --recurse-submodules %s" gitBinary url
         saveAndSendStr msgTy msg = do
           !t <- getCurrentTime
           let pm = ProcMsg t msgTy msg
@@ -248,7 +275,7 @@ buildThread se ecMVar rng repo ca job = do
           sendOutput se jid pm
         cachingSaveAndSend pm = do
           let msg = _procMsg_msg pm
-          if isStorePath msg
+          if isStorePath msg && _procMsg_source pm == StdoutMsg
             then addCacheJob se (_repo_cache repo) msg
             else return ()
           hPutStrLn lh $! prettyProcMsg pm
@@ -258,45 +285,57 @@ buildThread se ecMVar rng repo ca job = do
       liftIO $ saveAndSendStr CiMsg $ T.pack $ printf "Cloning %s/%s to %s"
         (_repo_namespace repo) (_repo_name repo) cloneDir
       _ <- runCmd2 cloneCmd cloneDir Nothing saveAndSend
-      let repoDir = cloneDir </> toS (_repo_name repo)
       let checkout = printf "%s checkout %s" gitBinary (_rbi_commitHash rbi)
       liftIO $ saveAndSendStr CiMsg (toS checkout)
       _ <- runCmd2 checkout repoDir Nothing saveAndSend
-      e <- liftIO getEnvironment
-      Just cs <- liftIO $ getCiSettings (_serverEnv_db se)
-      let buildEnv = M.toList $ M.insert "NIX_PATH" (toS $ _ciSettings_nixPath cs) $ M.fromList e
       liftIO $ saveAndSendStr CiMsg $ "Building with the following environment:"
       liftIO $ saveAndSendStr CiMsg $ T.pack $ show buildEnv
 
-      runProc nixInstantiate [T.unpack $ _repo_buildNixFile repo] repoDir (Just buildEnv) cachingSaveAndSend
+    let buildSingle mattr = runExceptT $ do
+          liftIO $ saveAndSendStr CiMsg $ "Building subjob for attribute " <> T.pack (show mattr)
+          let instantiateArgs =
+                T.unpack (_repo_buildNixFile repo) :
+                maybe [] (\a -> ["-A", T.unpack a]) mattr
+          runProc nixInstantiate instantiateArgs repoDir (Just buildEnv) cachingSaveAndSend
 
-      let buildArgs =
-            [ T.unpack (_repo_buildNixFile repo)
-            , "--show-trace"
-            , "--option"
-            , "build-keep-log"
-            , "true"
-            , "--keep-going"
-            ]
-      runProc nixBuildBinary buildArgs repoDir (Just buildEnv) saveAndSend
-      end <- liftIO getCurrentTime
-      let finishMsg = printf "Build finished in %.3f seconds" (realToFrac (diffUTCTime end start) :: Double)
-      liftIO $ saveAndSendStr CiMsg $ T.pack (finishMsg ++ "\n")
-      liftIO $ putStrLn finishMsg
+          let buildArgs = instantiateArgs ++
+                [ "--show-trace"
+                , "--option"
+                , "build-keep-log"
+                , "true"
+                , "--keep-going"
+                ]
+          runProc nixBuildBinary buildArgs repoDir (Just buildEnv) saveAndSend
+          end <- liftIO getCurrentTime
+          let finishMsg = printf "Build finished in %.3f seconds" (realToFrac (diffUTCTime end start) :: Double)
+          liftIO $ saveAndSendStr CiMsg $ T.pack finishMsg
+          liftIO $ putStrLn finishMsg
 
-      liftIO $ getSymlinkTarget (repoDir </> "result")
+          msp <- liftIO $ getSymlinkTarget (repoDir </> "result")
+          case msp of
+            Nothing -> liftIO $ putStrLn "No build outputs to cache"
+            Just sp -> do
+              liftIO $ addCacheJob se (_repo_cache repo) $ T.pack sp
+              liftIO $ printf "Subjob '%s' succeeded with result storepath %s\n" (show mattr) (show sp)
 
     case res of
       Left ec -> do
         liftIO $ printf "Build failed with code %s\n" (show ec)
         putMVar ecMVar ec
-      Right msp -> do
-        case msp of
-          Nothing -> liftIO $ putStrLn "No build outputs to cache"
-          Just sp -> do
-            addCacheJob se (_repo_cache repo) $ T.pack sp
-            liftIO $ printf "Build succeeded with result storepath %s\n" (show sp)
-        putMVar ecMVar ExitSuccess
+      Right _ -> do
+        let attrs = unAttrList $ _repo_attributesToBuild repo
+        liftIO $ saveAndSendStr CiMsg $ "Running build for each of the following attributes: " <> (T.pack $ show attrs)
+        results <- case attrs of
+          [] -> (:[]) <$> buildSingle Nothing
+          _ -> forM attrs $ \attr -> buildSingle (Just attr)
+        let bad = lefts results
+        if null bad
+          then putMVar ecMVar ExitSuccess
+          else do
+            liftIO $ saveAndSendStr CiMsg $ "Some jobs failed"
+            mapM_ (liftIO . saveAndSendStr CiMsg . T.pack . show) $ zip attrs results
+            putMVar ecMVar (ExitFailure (length bad))
+
 
 getSymlinkTarget :: FilePath -> IO (Maybe FilePath)
 getSymlinkTarget nm = do

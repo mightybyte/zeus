@@ -28,16 +28,14 @@ import           Common.Types.BinaryCache
 
 ------------------------------------------------------------------------------
 data CachedHashT f = CachedHash
-  { _cachedHash_id :: C f Int
+  { _cachedHash_hash :: C f Text
   , _cachedHash_cache :: PrimaryKey BinaryCacheT f
-  , _cachedHash_hash :: C f Text
   , _cachedHash_time :: C f UTCTime
   } deriving Generic
 
 CachedHash
-  (LensFor cachedHash_id)
-  (BinaryCacheId (LensFor cachedHash_cache))
   (LensFor cachedHash_hash)
+  (BinaryCacheId (LensFor cachedHash_cache))
   (LensFor cachedHash_time)
   = tableLenses
 
@@ -66,7 +64,13 @@ instance FromJSON (CachedHashT Maybe)
 
 instance Beamable CachedHashT
 
+--instance Table CachedHashT where
+--  data PrimaryKey CachedHashT f = CachedHashId (Columnar f Text)
+--    deriving (Generic, Beamable)
+--  primaryKey = CachedHashId . _cachedHash_hash
+
 instance Table CachedHashT where
-  data PrimaryKey CachedHashT f = CachedHashId (Columnar f Int)
+  data PrimaryKey CachedHashT f = CachedHashId (PrimaryKey BinaryCacheT f) (Columnar f Text)
     deriving (Generic, Beamable)
-  primaryKey = CachedHashId . _cachedHash_id
+  primaryKey ch = CachedHashId (_cachedHash_cache ch) (_cachedHash_hash ch)
+
