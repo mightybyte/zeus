@@ -30,9 +30,6 @@ import           Common.Types.JobStatus
 import           Common.Types.RepoBuildInfo
 ------------------------------------------------------------------------------
 
-data RepoEvent = RepoPushEvent | RepoPullRequestEvent
-  deriving (Eq,Ord,Show,Read,Enum,Bounded)
-
 instance BeamMigrateSqlBackend be => HasDefaultSqlDataType be UTCTime where
   defaultSqlDataType _ _ _ = timestampType Nothing True
 

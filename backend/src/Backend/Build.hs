@@ -69,23 +69,21 @@ getNextJob se = do
       return job
 
 setJobStatus :: Connection -> UTCTime -> JobStatus -> BuildJob -> IO ()
-setJobStatus dbConn utc status incomingJob = do
-  t <- getCurrentTime
-
+setJobStatus dbConn t status incomingJob = do
   runBeamSqlite dbConn $ do
     runUpdate $
       update (_ciDb_buildJobs ciDb)
              (\job -> case status of
                 JobPending -> mconcat
-                  [ job ^. buildJob_receivedAt <-. val_ utc
+                  [ job ^. buildJob_receivedAt <-. val_ t
                   , job ^. buildJob_status <-. val_ status
                   ]
                 JobInProgress -> mconcat
-                  [ job ^. buildJob_startedAt <-. val_ (Just utc)
+                  [ job ^. buildJob_startedAt <-. val_ (Just t)
                   , job ^. buildJob_status <-. val_ status
                   ]
                 _ -> mconcat
-                  [ job ^. buildJob_endedAt <-. val_ (Just utc)
+                  [ job ^. buildJob_endedAt <-. val_ (Just t)
                   , job ^. buildJob_status <-. val_ status
                   ])
              (\job -> _buildJob_id job ==. val_ (_buildJob_id incomingJob))
@@ -256,10 +254,16 @@ buildThread se ecMVar rng repo ca job = do
   let timeStr = formatTime defaultTimeLocale "%Y%m%d%H%M%S" start
   let buildId = printf "build-%s-%s" timeStr (toS tok :: String) :: String
   let cloneDir = printf "/tmp/zeus-builds/%s" buildId :: String
+  let repoDir = cloneDir </> toS (_repo_name repo)
   createDirectoryIfMissing True cloneDir
   createDirectoryIfMissing True buildOutputDir
   let outputFile = printf "%s/%d.txt" buildOutputDir jid
   printf "Writing build output to %s\n" outputFile
+
+  e <- liftIO getEnvironment
+  Just cs <- liftIO $ getCiSettings (_serverEnv_db se)
+  let buildEnv = M.toList $ M.insert "NIX_PATH" (toS $ _ciSettings_nixPath cs) $ M.fromList e
+
   withLogHandle outputFile $ \lh  -> do
     let cloneCmd = printf "%s clone --recurse-submodules %s" gitBinary url
         saveAndSendStr msgTy msg = do
@@ -281,45 +285,57 @@ buildThread se ecMVar rng repo ca job = do
       liftIO $ saveAndSendStr CiMsg $ T.pack $ printf "Cloning %s/%s to %s"
         (_repo_namespace repo) (_repo_name repo) cloneDir
       _ <- runCmd2 cloneCmd cloneDir Nothing saveAndSend
-      let repoDir = cloneDir </> toS (_repo_name repo)
       let checkout = printf "%s checkout %s" gitBinary (_rbi_commitHash rbi)
       liftIO $ saveAndSendStr CiMsg (toS checkout)
       _ <- runCmd2 checkout repoDir Nothing saveAndSend
-      e <- liftIO getEnvironment
-      Just cs <- liftIO $ getCiSettings (_serverEnv_db se)
-      let buildEnv = M.toList $ M.insert "NIX_PATH" (toS $ _ciSettings_nixPath cs) $ M.fromList e
       liftIO $ saveAndSendStr CiMsg $ "Building with the following environment:"
       liftIO $ saveAndSendStr CiMsg $ T.pack $ show buildEnv
 
-      runProc nixInstantiate [T.unpack $ _repo_buildNixFile repo] repoDir (Just buildEnv) cachingSaveAndSend
+    let buildSingle mattr = runExceptT $ do
+          liftIO $ saveAndSendStr CiMsg $ "Building subjob for attribute " <> T.pack (show mattr)
+          let instantiateArgs =
+                T.unpack (_repo_buildNixFile repo) :
+                maybe [] (\a -> ["-A", T.unpack a]) mattr
+          runProc nixInstantiate instantiateArgs repoDir (Just buildEnv) cachingSaveAndSend
 
-      let buildArgs =
-            [ T.unpack (_repo_buildNixFile repo)
-            , "--show-trace"
-            , "--option"
-            , "build-keep-log"
-            , "true"
-            , "--keep-going"
-            ]
-      runProc nixBuildBinary buildArgs repoDir (Just buildEnv) saveAndSend
-      end <- liftIO getCurrentTime
-      let finishMsg = printf "Build finished in %.3f seconds" (realToFrac (diffUTCTime end start) :: Double)
-      liftIO $ saveAndSendStr CiMsg $ T.pack (finishMsg ++ "\n")
-      liftIO $ putStrLn finishMsg
+          let buildArgs = instantiateArgs ++
+                [ "--show-trace"
+                , "--option"
+                , "build-keep-log"
+                , "true"
+                , "--keep-going"
+                ]
+          runProc nixBuildBinary buildArgs repoDir (Just buildEnv) saveAndSend
+          end <- liftIO getCurrentTime
+          let finishMsg = printf "Build finished in %.3f seconds" (realToFrac (diffUTCTime end start) :: Double)
+          liftIO $ saveAndSendStr CiMsg $ T.pack finishMsg
+          liftIO $ putStrLn finishMsg
 
-      liftIO $ getSymlinkTarget (repoDir </> "result")
+          msp <- liftIO $ getSymlinkTarget (repoDir </> "result")
+          case msp of
+            Nothing -> liftIO $ putStrLn "No build outputs to cache"
+            Just sp -> do
+              liftIO $ addCacheJob se (_repo_cache repo) $ T.pack sp
+              liftIO $ printf "Subjob '%s' succeeded with result storepath %s\n" (show mattr) (show sp)
 
     case res of
       Left ec -> do
         liftIO $ printf "Build failed with code %s\n" (show ec)
         putMVar ecMVar ec
-      Right msp -> do
-        case msp of
-          Nothing -> liftIO $ putStrLn "No build outputs to cache"
-          Just sp -> do
-            addCacheJob se (_repo_cache repo) $ T.pack sp
-            liftIO $ printf "Build succeeded with result storepath %s\n" (show sp)
-        putMVar ecMVar ExitSuccess
+      Right _ -> do
+        let attrs = unAttrList $ _repo_attributesToBuild repo
+        liftIO $ saveAndSendStr CiMsg $ "Running build for each of the following attributes: " <> (T.pack $ show attrs)
+        results <- case attrs of
+          [] -> (:[]) <$> buildSingle Nothing
+          _ -> forM attrs $ \attr -> buildSingle (Just attr)
+        let bad = lefts results
+        if null bad
+          then putMVar ecMVar ExitSuccess
+          else do
+            liftIO $ saveAndSendStr CiMsg $ "Some jobs failed"
+            mapM_ (liftIO . saveAndSendStr CiMsg . T.pack . show) $ zip attrs results
+            putMVar ecMVar (ExitFailure (length bad))
+
 
 getSymlinkTarget :: FilePath -> IO (Maybe FilePath)
 getSymlinkTarget nm = do

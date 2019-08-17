@@ -19,11 +19,40 @@ module Common.Types.Repo where
 ------------------------------------------------------------------------------
 import           Data.Aeson
 import           Data.Text (Text)
+import qualified Data.Text as T
 import           Database.Beam
+import           Database.Beam.Backend.SQL
+import           Database.Beam.Backend.Types
+import           Database.Beam.Migrate.Generics
+import           Database.Beam.Migrate.SQL
 ------------------------------------------------------------------------------
 import           Common.Types.BinaryCache
 import           Common.Types.ConnectedAccount
 ------------------------------------------------------------------------------
+
+
+newtype AttrList = AttrList { unAttrList :: [Text] }
+  deriving (Eq,Ord,Show,Read,Generic)
+
+instance Semigroup AttrList where
+  AttrList a <> AttrList b = AttrList (a <> b)
+
+instance Monoid AttrList where
+  mempty = AttrList mempty
+
+instance ToJSON AttrList where
+  toEncoding = genericToEncoding defaultOptions
+
+instance FromJSON AttrList
+
+instance HasSqlValueSyntax be String => HasSqlValueSyntax be AttrList where
+  sqlValueSyntax = sqlValueSyntax . show . unAttrList
+
+instance (BeamBackend be, FromBackendRow be Text) => FromBackendRow be AttrList where
+  fromBackendRow = AttrList . read . T.unpack <$> fromBackendRow
+
+instance BeamMigrateSqlBackend be => HasDefaultSqlDataType be AttrList where
+  defaultSqlDataType _ _ _ = varCharType Nothing Nothing
 
 
 ------------------------------------------------------------------------------
@@ -36,6 +65,7 @@ data RepoT f = Repo
   -- ^ With GitHub repos this is always the repository name.  With gitlab it
   -- can be a deeper nested path of groups /foo/bar/baz/repo
   , _repo_buildNixFile :: C f Text
+  , _repo_attributesToBuild :: C f AttrList
   , _repo_timeout :: C f Int
   -- ^ Build timeout in seconds
   , _repo_cache :: PrimaryKey BinaryCacheT (Nullable f)
@@ -47,8 +77,8 @@ repoFullName :: Repo -> Text
 repoFullName r = _repo_namespace r <> "/" <> _repo_name r
 
 repoToMaybe :: RepoT Identity -> RepoT Maybe
-repoToMaybe (Repo i (ConnectedAccountId o) on rn bf t (BinaryCacheId c) h) = Repo (Just i)
-    (ConnectedAccountId $ Just o) (Just on) (Just rn) (Just bf) (Just t) (BinaryCacheId $ Just c) (Just h)
+repoToMaybe (Repo i (ConnectedAccountId o) on rn bf as t (BinaryCacheId c) h) = Repo (Just i)
+    (ConnectedAccountId $ Just o) (Just on) (Just rn) (Just bf) (Just as) (Just t) (BinaryCacheId $ Just c) (Just h)
 --  where
 --    f (BinaryCacheId i) = BinaryCacheId $ Just i
 
@@ -58,6 +88,7 @@ Repo
   (LensFor repo_name)
   (LensFor repo_namespace)
   (LensFor repo_buildNixFile)
+  (LensFor repo_attributesToBuild)
   (LensFor repo_timeout)
   (BinaryCacheId (LensFor repo_cache))
   (LensFor repo_hookId)

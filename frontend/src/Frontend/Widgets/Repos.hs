@@ -17,6 +17,7 @@ import           Control.Monad.Reader
 import qualified Data.Map as M
 import           Data.Maybe
 import           Data.Text (Text)
+import qualified Data.Text as T
 import           Database.Beam
 import           Obelisk.Route
 import           Obelisk.Route.Frontend
@@ -91,7 +92,7 @@ addRepo = do
       return ()
 
 unfilledRepo :: RepoT Maybe
-unfilledRepo = Repo Nothing (ConnectedAccountId Nothing) Nothing Nothing Nothing Nothing (BinaryCacheId Nothing) Nothing
+unfilledRepo = Repo Nothing (ConnectedAccountId Nothing) Nothing Nothing Nothing (Just mempty) Nothing (BinaryCacheId Nothing) Nothing
 
 newRepoForm
   :: MonadAppIO r t m
@@ -129,16 +130,6 @@ newRepoForm iv sv = do
     caches <- asks _as_caches
     dcache <- labelledAs "S3 Cache" $
       cacheDropdown caches Nothing never
-    --let f (BinaryCacheId cid) = cid
-    --useS3Cache <- divClass "field" $ do
-    --  divClass "ui checkbox" $ do
-    --    v <- checkbox (isJust $ f $ _repo_cache iv) $ def
-    --      & setValue .~ (isJust . f . _repo_cache <$> sv)
-    --    el "label" $ text "Push to S3 Cache"
-    --    return v
-    --res <- networkView (s3CacheWidget (_repo_cache iv) (_repo_cache <$> sv) <$> value useS3Cache)
-    --let res = undefined
-    --dcache <- join <$> holdDyn (constDyn $ _repo_cache iv) res
 
     dnf <- divClass "field" $ do
       el "label" $ bnfLabel
@@ -146,9 +137,19 @@ newRepoForm iv sv = do
         & inputElementConfig_initialValue .~ (fromMaybe "default.nix" $ _repo_buildNixFile iv)
         & inputElementConfig_setValue .~ (fromMaybe "default.nix" . _repo_buildNixFile <$> sv)
       return $ value ie
-    --dcm <- labelledAs "Clone Method" $ filledDropdown
-    --  (fromMaybe HttpClone $ _repo_cloneMethod iv)
-    --  (fmapMaybe id $ _repo_cloneMethod <$> sv)
+
+    let attrsTip = "Optional space-separated list of attributes to build"
+    let attrsLabel = do
+          text "Attributes to build"
+          elAttr "span" ("data-tooltip" =: attrsTip <> "data-position" =: "top left") $
+            elAttr "i" ("class" =: "info circle icon") blank
+    das <- divClass "field" $ do
+      el "label" $ attrsLabel
+      ie <- inputElement $ def
+        & inputElementConfig_initialValue .~ (maybe "" (T.unwords . unAttrList) $ _repo_attributesToBuild iv)
+        & inputElementConfig_setValue .~ (maybe "" (T.unwords . unAttrList) . _repo_attributesToBuild <$> sv)
+      return $ fmap (AttrList . T.words) $ value ie
+
     dt <- labelledAs "Timeout (in seconds)" $ readableField Nothing
       (maybe (Just 3600) Just $ _repo_timeout iv)
       (_repo_timeout <$> sv)
@@ -160,12 +161,13 @@ newRepoForm iv sv = do
         t <- dt
         mca <- dmca
         c <- dcache
+        as <- das
         pure $ case mca of
           Nothing -> unfilledRepo
           Just a -> do
             let aid = _connectedAccount_id a
                 maid = ConnectedAccountId $ Just aid
-             in Repo Nothing maid (Just rn) (Just rns) (Just nf) t (cachePrimaryKey c) Nothing
+             in Repo Nothing maid (Just rn) (Just rns) (Just nf) (Just as) t (cachePrimaryKey c) Nothing
 
 cachePrimaryKey :: Maybe BinaryCache -> PrimaryKey BinaryCacheT (Nullable Maybe)
 cachePrimaryKey Nothing = BinaryCacheId Nothing
@@ -208,5 +210,5 @@ mkFullName GitHub owner name = owner <> "/" <> name
 mkFullName GitLab owner name = owner <> "/" <> name
 
 isValidRepo :: RepoT Maybe -> Bool
-isValidRepo (Repo _ (ConnectedAccountId (Just _)) (Just _) (Just _) (Just _) (Just _) (BinaryCacheId (Just _)) _) = True
+isValidRepo (Repo _ (ConnectedAccountId (Just _)) (Just _) (Just _) (Just _) (Just _) (Just _) (BinaryCacheId (Just _)) _) = True
 isValidRepo _ = False
