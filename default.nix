@@ -45,7 +45,7 @@ let
         script = ''
           ln -sft . '${exe}'/*
           mkdir -p log
-          exec ./backend ${backendArgs} </dev/null
+          exec ./backend ${backendArgs} >>backend.out 2>>backend.err </dev/null
         '';
         serviceConfig = {
           User = user;
