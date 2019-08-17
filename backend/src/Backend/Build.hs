@@ -29,6 +29,7 @@ import qualified Data.Text.Encoding as T
 import           Data.Time
 import           Database.Beam
 import           Database.Beam.Sqlite
+import           Database.SQLite.Simple
 import           System.Directory
 import           System.Environment
 import           System.Exit
@@ -67,6 +68,28 @@ getNextJob se = do
       guard_ (job ^. buildJob_status ==. (val_ JobPending))
       return job
 
+setJobStatus :: Connection -> UTCTime -> JobStatus -> BuildJob -> IO ()
+setJobStatus dbConn utc status incomingJob = do
+  t <- getCurrentTime
+
+  runBeamSqlite dbConn $ do
+    runUpdate $
+      update (_ciDb_buildJobs ciDb)
+             (\job -> case status of
+                JobPending -> mconcat
+                  [ job ^. buildJob_receivedAt <-. val_ utc
+                  , job ^. buildJob_status <-. val_ status
+                  ]
+                JobInProgress -> mconcat
+                  [ job ^. buildJob_startedAt <-. val_ (Just utc)
+                  , job ^. buildJob_status <-. val_ status
+                  ]
+                _ -> mconcat
+                  [ job ^. buildJob_endedAt <-. val_ (Just utc)
+                  , job ^. buildJob_status <-. val_ status
+                  ])
+             (\job -> _buildJob_id job ==. val_ (_buildJob_id incomingJob))
+    return ()
 
 buildManagerThread :: ServerEnv -> IO ()
 buildManagerThread se = do
@@ -95,7 +118,12 @@ buildManagerThread se = do
                 guard_ (account ^. connectedAccount_id ==. repo ^. repo_accessAccount)
                 return (repo, account)
             case ras of
-              [] -> putStrLn "Warning: Got a webhook for a repo that is not in our DB.  Is the DB corrupted?"
+              [] -> do
+                putStrLn "Warning: Got a webhook for a repo that is not in our DB.  Is the DB corrupted?"
+                beamQueryConn (_serverEnv_db se) $
+                  runDelete $ delete (_ciDb_buildJobs ciDb)
+                    (\j -> j ^. buildJob_id ==. val_ (_buildJob_id job))
+                return ()
               [(r,a)] -> runBuild se rng r a job
               _ -> printf "Warning: Got more repos than expected.  Why isn't %s/%s unique?\n"
                           (_rbi_repoNamespace rbi) (_rbi_repoName rbi)
@@ -111,14 +139,7 @@ runBuild se rng repo ca incomingJob = do
   let dbConn = _serverEnv_db se
       connRepo = _serverEnv_connRepo se
   start <- getCurrentTime
-  runBeamSqlite dbConn $ do
-    runUpdate $
-      update (_ciDb_buildJobs ciDb)
-             (\job -> mconcat
-                        [ job ^. buildJob_startedAt <-. val_ (Just start)
-                        , job ^. buildJob_status <-. val_ JobInProgress ])
-             (\job -> _buildJob_id job ==. val_ (_buildJob_id incomingJob))
-    return ()
+  setJobStatus dbConn start JobInProgress incomingJob
   broadcastJobs dbConn connRepo
 
   ecMVar <- newEmptyMVar
