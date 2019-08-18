@@ -145,7 +145,7 @@ backend = Backend
       -- expect a large volume of requests for awhile so this is probably a
       -- very low priority.
       dbConn <- open dbConnectInfo
-      runBeamSqlite dbConn $ autoMigrate migrationBackend ciDbChecked
+      runBeamSqliteDebug putStrLn dbConn $ autoMigrate migrationBackend ciDbChecked
       mcs <- getCiSettings dbConn
       case mcs of
         Nothing -> do
@@ -171,6 +171,7 @@ backend = Backend
                           connRepo buildThreads listeners keyPair
       _ <- forkIO $ buildManagerThread env
       _ <- forkIO $ cacheManagerThread env
+      putStrLn "Worker threads forked, starting server..."
       serve $ serveBackendRoute env
   , _backend_routeEncoder = backendRouteEncoder
   }
