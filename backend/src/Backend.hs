@@ -217,6 +217,8 @@ serveBackendRoute env = \case
       listJobs env conn
       listAccounts env conn
       listRepos env conn
+      sendCiInfo env conn
+      sendCiSettings env conn
       talkClient env cid conn
   BackendRoute_Missing :=> _ -> do
     liftIO $ putStrLn "Unknown backend route"
@@ -246,15 +248,11 @@ talkClient env cid conn = do
           mapM_ (cancelJobAndRemove env) jids
         Right (Up_RerunJobs jids) -> do
           mapM_ (rerunJob env) jids
-        Right (Up_GetCiSettings) -> do
-          Just cs <- getCiSettings (_serverEnv_db env)
-          wsSend conn (Down_CiSettings $ scrub cs)
+        Right (Up_GetCiSettings) -> sendCiSettings env conn
         Right (Up_UpdateCiSettings cs) -> do
           setCiSettings (_serverEnv_db env) cs
           wsSend conn (Down_CiSettings $ scrub cs)
-        Right Up_GetCiInfo -> do
-          let k = nckToText $ _nixCacheKey_public $ _serverEnv_cacheKey env
-          wsSend conn (Down_CiInfo k)
+        Right Up_GetCiInfo -> sendCiInfo env conn
 
         Right Up_ListCaches -> listCaches env conn
         Right (Up_AddCache cs) -> mapM_ (addCache env) cs
@@ -264,6 +262,16 @@ talkClient env cid conn = do
     cleanup :: E.SomeException -> IO ()
     cleanup _ = do
       removeConnection cid cRepo
+
+sendCiSettings :: ServerEnv -> WS.Connection -> IO ()
+sendCiSettings se conn = do
+    Just cs <- getCiSettings (_serverEnv_db se)
+    wsSend conn (Down_CiSettings $ scrub cs)
+
+sendCiInfo :: ServerEnv -> WS.Connection -> IO ()
+sendCiInfo se conn = do
+    let k = nckToText $ _nixCacheKey_public $ _serverEnv_cacheKey se
+    wsSend conn (Down_CiInfo k)
 
 subscribeJob :: ServerEnv -> ConnId -> BuildJobId -> IO ()
 subscribeJob env connId jid@(BuildJobId jidInt) = do

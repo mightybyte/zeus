@@ -180,7 +180,7 @@ stateManager route ft = do
       , fmapMaybe (fmap addToOutput . preview _Down_JobNewOutput) downEvent
       ]
     ciSettings <- holdDyn Nothing $ fmapMaybe id $ fmap (Just . getScrubbed) . preview _Down_CiSettings <$> downEvent
-    ciInfo <- holdDyn Nothing $ preview _Down_CiInfo <$> downEvent
+    ciInfo <- holdDyn Nothing $ ffilter isJust $ preview _Down_CiInfo <$> downEvent
     caches <- holdDyn mempty $
       fmapMaybe (fmap listToBeamMap . preview _Down_Caches) downEvent
 

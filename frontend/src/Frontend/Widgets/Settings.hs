@@ -30,6 +30,7 @@ settingsWidget
 settingsWidget = do
   pb <- getPostBuild
   trigger trigger_getCiSettings pb
+  trigger trigger_getCiInfo pb
   el "h1" $ text "Settings"
   dynSettingsForm
   return ()
@@ -39,25 +40,30 @@ dynSettingsForm
   => m ()
 dynSettingsForm = do
   dcs <- asks _as_ciSettings
-  _ <- networkHold blank $ ffor (fmapMaybe id $ updated dcs) $ \cs -> do
-    semuiForm $ do
-      dcsNew <- settingsForm cs never
-      let mkAttrs cs2 csNew =
-            if cs2 == Just csNew
-              then ("class" =: "ui button disabled")
-              else ("class" =: "ui button")
-      (e,_) <- divClass "field" $ elDynAttr' "button" (mkAttrs <$> dcs <*> dcsNew) $
-        text "Update Settings"
-      trigger trigger_updateCiSettings $ tag (current dcsNew) (domEvent Click e)
-      return ()
+  dci <- asks _as_ciInfo
+  _ <- networkView $ ffor ((,) <$> dcs <*> dci) $ \pair -> do
+    case pair of
+      (Just cs, Just ci) -> do
+        semuiForm $ do
+          dcsNew <- settingsForm ci cs never
+          let mkAttrs cs2 csNew =
+                if cs2 == Just csNew
+                  then ("class" =: "ui button disabled")
+                  else ("class" =: "ui button")
+          (e,_) <- divClass "field" $ elDynAttr' "button" (mkAttrs <$> dcs <*> dcsNew) $
+            text "Update Settings"
+          trigger trigger_updateCiSettings $ tag (current dcsNew) (domEvent Click e)
+          return ()
+      _ -> genericLoading
   return ()
 
 settingsForm
   :: (MonadApp r t m, Prerender js t m, HasConfigs m)
-  => CiSettings
+  => Text
+  -> CiSettings
   -> Event t CiSettings
   -> m (Dynamic t CiSettings)
-settingsForm iv sv = do
+settingsForm ciInfo iv sv = do
     dnp <- divClass "field" $ do
       el "label" $ text "Nix Path"
       ie <- inputElement $ def
@@ -71,38 +77,35 @@ settingsForm iv sv = do
           & setValue .~ (_ciSettings_serveLocalCache <$> sv)
         el "label" $ text "Serve Local Cache"
         return $ value v
-    infoWidget serveLocalCache
+    dynInfoWidget ciInfo serveLocalCache
     return (CiSettings 1 <$> dnp <*> serveLocalCache)
-
-infoWidget
-  :: (MonadApp r t m, Prerender js t m, HasConfigs m)
-  => Dynamic t Bool
-  -> m ()
-infoWidget serveLocalCache = do
-  pb <- getPostBuild
-  trigger trigger_getCiInfo pb
-
-  dcs <- asks _as_ciInfo
-  _ <- networkHold blank $ ffor (updated ((,) <$> dcs <*> serveLocalCache)) $
-         dynInfoWidget
-  return ()
 
 dynInfoWidget
   :: (MonadApp r t m, Prerender js t m, HasConfigs m)
-  => (Maybe Text, Bool)
+  => Text
+  -> Dynamic t Bool
   -> m ()
-dynInfoWidget (Just pubkey, True) = divClass "ui segment" $ do
+dynInfoWidget ciInfo serveLocalCache = do
+  _ <- networkView $ ffor serveLocalCache $ infoWidget ciInfo
+  return ()
+
+infoWidget
+  :: (MonadApp r t m, Prerender js t m, HasConfigs m)
+  => Text
+  -> Bool
+  -> m ()
+infoWidget pubkey True = divClass "ui segment" $ do
   mRootRoute <- getConfig "common/route"
   case mRootRoute of
     Nothing -> text "Can't find server address.  Server not configured properly."
     Just rootRoute -> do
       let route = T.strip (decodeUtf8 rootRoute) <> "/cache/"
-      void $ prerender blank $ copyableValue "Cache Address" route
-      _ <- prerender blank $ copyableValue "Cache Public Key" pubkey
+      copyableValue "Cache Address" route
+      copyableValue "Cache Public Key" pubkey
       el "h4" $ text "To use this cache, put the following in your /etc/nix/nix.conf:"
       elClass "pre" "ui segment" $ do
         text $ nixConfExample route pubkey
-dynInfoWidget _ = blank
+infoWidget _ False = blank
 
 nixConfExample :: Text -> Text -> Text
 nixConfExample addr pubkey = T.unlines
@@ -111,17 +114,13 @@ nixConfExample addr pubkey = T.unlines
   ]
 
 copyableValue
-  :: (DomBuilder t m,
-      MonadJSM (Performable m),
-      PerformEvent t m, MonadFix m,
-      RawElement (DomBuilderSpace m) ~ DOM.Element
-     )
+  :: (MonadApp r t m, Prerender js t m)
   => Text
   -> Text
   -> m ()
 copyableValue label val = do
   el "h4" $ text label
   el "div" $ mdo
-    _ <- copyButton (_element_raw e)
+    -- _ <- prerender blank $ void $ liftJS $ copyButton (_element_raw e)
     (e,_) <- el' "span" $ text val
     return ()
