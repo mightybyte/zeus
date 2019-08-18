@@ -16,3 +16,4 @@ static.assets
 *.swp
 *.pub
 *.sec
+config

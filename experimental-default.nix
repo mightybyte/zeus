@@ -1,14 +1,101 @@
-{ obelisk ? import ./.obelisk/impl {
-    system = builtins.currentSystem;
-    iosSdkVersion = "10.2";
-    # You must accept the Android Software Development Kit License Agreement at
-    # https://developer.android.com/studio/terms in order to build Android apps.
-    # Uncomment and set this to `true` to indicate your acceptance:
-    # config.android_sdk.accept_license = false;
-  }
+{ system ? builtins.currentSystem # TODO: Get rid of this system cruft
+, iosSdkVersion ? "10.2"
 }:
-with obelisk;
-project ./. ({ pkgs, ... }: {
+let
+
+  # origObelisk = import ./.obelisk/impl {
+  origObelisk = import /Users/doug/code/public/obelisk {
+    inherit system iosSdkVersion;
+  };
+  opkgs = origObelisk.reflex-platform.nixpkgs;
+  extraIgnores =
+    [ "dist-newstyle" "frontend.jsexe.assets" "static.assets" "result-exe"
+      "zeus-access-token" "zeus-cache-key.pub" "zeus-cache-key.sec" "zeus.db"
+      "migrations.md"
+    ];
+
+
+  myMkObeliskApp =
+    { exe
+    , routeHost
+    , enableHttps
+    , name ? "backend"
+    , user ? name
+    , group ? user
+    , baseUrl ? "/"
+    , internalPort ? 8000
+    , backendArgs ? "--port=${toString internalPort}"
+    , ...
+    }: {...}: {
+      services.nginx = {
+        enable = true;
+        virtualHosts."${routeHost}" = {
+          enableACME = enableHttps;
+          forceSSL = enableHttps;
+          locations.${baseUrl} = {
+            proxyPass = "http://localhost:" + toString internalPort;
+            proxyWebsockets = true;
+          };
+        };
+      };
+      systemd.services.${name} = {
+        wantedBy = [ "multi-user.target" ];
+        after = [ "network.target" ];
+        restartIfChanged = true;
+        path = [ opkgs.gnutar ];
+        script = ''
+          ln -sft . '${exe}'/*
+          mkdir -p log
+          exec ./backend ${backendArgs} >>backend.out 2>>backend.err </dev/null
+        '';
+        serviceConfig = {
+          User = user;
+          KillMode = "process";
+          WorkingDirectory = "~";
+          Restart = "always";
+          RestartSec = 5;
+        };
+      };
+      users = {
+        users.${user} = {
+          description = "${user} service";
+          home = "/var/lib/${user}";
+          createHome = true;
+          isSystemUser = true;
+          group = group;
+        };
+        groups.${group} = {};
+      };
+    };
+
+  myServerModules = origObelisk.serverModules // {
+    mkObeliskApp = myMkObeliskApp;
+  };
+
+  newObelisk = origObelisk // {
+    path = builtins.filterSource (path: type: !(builtins.any (x: x == baseNameOf path) ([".git" "tags" "TAGS" "dist"] ++ extraIgnores) ||
+                                                builtins.match ".swp$" path)) ./.;
+    serverModules = myServerModules;
+
+    server = { exe, hostName, adminEmail, routeHost, enableHttps, version }@args:
+      let
+        nixos = import (opkgs.path + /nixos);
+      in nixos {
+        system = "x86_64-linux";
+        configuration = {
+          imports = [
+            (origObelisk.serverModules.mkBaseEc2 args)
+            (myMkObeliskApp args)
+          ];
+        };
+      };
+
+
+  };
+
+in
+
+newObelisk.project ./. ({ pkgs, ... }: {
   overrides = self: super: with pkgs.haskell.lib;
   let beam-src = pkgs.fetchFromGitHub {
         owner = "tathougies";
