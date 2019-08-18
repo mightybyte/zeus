@@ -132,7 +132,7 @@ getAppRoute = do
 
 -- | Provide a human-readable name for a given section
 tabTitle :: DomBuilder t m => Some FrontendRoute -> m ()
-tabTitle sfr@(Some.This sec) = case sec of
+tabTitle sfr@(Some.Some sec) = case sec of
   FR_Home -> text $ frToText sfr
   FR_Jobs -> text $ frToText sfr
   FR_Repos -> text $ frToText sfr
@@ -142,7 +142,7 @@ tabTitle sfr@(Some.This sec) = case sec of
 
 -- | Provide a human-readable name for a given section
 frToText :: Some FrontendRoute -> Text
-frToText (Some.This sec) = case sec of
+frToText (Some.Some sec) = case sec of
   FR_Home -> "Home"
   FR_Jobs -> "Jobs"
   FR_Repos -> "Repos"
@@ -152,7 +152,7 @@ frToText (Some.This sec) = case sec of
 
 
 tabHomepage :: Some FrontendRoute -> R FrontendRoute
-tabHomepage (Some.This sec) = sec :/ case sec of
+tabHomepage (Some.Some sec) = sec :/ case sec of
   FR_Home -> ()
   FR_Jobs -> Job_List :/ ()
   FR_Repos -> Crud_List :/ ()

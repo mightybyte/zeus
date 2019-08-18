@@ -174,7 +174,6 @@ cacheStorePath se awsEnv logFunc nixDb cache sp@(StorePath spt) = do
         throwError $ ExitFailure 42
       Just (vp, refs) -> do
         let spHash = storePathHash $ T.pack spt
-        let oname = "nar/" <> spHash <> ".nar.xz"
 
         let s3cache = _binaryCache_s3Cache cache
         haveUploaded <- liftIO $ haveUploadedObject (_serverEnv_db se) (primaryKey cache) spHash

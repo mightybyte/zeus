@@ -23,10 +23,10 @@ import           Frontend.Common
 
 leftMenuItems :: [Some.Some FrontendRoute]
 leftMenuItems =
-  [ Some.This FR_Jobs
-  , Some.This FR_Repos
-  , Some.This FR_Accounts
-  , Some.This FR_Caches
+  [ Some.Some FR_Jobs
+  , Some.Some FR_Repos
+  , Some.Some FR_Accounts
+  , Some.Some FR_Caches
   ]
 
 nav
@@ -41,7 +41,7 @@ nav = do
   forM_ leftMenuItems $ menuItem currentTab
 
   divClass "right menu" $ do
-    menuItem currentTab (Some.This FR_Settings)
+    menuItem currentTab (Some.Some FR_Settings)
     -- _ <- elClass "span" "clickable item" $ element "a" def (text "Logout")
     return ()
 
@@ -54,7 +54,7 @@ menuItem
   -> Some.Some FrontendRoute
   -> m ()
 menuItem currentTab tab = do
-    let currentTabDemux = demux $ fmap (\(t :=> _) -> Some.This t) currentTab
+    let currentTabDemux = demux $ fmap (\(t :=> _) -> Some.Some t) currentTab
     let thisTabIsSelected = demuxed currentTabDemux tab
         highlightAttrs = ffor thisTabIsSelected $ \case
           True -> "class" =: "active clickable item"

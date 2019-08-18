@@ -46,25 +46,25 @@ frontend :: Frontend (R FrontendRoute)
 frontend = Frontend
   { _frontend_head = appHead
   , _frontend_body = do
-      --route <- getAppRoute
-      --cfgs <- getConfigs
-      --runApp undefined (appBody undefined)
-      runApp undefined $ do
-        pb <- getPostBuild
-        divClass "ui fixed menu" $ do
-          elAttr "div" ("class" =: "inverted header item") $ text "Zeus CI"
-          nav
-        divClass "ui main container" $ do
-          subRoute_ $ \case
-            FR_Home -> setRoute ((FR_Jobs :/ Job_List :/ ()) <$ pb)
-            FR_Jobs -> jobsWidget
-            FR_Repos -> reposWidget
-            FR_Accounts -> accountsWidget
-            FR_Caches -> cachesWidget
-            FR_Settings -> settingsWidget
-        serverAlert <- asks _as_serverAlert
-        modalExample serverAlert
-        return ()
+      route <- getAppRoute
+      cfgs <- getConfigs
+      runApp route (appBody cfgs)
+      --runApp undefined $ do
+      --  pb <- getPostBuild
+      --  divClass "ui fixed menu" $ do
+      --    elAttr "div" ("class" =: "inverted header item") $ text "Zeus CI"
+      --    nav
+      --  divClass "ui main container" $ do
+      --    subRoute_ $ \case
+      --      FR_Home -> setRoute ((FR_Jobs :/ Job_List :/ ()) <$ pb)
+      --      FR_Jobs -> jobsWidget
+      --      FR_Repos -> reposWidget
+      --      FR_Accounts -> accountsWidget
+      --      FR_Caches -> cachesWidget
+      --      FR_Settings -> settingsWidget
+      --  serverAlert <- asks _as_serverAlert
+      --  modalExample serverAlert
+      --  return ()
   }
 
 
@@ -91,13 +91,11 @@ jsScript url = elAttr "script" ("src" =: url <> "type" =: "text/javascript") bla
 script :: DomBuilder t m =>  Text -> m ()
 script code = elAttr "script" ("type" =: "text/javascript") $ text code
 
--- TODO Remove prerender constraint after updating reflex-dom-contrib
 appBody
   :: forall js t m. (PostBuild t m, DomBuilder t m, MonadHold t m, MonadFix m,
       TriggerEvent t m, PerformEvent t m, MonadRef m,
       MonadSample t (Performable m), RouteToUrl (R FrontendRoute) m,
-      SetRoute t (R FrontendRoute) m, MonadIO m, MonadIO (Performable m),
-      Prerender js t m
+      SetRoute t (R FrontendRoute) m, Prerender js t m
      )
   => Map Text ByteString
   -> App (R FrontendRoute) t m ()

@@ -105,8 +105,8 @@ newObelisk.project ./. ({ pkgs, ... }: {
       semantic-reflex-src = pkgs.fetchFromGitHub {
         owner = "tomsmalley";
         repo = "semantic-reflex";
-        rev = "a354fda1f34d06b72fd99dea1206606b5210ecdd";
-        sha256 = "1li8w95ibq4xm717clz5wz23kdp15j9vrqb1kq64d5ld0fjx7ln0";
+        rev = "728e6263d1d4ce209f02bb5b684971fbef864a95";
+        sha256 = "1rh5hf40ay7472czqnjvzlmd4lsspxd2hshiarscadshml3scwfr";
       };
   in {
     backend = overrideCabal super.backend (drv: {

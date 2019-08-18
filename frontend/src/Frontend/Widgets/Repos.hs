@@ -24,7 +24,6 @@ import           Obelisk.Route.Frontend
 import           Reflex.Dom.Contrib.CssClass
 import           Reflex.Dom.Contrib.Utils
 import           Reflex.Dom.Core
-import qualified Reflex.Dom.SemanticUI as SemUI
 ------------------------------------------------------------------------------
 import           Common.Route
 import           Common.Types.BinaryCache
@@ -39,7 +38,7 @@ import           Frontend.Widgets.Form
 ------------------------------------------------------------------------------
 
 reposWidget
-  :: MonadAppIO (R CrudRoute) t m
+  :: MonadApp (R CrudRoute) t m
   => RoutedT t (R CrudRoute) m ()
 reposWidget = mdo
   pb <- getPostBuild
@@ -61,12 +60,12 @@ textDynColumn f _ v = el "td" $ do
   return never
 
 reposList
-  :: MonadAppIO r t m
+  :: (MonadApp r t m)
   => Dynamic t (BeamMap Identity RepoT)
   -> m ()
 reposList as = do
-  add <- SemUI.button def $ text "Add Repository"
-  setRoute $ (FR_Repos :/ Crud_Create :/ ()) <$ add
+  (e,_) <- elAttr' "button" ("class" =: "ui button") $ text "Add Repository"
+  setRoute $ (FR_Repos :/ Crud_Create :/ ()) <$ domEvent Click e
 
   _ <- genericTableG def as
     [ ("ID", textDynColumn (tshow . _repo_id))
@@ -77,7 +76,7 @@ reposList as = do
     ]
   return ()
 
-addRepo :: MonadAppIO r t m => m ()
+addRepo :: MonadApp r t m => m ()
 addRepo = do
   semuiForm $ do
     dr <- newRepoForm unfilledRepo never
@@ -95,7 +94,7 @@ unfilledRepo :: RepoT Maybe
 unfilledRepo = Repo Nothing (ConnectedAccountId Nothing) Nothing Nothing Nothing (Just mempty) Nothing (BinaryCacheId Nothing) Nothing
 
 newRepoForm
-  :: MonadAppIO r t m
+  :: MonadApp r t m
   => RepoT Maybe
   -> Event t (RepoT Maybe)
   -> m (Dynamic t (RepoT Maybe))

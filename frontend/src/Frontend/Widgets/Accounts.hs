@@ -22,7 +22,6 @@ import           Obelisk.Route
 import           Obelisk.Route.Frontend
 import           Reflex.Dom.Core
 import           Reflex.Dom.SemanticUI
-import qualified Reflex.Dom.SemanticUI as SemUI
 ------------------------------------------------------------------------------
 import           Common.Route
 import           Common.Types.ConnectedAccount
@@ -34,7 +33,7 @@ import           Frontend.Widgets.Form
 ------------------------------------------------------------------------------
 
 accountsWidget
-  :: (MonadAppIO r t m, Prerender js t m)
+  :: (MonadApp r t m, Prerender js t m)
   => RoutedT t (R CrudRoute) m ()
 accountsWidget = mdo
   pb <- getPostBuild
@@ -60,7 +59,7 @@ addAccount = do
       return ()
 
 accountsList
-  :: MonadAppIO r t m
+  :: MonadApp r t m
   => Dynamic t (BeamMap Identity ConnectedAccountT)
   -> m ()
 accountsList as = do
@@ -69,8 +68,8 @@ accountsList as = do
           if M.null accountMap
             then accountPlaceholder
             else do
-              add <- SemUI.button def $ text "Add Account"
-              setRoute $ (FR_Accounts :/ Crud_Create :/ ()) <$ add
+              (e,_) <- elAttr' "button" ("class" =: "ui button") $ text "Add Account"
+              setRoute $ (FR_Accounts :/ Crud_Create :/ ()) <$ domEvent Click e
               del <- genericTableG def (constDyn accountMap)
                 [ ("ID", mkField $ tshow . _connectedAccount_id)
                 , ("Name", mkField $ _connectedAccount_name)

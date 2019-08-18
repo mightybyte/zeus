@@ -21,12 +21,8 @@
 module Backend.Db where
 
 ------------------------------------------------------------------------------
---import           Cases
---import qualified Data.Text as T
-import           Data.Text (Text)
 import           Data.Time
 import           Database.Beam
-import           Database.Beam.Backend
 import           Database.Beam.Migrate.Generics
 import           Database.Beam.Migrate.Simple
 import           Database.Beam.Sqlite.Connection

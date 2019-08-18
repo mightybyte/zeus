@@ -42,7 +42,7 @@ import           Frontend.Widgets.Common
 ------------------------------------------------------------------------------
 
 jobsWidget
-  :: MonadAppIO (R JobRoute) t m
+  :: (MonadApp (R JobRoute) t m, Prerender js t m)
   => RoutedT t (R JobRoute) m ()
 jobsWidget = mdo
   as <- ask
@@ -58,7 +58,7 @@ jobsWidget = mdo
     Job_Output -> jobOutput
 
 jobOutput
-  :: MonadAppIO Int t m
+  :: MonadApp Int t m
   => RoutedT t Int m ()
 jobOutput = do
   jobId <- askRoute
@@ -103,7 +103,7 @@ jobDuration bj = do
   pure $ diffUTCTime end start
 
 jobsList
-  :: (MonadApp r t m, MonadIO m, MonadIO (Performable m))
+  :: (MonadApp r t m, Prerender js t m)
   => Dynamic t (BeamMap Identity BuildJobT)
   -> m ()
 jobsList as = do
@@ -117,7 +117,7 @@ jobsList as = do
     , ("Git Ref", mkField $ dynText . fmap (_rbi_gitRef . _buildJob_repoBuildInfo))
     , ("Commit Hash", \_ v -> el "td" (commitWidget v) >> return never)
     , ("Author", \_ v -> el "td" (authorWidget v) >> return never)
-    , ("Time", mkField dynJobTimeWidget)
+    -- , ("Time", mkField $ void $ prerender blank dynJobTimeWidget)
     , ("", (\(Down k) v -> elClass "td" "right aligned collapsing" $
              cancelOrRerun k (_buildJob_status <$> v)))
     ]
@@ -203,12 +203,12 @@ dynJobTimeWidget dj = do
                       maybe "--:--" formatDiffTime $ do
                         s <- _buildJob_startedAt j
                         return $ diffUTCTime (_tickInfo_lastUTC ti) s
-    icon (Static "clock") def
+    elClass "i" "clock icon" blank
     dynText $ showElapsed <$> dti <*> dj
   let mkAttrs j = ("data-tooltip" =: maybe "" tshow (view buildJob_startedAt j) <>
                    "data-position" =: "bottom left")
   elDynAttr "div" (mkAttrs <$> dj) $ do
-    icon (Static "calendar") def
+    elClass "i" "calendar icon" blank
     let f = maybe (text "") pastTimeWiget . view buildJob_startedAt
     void $ dyn $ f <$> dj
 
@@ -284,20 +284,24 @@ oneYear = oneDay * 365
 --    setRoute $ (FR_Jobs :/ Job_Output :/ 0) <$ click
 --    return never
 
-dynStatusWidget :: MonadAppIO r t m => Dynamic t BuildJob -> m (Event t ())
+dynStatusWidget
+  :: (MonadApp r t m, Prerender js t m)
+  => Dynamic t BuildJob
+  -> m (Event t ())
 dynStatusWidget djob = networkView (statusWidget <$> djob) >> return never
 
-statusWidget :: MonadAppIO r t m => BuildJob -> m (Event t ())
+statusWidget :: (MonadApp r t m, Prerender js t m) => BuildJob -> m (Event t ())
 statusWidget job = do
-    let status = _buildJob_status job
-    let cfg = def & buttonConfig_color .~ Static (Just $ statusColor status)
-                  & buttonConfig_basic .~ Static True
-                  & buttonConfig_elConfig . classes .~ Static (Classes ["jobstatus"])
     _ <- elAttr "a" ("href" =: ("/raw/" <> tshow (_buildJob_id job) <> ".txt") <>
                      "target" =: "_blank") $ do
-      SemUI.button cfg $ do
-        icon (Static $ statusIcon status) def
-        text $ statusMessage status
+      prerender blank $ void $ do
+        let status = _buildJob_status job
+        let cfg = def & buttonConfig_color .~ Static (Just $ statusColor status)
+                      & buttonConfig_basic .~ Static True
+                      & buttonConfig_elConfig . classes .~ Static (Classes ["jobstatus"])
+        SemUI.button cfg $ do
+          elClass "i" (statusIcon status <> " icon") blank
+          text $ statusMessage status
       -- triggerBatch trigger_subscribeOutput $ [BuildJobId $ _buildJob_id job] <$ click
       -- setRoute $ (FR_Jobs :/ Job_Output :/ _buildJob_id job) <$ click
     return never

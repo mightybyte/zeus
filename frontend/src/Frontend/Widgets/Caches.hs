@@ -22,7 +22,6 @@ import           Obelisk.Route
 import           Obelisk.Route.Frontend
 import           Reflex.Dom.Core
 import           Reflex.Dom.SemanticUI
-import qualified Reflex.Dom.SemanticUI as SemUI
 ------------------------------------------------------------------------------
 import           Common.Route
 import           Common.Types.BinaryCache
@@ -34,7 +33,7 @@ import           Frontend.Widgets.Form
 ------------------------------------------------------------------------------
 
 cachesWidget
-  :: (MonadAppIO r t m, Prerender js t m)
+  :: (MonadApp r t m, Prerender js t m)
   => RoutedT t (R CrudRoute) m ()
 cachesWidget = mdo
   pb <- getPostBuild
@@ -60,7 +59,7 @@ addCache = do
       return ()
 
 cacheList
-  :: MonadAppIO r t m
+  :: MonadApp r t m
   => Dynamic t (BeamMap Identity BinaryCacheT)
   -> m ()
 cacheList as = do
@@ -69,8 +68,8 @@ cacheList as = do
           if M.null accountMap
             then accountPlaceholder
             else do
-              add <- SemUI.button def $ text "Add Cache"
-              setRoute $ (FR_Caches :/ Crud_Create :/ ()) <$ add
+              (e,_) <- elAttr' "button" ("class" =: "ui button") $ text "Add Account"
+              setRoute $ (FR_Caches :/ Crud_Create :/ ()) <$ domEvent Click e
               del <- genericTableG def (constDyn accountMap)
                 [ ("ID", mkField $ tshow . _binaryCache_id)
                 , ("Bucket", mkField $ _s3Cache_bucket . _binaryCache_s3Cache)

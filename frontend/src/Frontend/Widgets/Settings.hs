@@ -10,7 +10,7 @@ import           Control.Monad.Reader
 import           Data.Text (Text)
 import qualified Data.Text as T
 import           Data.Text.Encoding
-import           Obelisk.Configs
+--import           Obelisk.Configs
 import           Reflex.Dom
 import           Reflex.Network
 ------------------------------------------------------------------------------
@@ -22,23 +22,22 @@ import           Frontend.Widgets.Form
 ------------------------------------------------------------------------------
 
 settingsWidget
-  :: (MonadAppIO r t m, Prerender js t m)
+  :: (MonadApp r t m, Prerender js t m)
   => m ()
 settingsWidget = do
-  pb <- delay 0.01 =<< getPostBuild
+  pb <- getPostBuild
   trigger trigger_getCiSettings pb
   el "h1" $ text "Settings"
   dynSettingsForm
   return ()
 
 dynSettingsForm
-  :: (MonadAppIO r t m, Prerender js t m)
+  :: (MonadApp r t m, Prerender js t m)
   => m ()
 dynSettingsForm = do
   dcs <- asks _as_ciSettings
   _ <- networkHold blank $ ffor (fmapMaybe id $ updated dcs) $ \cs -> do
     semuiForm $ do
-      liftIO $ putStrLn $ "Starting with settings: " <> show cs
       dcsNew <- settingsForm cs never
       let mkAttrs cs2 csNew =
             if cs2 == Just csNew
@@ -51,7 +50,7 @@ dynSettingsForm = do
   return ()
 
 settingsForm
-  :: (MonadAppIO r t m, Prerender js t m)
+  :: (MonadApp r t m, Prerender js t m)
   => CiSettings
   -> Event t CiSettings
   -> m (Dynamic t CiSettings)
@@ -73,11 +72,11 @@ settingsForm iv sv = do
     return (CiSettings 1 <$> dnp <*> serveLocalCache)
 
 infoWidget
-  :: (MonadAppIO r t m, Prerender js t m)
+  :: (MonadApp r t m, Prerender js t m)
   => Dynamic t Bool
   -> m ()
 infoWidget serveLocalCache = do
-  pb <- delay 0.01 =<< getPostBuild
+  pb <- getPostBuild
   trigger trigger_getCiInfo pb
 
   dcs <- asks _as_ciInfo
@@ -86,7 +85,7 @@ infoWidget serveLocalCache = do
   return ()
 
 dynInfoWidget
-  :: (MonadAppIO r t m, Prerender js t m)
+  :: (MonadApp r t m, Prerender js t m)
   => (Maybe Text, Bool)
   -> m ()
 dynInfoWidget (Just pubkey, True) = divClass "ui segment" $ do
