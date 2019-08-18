@@ -9,6 +9,7 @@ library
       aeson
     , base
     , beam-core
+    , bytestring
     , common
     , containers
     , data-default

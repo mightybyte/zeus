@@ -17,9 +17,7 @@ module Frontend where
 import           Control.Monad.Identity
 import           Control.Monad.Reader
 import           Control.Monad.Ref
-import           Data.ByteString (ByteString)
 import           Data.Maybe
-import           Data.Map (Map)
 import           Data.Text (Text)
 import           Obelisk.Configs
 import           Obelisk.Frontend
@@ -47,24 +45,7 @@ frontend = Frontend
   { _frontend_head = appHead
   , _frontend_body = do
       route <- getAppRoute
-      cfgs <- getConfigs
-      runApp route (appBody cfgs)
-      --runApp undefined $ do
-      --  pb <- getPostBuild
-      --  divClass "ui fixed menu" $ do
-      --    elAttr "div" ("class" =: "inverted header item") $ text "Zeus CI"
-      --    nav
-      --  divClass "ui main container" $ do
-      --    subRoute_ $ \case
-      --      FR_Home -> setRoute ((FR_Jobs :/ Job_List :/ ()) <$ pb)
-      --      FR_Jobs -> jobsWidget
-      --      FR_Repos -> reposWidget
-      --      FR_Accounts -> accountsWidget
-      --      FR_Caches -> cachesWidget
-      --      FR_Settings -> settingsWidget
-      --  serverAlert <- asks _as_serverAlert
-      --  modalExample serverAlert
-      --  return ()
+      runApp route appBody
   }
 
 
@@ -95,11 +76,10 @@ appBody
   :: forall js t m. (PostBuild t m, DomBuilder t m, MonadHold t m, MonadFix m,
       TriggerEvent t m, PerformEvent t m, MonadRef m,
       MonadSample t (Performable m), RouteToUrl (R FrontendRoute) m,
-      SetRoute t (R FrontendRoute) m, Prerender js t m
+      SetRoute t (R FrontendRoute) m, Prerender js t m, HasConfigs m
      )
-  => Map Text ByteString
-  -> App (R FrontendRoute) t m ()
-appBody cfgs = do
+  => App (R FrontendRoute) t m ()
+appBody = do
   pb <- getPostBuild
   divClass "ui fixed menu" $ do
     elAttr "div" ("class" =: "inverted header item") $ text "Zeus CI"

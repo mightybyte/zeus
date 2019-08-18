@@ -3,6 +3,7 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE RecursiveDo #-}
 {-# LANGUAGE ScopedTypeVariables #-}
+{-# LANGUAGE TypeFamilies #-}
 module Frontend.Widgets.Settings where
 
 ------------------------------------------------------------------------------
@@ -10,7 +11,9 @@ import           Control.Monad.Reader
 import           Data.Text (Text)
 import qualified Data.Text as T
 import           Data.Text.Encoding
---import           Obelisk.Configs
+import qualified GHCJS.DOM.Types as DOM
+import           Language.Javascript.JSaddle (MonadJSM)
+import           Obelisk.Configs
 import           Reflex.Dom
 import           Reflex.Network
 ------------------------------------------------------------------------------
@@ -22,7 +25,7 @@ import           Frontend.Widgets.Form
 ------------------------------------------------------------------------------
 
 settingsWidget
-  :: (MonadApp r t m, Prerender js t m)
+  :: (MonadApp r t m, Prerender js t m, HasConfigs m)
   => m ()
 settingsWidget = do
   pb <- getPostBuild
@@ -32,7 +35,7 @@ settingsWidget = do
   return ()
 
 dynSettingsForm
-  :: (MonadApp r t m, Prerender js t m)
+  :: (MonadApp r t m, Prerender js t m, HasConfigs m)
   => m ()
 dynSettingsForm = do
   dcs <- asks _as_ciSettings
@@ -50,7 +53,7 @@ dynSettingsForm = do
   return ()
 
 settingsForm
-  :: (MonadApp r t m, Prerender js t m)
+  :: (MonadApp r t m, Prerender js t m, HasConfigs m)
   => CiSettings
   -> Event t CiSettings
   -> m (Dynamic t CiSettings)
@@ -72,7 +75,7 @@ settingsForm iv sv = do
     return (CiSettings 1 <$> dnp <*> serveLocalCache)
 
 infoWidget
-  :: (MonadApp r t m, Prerender js t m)
+  :: (MonadApp r t m, Prerender js t m, HasConfigs m)
   => Dynamic t Bool
   -> m ()
 infoWidget serveLocalCache = do
@@ -85,12 +88,11 @@ infoWidget serveLocalCache = do
   return ()
 
 dynInfoWidget
-  :: (MonadApp r t m, Prerender js t m)
+  :: (MonadApp r t m, Prerender js t m, HasConfigs m)
   => (Maybe Text, Bool)
   -> m ()
 dynInfoWidget (Just pubkey, True) = divClass "ui segment" $ do
-  -- TODO !!! Try removing "config/"
-  mRootRoute <- undefined --getConfig "common/route"
+  mRootRoute <- getConfig "common/route"
   case mRootRoute of
     Nothing -> text "Can't find server address.  Server not configured properly."
     Just rootRoute -> do
@@ -109,7 +111,11 @@ nixConfExample addr pubkey = T.unlines
   ]
 
 copyableValue
-  :: (MonadWidget t m)
+  :: (DomBuilder t m,
+      MonadJSM (Performable m),
+      PerformEvent t m, MonadFix m,
+      RawElement (DomBuilderSpace m) ~ DOM.Element
+     )
   => Text
   -> Text
   -> m ()
