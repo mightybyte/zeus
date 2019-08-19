@@ -116,7 +116,7 @@ newObelisk.project ./. ({ pkgs, ... }: {
       };
   in {
     backend = overrideCabal super.backend (drv: {
-      librarySystemDepends = drv.librarySystemDepends or [] ++ [
+      executableSystemDepends = drv.executableSystemDepends or [] ++ [
         pkgs.awscli
         pkgs.git
         pkgs.gnutar
