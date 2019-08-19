@@ -91,7 +91,8 @@ addRepo = do
       return ()
 
 unfilledRepo :: RepoT Maybe
-unfilledRepo = Repo Nothing (ConnectedAccountId Nothing) Nothing Nothing Nothing (Just mempty) Nothing (BinaryCacheId Nothing) Nothing
+unfilledRepo = Repo Nothing (ConnectedAccountId Nothing) Nothing Nothing Nothing
+                    (Just mempty) Nothing (BinaryCacheId Nothing) Nothing
 
 newRepoForm
   :: MonadApp r t m
@@ -170,7 +171,7 @@ newRepoForm iv sv = do
 
 cachePrimaryKey :: Maybe BinaryCache -> PrimaryKey BinaryCacheT (Nullable Maybe)
 cachePrimaryKey Nothing = BinaryCacheId Nothing
-cachePrimaryKey (Just (BinaryCache i _)) = BinaryCacheId (Just $ Just i)
+cachePrimaryKey (Just (BinaryCache i _ _ _)) = BinaryCacheId (Just $ Just i)
 
 accountDropdown
   :: forall r t m. MonadApp r t m

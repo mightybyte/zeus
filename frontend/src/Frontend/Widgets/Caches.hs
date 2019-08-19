@@ -49,7 +49,7 @@ addCache
   => m ()
 addCache = do
   semuiForm $ do
-    dc <- newCacheForm (BinaryCache Nothing Nothing) never
+    dc <- newCacheForm (BinaryCache Nothing Nothing Nothing Nothing) never
     divClass "field" $ do
       (e1,_) <- elAttr' "button" ("class" =: "ui button") $ text "Connect Cache"
       (e2,_) <- elAttr' "button" ("class" =: "ui button") $ text "Cancel"
@@ -98,7 +98,7 @@ newCacheForm iv sv = do
   dc <- s3CacheWidget (_binaryCache_s3Cache iv) (_binaryCache_s3Cache <$> sv)
   return $ do
     c <- dc
-    pure $ BinaryCache Nothing c
+    pure $ BinaryCache Nothing c Nothing Nothing
 
 s3CacheWidget
   :: (MonadApp r t m, Prerender js t m)

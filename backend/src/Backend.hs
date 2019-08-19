@@ -74,6 +74,7 @@ import           Common.Types.ConnectedAccount
 import           Common.Types.JobStatus
 import           Common.Types.NixCacheKeyPair
 import           Common.Types.Repo
+import           Common.Types.S3Cache
 ------------------------------------------------------------------------------
 
 getSecretToken :: IO Text
@@ -490,11 +491,16 @@ addCache
   :: ServerEnv
   -> BinaryCacheT Maybe
   -> IO ()
-addCache env (BinaryCache _ c) = do
+addCache _ (BinaryCache _ Nothing _ _) = return ()
+addCache env (BinaryCache _ (Just c) _ _) = do
+  kp <- generateNixCacheKeyPair (_s3Cache_bucket c)
   beamQuery env $ do
     runInsert $ insert (_ciDb_binaryCaches ciDb) $ insertExpressions
-           $ maybeToList $ BinaryCache default_
-              <$> (val_ <$> c)
+      [BinaryCache default_
+       (val_ c)
+       (val_ $ _nixCacheKey_public kp)
+       (val_ $ _nixCacheKey_secret kp)
+      ]
   as <- beamQuery env $ do
     runSelectReturningList $ select $ all_ (_ciDb_binaryCaches ciDb)
   broadcast (_serverEnv_connRepo env) $ Down_Caches $ map (getScrubbed . scrub) as

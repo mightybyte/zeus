@@ -21,6 +21,7 @@ import           Data.Aeson
 --import           Data.Text (Text)
 import           Database.Beam
 ------------------------------------------------------------------------------
+import           Common.Types.NixCacheKeyPair
 import           Common.Types.S3Cache
 ------------------------------------------------------------------------------
 
@@ -31,6 +32,8 @@ data BinaryCacheT f = BinaryCache
 --  , _binaryCache_url :: C f Text
 --  , _binaryCache_storeDir :: C f Text
   , _binaryCache_s3Cache :: C f S3Cache
+  , _binaryCache_pubKey :: C f NixCacheKey
+  , _binaryCache_secKey :: C f NixCacheKey
   } deriving Generic
 
 BinaryCache
@@ -38,10 +41,13 @@ BinaryCache
 --  (LensFor binaryCache_url)
 --  (LensFor binaryCache_storeDir)
   (LensFor binaryCache_s3Cache)
+  (LensFor binaryCache_pubKey)
+  (LensFor binaryCache_secKey)
   = tableLenses
 
 bcToMaybe :: BinaryCacheT Identity -> BinaryCacheT Maybe
-bcToMaybe (BinaryCache i c) = BinaryCache (Just i) (Just c)
+bcToMaybe (BinaryCache i c privKey secKey) =
+  BinaryCache (Just i) (Just c) (Just privKey) (Just secKey)
 
 type BinaryCache = BinaryCacheT Identity
 type BinaryCacheId = PrimaryKey BinaryCacheT Identity

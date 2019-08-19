@@ -10,6 +10,7 @@ module Backend.Types.NixCacheKeyPair
   , signingKeyBaseName
   , signingKeySecretFile
   , signingKeyPublicFile
+  , generateNixCacheKeyPair
   ) where
 
 ------------------------------------------------------------------------------
@@ -21,6 +22,11 @@ import qualified Data.Text.Encoding as T
 ------------------------------------------------------------------------------
 import           Common.Types.NixCacheKeyPair
 ------------------------------------------------------------------------------
+
+generateNixCacheKeyPair :: Text -> IO NixCacheKeyPair
+generateNixCacheKeyPair name = do
+  (PublicKey pubBS, SecretKey secBS) <- createKeypair
+  return $ NixCacheKeyPair (NixCacheKey name secBS) (NixCacheKey name pubBS)
 
 mkNixSig :: NixCacheKey -> ByteString -> Text
 mkNixSig secret msg = _nck_name secret <> ":" <> sig
