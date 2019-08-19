@@ -41,7 +41,12 @@ let
         wantedBy = [ "multi-user.target" ];
         after = [ "network.target" ];
         restartIfChanged = true;
-        path = [ opkgs.gnutar ];
+        path = [
+          opkgs.git
+          opkgs.nix
+          opkgs.gnutar
+          opkgs.awscli
+        ];
         script = ''
           ln -sft . '${exe}'/*
           mkdir -p log
