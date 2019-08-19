@@ -41,12 +41,7 @@ let
         wantedBy = [ "multi-user.target" ];
         after = [ "network.target" ];
         restartIfChanged = true;
-        path = [
-          opkgs.git
-          opkgs.nix
-          opkgs.gnutar
-          opkgs.awscli
-        ];
+        path = [ opkgs.gnutar ];
         script = ''
           ln -sft . '${exe}'/*
           mkdir -p log
@@ -116,10 +111,11 @@ newObelisk.project ./. ({ pkgs, ... }: {
   in {
     backend = overrideCabal super.backend (drv: {
       librarySystemDepends = drv.librarySystemDepends or [] ++ [
-        pkgs.git
-        pkgs.nix
-        pkgs.gnutar
         pkgs.awscli
+        pkgs.git
+        pkgs.gnutar
+        pkgs.gzip
+        pkgs.nix
       ];
     });
     base32-bytestring = (self.callCabal2nix "base32-bytestring" (pkgs.fetchFromGitHub {
