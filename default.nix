@@ -5,6 +5,13 @@ let
 
   origObelisk = import ./.obelisk/impl {
     inherit system iosSdkVersion;
+    backendInstalledPackages = pkgs: [
+      pkgs.awscli
+      pkgs.git
+      pkgs.gnutar
+      pkgs.gzip
+      pkgs.nix
+    ];
   };
   opkgs = origObelisk.reflex-platform.nixpkgs;
   extraIgnores =

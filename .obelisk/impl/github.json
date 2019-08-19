@@ -1,7 +1,7 @@
 {
-  "owner": "obsidiansystems",
+  "owner": "mightybyte",
   "repo": "obelisk",
-  "branch": "develop",
-  "rev": "e5bd02226c58d921e0f8a082b9cce9b2b5f9e4ed",
-  "sha256": "0k5d6687s64ml2yg21c8bjnddgk86fcaq0k25cs41ip5x396akdj"
+  "branch": "conifgurable-execution-environment",
+  "rev": "4d9e35c8e97d54fdba201cce0567cfef73546bbe",
+  "sha256": "18ppbbxkdza1pm2d0nvkacy8b5icca6ik62g4dz226cfhlv6qyhm"
 }
