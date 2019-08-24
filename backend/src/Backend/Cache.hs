@@ -149,6 +149,9 @@ getVpAndRefs conn (StorePath sp) = do
       return Nothing
 
 
+data CacheStatus = AlreadyExists | CachedSuccessfully
+  deriving (Eq,Ord,Show,Read)
+
 ------------------------------------------------------------------------------
 -- | To upload a store path to a binary cache, we have to do two things:
 --
@@ -165,13 +168,13 @@ cacheStorePath
   -> Connection
   -> BinaryCache
   -> StorePath
-  -> ExceptT ExitCode IO ()
+  -> ExceptT String IO CacheStatus
 cacheStorePath se awsEnv logFunc nixDb cache sp@(StorePath spt) = do
     mpair <- liftIO $ getVpAndRefs nixDb sp
     case mpair of
       Nothing -> do
         liftIO $ putStrLn "getVpAndRefs failed"
-        throwError $ ExitFailure 42
+        throwError "getVpAndRefs failed"
       Just (vp, refs) -> do
         let spHash = storePathHash $ T.pack spt
 
@@ -179,7 +182,7 @@ cacheStorePath se awsEnv logFunc nixDb cache sp@(StorePath spt) = do
         haveUploaded <- liftIO $ haveUploadedObject (_serverEnv_db se) (primaryKey cache) spHash
 
         if haveUploaded
-          then return ()
+          then return AlreadyExists
           else do
             liftIO $ logFunc =<< textProcMsg ("Caching " <> T.pack spt)
             let tmpDir = "/tmp/zeus-tmp"
@@ -187,9 +190,9 @@ cacheStorePath se awsEnv logFunc nixDb cache sp@(StorePath spt) = do
             let narFilename = T.unpack spHash <> ".nar"
             let narPath = tmpDir </> narFilename
             let dumpCmd = printf "%s --dump %s > %s" nixStore spt narPath
-            runCP (shell dumpCmd) logFunc
+            runCPStr (shell dumpCmd) logFunc
             let compressCmd = printf "%s -k %s" xzBinary narPath
-            runCP (shell compressCmd) logFunc
+            runCPStr (shell compressCmd) logFunc
             let xzFilename = narFilename <> ".xz"
             let xzPath = tmpDir </> xzFilename
             let uploadCmd = printf "%s s3 cp --quiet %s s3://%s/%s"
@@ -199,7 +202,7 @@ cacheStorePath se awsEnv logFunc nixDb cache sp@(StorePath spt) = do
                              , ("AWS_SECRET_ACCESS_KEY", T.unpack $ _s3Cache_secretKey s3cache)
                              ]
                 }
-            runCP uploadCP logFunc
+            runCPStr uploadCP logFunc
 
             !narSize <- liftIO $ getFileSize narPath
 
@@ -217,7 +220,9 @@ cacheStorePath se awsEnv logFunc nixDb cache sp@(StorePath spt) = do
               removePathForcibly narPath
 
             case res of
-              Left e -> liftIO $ putStrLn e
+              Left e -> do
+                liftIO $ putStrLn e
+                throwError e
               Right niContents -> do
                 resp <- liftIO $ AWS.runResourceT $ AWS.runAWS awsEnv $
                   AWS.within (toAwsRegion $ _s3Cache_region s3cache) $
@@ -226,10 +231,12 @@ cacheStorePath se awsEnv logFunc nixDb cache sp@(StorePath spt) = do
                              (AWS.toBody niContents))
                 let status = resp ^. AWS.porsResponseStatus
                 if status == 200
-                  then liftIO $ storeCachedHash (_serverEnv_db se) (primaryKey cache) spHash
+                  then do
+                    liftIO $ storeCachedHash (_serverEnv_db se) (primaryKey cache) spHash
+                    return CachedSuccessfully
                   else do
                     liftIO $ logFunc =<< textProcMsg ("Error uploading narinfo for " <> T.pack spt)
-                    throwError (ExitFailure status)
+                    throwError $ printf "AWS upload failed with status %d" status
 
 doesObjectExist :: AWS.Env -> Text -> Region -> Text -> IO Bool
 doesObjectExist e b r k = do
@@ -337,12 +344,16 @@ cacheBuild se cache cj = do
           liftIO $ putStrLn "Error uploading nix-cache-info\n"
           throwError (ExitFailure status)
 
-    liftIO $ forM_ toCache $ \sp -> do
+    results <- liftIO $ forM toCache $ \sp -> do
       res <- runExceptT $ cacheStorePath se e logProcMsg nixDbConn cache (StorePath $ T.unpack sp)
       case res of
-        Left er -> liftIO $ logStr CiMsg $ T.pack $ printf "Error %s while caching %s" (show er) sp
-        Right _ -> return ()
-    liftIO $ logStr CiMsg "Finished caching"
+        Left er -> do
+          liftIO $ logStr CiMsg $ T.pack $ printf "Error while caching %s:\n" sp er
+          return $ Left er
+        Right val -> return $ Right val
+    let (failures, successes) = partitionEithers results
+        uploads = length $ filter (== CachedSuccessfully) successes
+    liftIO $ logStr CiMsg $ T.pack $ printf "Cached %d store paths successfully (%d failures)\n" uploads (length failures)
 
   end <- getCurrentTime
   runBeamSqlite dbConn $ do
