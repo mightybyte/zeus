@@ -43,6 +43,7 @@ library
     Frontend.Common
     Frontend.Nav
     Frontend.Widgets.Accounts
+    Frontend.Widgets.Builders
     Frontend.Widgets.Caches
     Frontend.Widgets.Common
     Frontend.Widgets.Jobs
