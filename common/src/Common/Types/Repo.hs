@@ -18,6 +18,8 @@ module Common.Types.Repo where
 
 ------------------------------------------------------------------------------
 import           Data.Aeson
+import           Data.Set (Set)
+import qualified Data.Set as S
 import           Data.Text (Text)
 import qualified Data.Text as T
 import           Database.Beam
@@ -28,6 +30,7 @@ import           Database.Beam.Migrate.SQL
 ------------------------------------------------------------------------------
 import           Common.Types.BinaryCache
 import           Common.Types.ConnectedAccount
+import           Common.Types.Platform
 ------------------------------------------------------------------------------
 
 
@@ -55,6 +58,32 @@ instance BeamMigrateSqlBackend be => HasDefaultSqlDataType be AttrList where
   defaultSqlDataType _ _ _ = varCharType Nothing Nothing
 
 
+newtype PlatformSet = PlatformSet { unPlatformSet :: Set Platform }
+  deriving (Eq,Ord,Show,Read,Generic)
+
+instance Semigroup PlatformSet where
+  PlatformSet a <> PlatformSet b = PlatformSet (a <> b)
+
+instance Monoid PlatformSet where
+  mempty = PlatformSet mempty
+
+instance ToJSON PlatformSet where
+    toJSON = toJSON . S.toList . unPlatformSet
+    toEncoding = toEncoding . S.toList . unPlatformSet
+
+instance FromJSON PlatformSet where
+    parseJSON = fmap (PlatformSet . S.fromList) . parseJSON
+
+instance HasSqlValueSyntax be String => HasSqlValueSyntax be PlatformSet where
+  sqlValueSyntax = sqlValueSyntax . show . S.toList . unPlatformSet
+
+instance (BeamBackend be, FromBackendRow be Text) => FromBackendRow be PlatformSet where
+  fromBackendRow = PlatformSet . S.fromList . read . T.unpack <$> fromBackendRow
+
+instance BeamMigrateSqlBackend be => HasDefaultSqlDataType be PlatformSet where
+  defaultSqlDataType _ _ _ = varCharType Nothing Nothing
+
+
 ------------------------------------------------------------------------------
 data RepoT f = Repo
   { _repo_id :: C f Int
@@ -66,6 +95,7 @@ data RepoT f = Repo
   -- can be a deeper nested path of groups /foo/bar/baz/repo
   , _repo_buildNixFile :: C f Text
   , _repo_attributesToBuild :: C f AttrList
+  , _repo_platforms :: C f PlatformSet
   , _repo_timeout :: C f Int
   -- ^ Build timeout in seconds
   , _repo_cache :: PrimaryKey BinaryCacheT (Nullable f)
@@ -77,8 +107,8 @@ repoFullName :: Repo -> Text
 repoFullName r = _repo_namespace r <> "/" <> _repo_name r
 
 repoToMaybe :: RepoT Identity -> RepoT Maybe
-repoToMaybe (Repo i (ConnectedAccountId o) on rn bf as t (BinaryCacheId c) h) = Repo (Just i)
-    (ConnectedAccountId $ Just o) (Just on) (Just rn) (Just bf) (Just as) (Just t) (BinaryCacheId $ Just c) (Just h)
+repoToMaybe (Repo i (ConnectedAccountId o) on rn bf as ps t (BinaryCacheId c) h) = Repo (Just i)
+    (ConnectedAccountId $ Just o) (Just on) (Just rn) (Just bf) (Just as) (Just ps) (Just t) (BinaryCacheId $ Just c) (Just h)
 --  where
 --    f (BinaryCacheId i) = BinaryCacheId $ Just i
 
@@ -89,6 +119,7 @@ Repo
   (LensFor repo_namespace)
   (LensFor repo_buildNixFile)
   (LensFor repo_attributesToBuild)
+  (LensFor repo_platforms)
   (LensFor repo_timeout)
   (BinaryCacheId (LensFor repo_cache))
   (LensFor repo_hookId)

@@ -38,6 +38,7 @@ import           Scrub
 import           Common.Api
 import           Common.Types.BinaryCache
 import           Common.Types.BuildJob
+import           Common.Types.Builder
 import           Common.Types.CiSettings
 import           Common.Types.ConnectedAccount
 import           Common.Types.Repo
@@ -63,11 +64,15 @@ data AppTriggers = AppTriggers
     , _trigger_listCaches :: Batch ()
     , _trigger_addCache :: Batch (BinaryCacheT Maybe)
     , _trigger_delCaches :: Batch BinaryCacheId
+
+    , _trigger_listBuilders :: Batch ()
+    , _trigger_createBuilders :: Batch (BuilderT Maybe)
+    , _trigger_deleteBuilders :: Batch BuilderId
     } deriving Generic
 
 instance Semigroup AppTriggers where
-  (AppTriggers ga1 ca1 da1 gr1 ar1 dr1 gj1 cj1 rj1 so1 gs1 us1 gi1 lc1 ac1 dc1)
-    <> (AppTriggers ga2 ca2 da2 gr2 ar2 dr2 gj2 cj2 rj2 so2 gs2 us2 gi2 lc2 ac2 dc2) = AppTriggers
+  (AppTriggers ga1 ca1 da1 gr1 ar1 dr1 gj1 cj1 rj1 so1 gs1 us1 gi1 lc1 ac1 dc1 lb1 cb1 db1)
+    <> (AppTriggers ga2 ca2 da2 gr2 ar2 dr2 gj2 cj2 rj2 so2 gs2 us2 gi2 lc2 ac2 dc2 lb2 cb2 db2) = AppTriggers
     (ga1 <> ga2)
     (ca1 <> ca2)
     (da1 <> da2)
@@ -84,9 +89,15 @@ instance Semigroup AppTriggers where
     (lc1 <> lc2)
     (ac1 <> ac2)
     (dc1 <> dc2)
+    (lb1 <> lb2)
+    (cb1 <> cb2)
+    (db1 <> db2)
 
 instance Monoid AppTriggers where
     mempty = AppTriggers
+      mempty
+      mempty
+      mempty
       mempty
       mempty
       mempty
@@ -131,6 +142,7 @@ data AppState t = AppState
     , _as_buildOutputs :: Dynamic t (Map BuildJobId (Seq ProcMsg))
     , _as_ciSettings :: Dynamic t (Maybe CiSettings)
     , _as_ciInfo :: Dynamic t (Maybe Text)
+    , _as_builders :: Dynamic t (BeamMap Identity BuilderT)
     , _as_caches :: Dynamic t (BeamMap Identity BinaryCacheT)
     } deriving Generic
 
@@ -166,6 +178,10 @@ stateManager route ft = do
           , Up_AddCache <$> squash _trigger_addCache ft
           , Up_DelCaches <$> squash _trigger_delCaches ft
 
+          , Up_ListBuilders <$ fmapMaybe (listToMaybe . _trigger_listBuilders) ft
+          , Up_CreateBuilders <$> squash _trigger_createBuilders ft
+          , Up_DelBuilders <$> squash _trigger_deleteBuilders ft
+
           ]
     let cfg = WebSocketConfig upEvent never True []
     ws <- startWebsocket route cfg
@@ -181,10 +197,12 @@ stateManager route ft = do
       ]
     ciSettings <- holdDyn Nothing $ fmapMaybe id $ fmap (Just . getScrubbed) . preview _Down_CiSettings <$> downEvent
     ciInfo <- holdDyn Nothing $ ffilter isJust $ preview _Down_CiInfo <$> downEvent
+    builders <- holdDyn mempty $
+      fmapMaybe (fmap listToBeamMap . preview _Down_Builders) downEvent
     caches <- holdDyn mempty $
       fmapMaybe (fmap listToBeamMap . preview _Down_Caches) downEvent
 
-    return $ AppState accounts jobs repos serverAlert buildOutput ciSettings ciInfo caches
+    return $ AppState accounts jobs repos serverAlert buildOutput ciSettings ciInfo builders caches
 
 startOutput :: (BuildJobId, Text) -> Map BuildJobId (Seq ProcMsg) -> Map BuildJobId (Seq ProcMsg)
 startOutput (jid, msgText) _ = M.singleton jid (parseMessages msgText)
@@ -217,17 +235,6 @@ startWebsocket siteRoute wsCfg = do
   let e = switch $ current $ _webSocket_error <$> res
   let c = switch $ current $ _webSocket_close <$> res
   return $ RawWebSocket r o e c
-
---   = RawWebSocket { _webSocket_recv :: Event t a
---                  , _webSocket_open :: Event t ()
---                  , _webSocket_error :: Event t () -- eror event does not carry any data and is always
---                                                   -- followed by termination of the connection
---                                                   -- for details see the close event
---                  , _webSocket_close :: Event t ( Bool -- wasClean
---                                                , Word -- code
---                                                , Text -- reason
---                                                )
---                  }
 
 neverWebSocket :: Reflex t => RawWebSocket t a
 neverWebSocket = RawWebSocket never never never never

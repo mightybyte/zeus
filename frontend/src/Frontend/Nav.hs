@@ -26,6 +26,7 @@ leftMenuItems =
   [ Some.Some FR_Jobs
   , Some.Some FR_Repos
   , Some.Some FR_Accounts
+  , Some.Some FR_Builders
   , Some.Some FR_Caches
   ]
 

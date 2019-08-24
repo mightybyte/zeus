@@ -69,6 +69,7 @@ import           Common.Api
 import           Common.Route
 import           Common.Types.BinaryCache
 import           Common.Types.BuildJob
+import           Common.Types.Builder
 import           Common.Types.CiSettings
 import           Common.Types.ConnectedAccount
 import           Common.Types.JobStatus
@@ -218,6 +219,8 @@ serveBackendRoute env = \case
       listJobs env conn
       listAccounts env conn
       listRepos env conn
+      listBuilders env conn
+      listCaches env conn
       sendCiInfo env conn
       sendCiSettings env conn
       talkClient env cid conn
@@ -258,6 +261,10 @@ talkClient env cid conn = do
         Right Up_ListCaches -> listCaches env conn
         Right (Up_AddCache cs) -> mapM_ (addCache env) cs
         Right (Up_DelCaches cs) -> delCaches env conn cs
+
+        Right Up_ListBuilders -> listCaches env conn
+        Right (Up_CreateBuilders bs) -> mapM_ (createBuilder env) bs
+        Right (Up_DelBuilders bs) -> delBuilders env conn bs
   where
     cRepo = _serverEnv_connRepo env
     cleanup :: E.SomeException -> IO ()
@@ -379,7 +386,7 @@ addRepo
   -> IO ()
 addRepo env wsConn
         (Repo _ (ConnectedAccountId (Just o)) (Just n) (Just ns)
-              (Just nf) (Just attrs) (Just t) (BinaryCacheId (Just c)) _) = do
+              (Just nf) (Just attrs) (Just ps) (Just t) (BinaryCacheId c) _) = do
   mca <- beamQuery env $ do
     runSelectReturningOne $ select $ do
       account <- all_ (ciDb ^. ciDb_connectedAccounts)
@@ -395,8 +402,9 @@ addRepo env wsConn
                   (val_ ns)
                   (val_ nf)
                   (val_ attrs)
+                  (val_ ps)
                   (val_ t)
-                  (val_ $ BinaryCacheId c)
+                  (val_ $ BinaryCacheId (join c))
                   (val_ hid)
             ]
   case mca of
@@ -477,6 +485,38 @@ delAccounts env wsConn cas = do
   listAccounts env wsConn
 
 ------------------------------------------------------------------------------
+
+listBuilders :: ServerEnv -> WS.Connection -> IO ()
+listBuilders env wsConn = do
+  builders <- beamQuery env $
+    runSelectReturningList $ select $ do
+      all_ (_ciDb_builders
+            ciDb)
+  wsSend wsConn $ Down_Builders builders
+
+createBuilder
+  :: ServerEnv
+  -> BuilderT Maybe
+  -> IO ()
+createBuilder env (Builder _ u h p mb sf) = do
+  beamQuery env $ do
+    runInsert $ insert (_ciDb_builders ciDb) $ insertExpressions
+           $ maybeToList $ Builder default_
+              <$> (val_ <$> u)
+              <*> (val_ <$> h)
+              <*> (val_ <$> p)
+              <*> (val_ <$> mb)
+              <*> (val_ <$> sf)
+  bs <- beamQuery env $ do
+    runSelectReturningList $ select $ all_ (_ciDb_builders ciDb)
+  broadcast (_serverEnv_connRepo env) $ Down_Builders bs
+
+delBuilders :: ServerEnv -> WS.Connection -> [BuilderId] -> IO ()
+delBuilders env wsConn bs = do
+  beamQuery env $
+    runDelete $ delete (_ciDb_builders ciDb) $
+        (\ca -> ca ^. builder_id `in_` map (val_ . builderKeyToInt) bs)
+  listBuilders env wsConn
 
 listCaches :: ServerEnv -> WS.Connection -> IO ()
 listCaches env wsConn = do

@@ -11,8 +11,6 @@ import           Control.Monad.Reader
 import           Data.Text (Text)
 import qualified Data.Text as T
 import           Data.Text.Encoding
-import qualified GHCJS.DOM.Types as DOM
-import           Language.Javascript.JSaddle (MonadJSM)
 import           Obelisk.Configs
 import           Reflex.Dom
 import           Reflex.Network

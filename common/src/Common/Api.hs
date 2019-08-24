@@ -2,6 +2,7 @@
 {-# LANGUAGE DeriveGeneric#-}
 {-# LANGUAGE GADTs #-}
 {-# LANGUAGE TemplateHaskell #-}
+{-# LANGUAGE UndecidableInstances #-}
 module Common.Api where
 
 ------------------------------------------------------------------------------
@@ -13,6 +14,7 @@ import           Scrub
 ------------------------------------------------------------------------------
 import           Common.Types.BinaryCache
 import           Common.Types.BuildJob
+import           Common.Types.Builder
 import           Common.Types.CiSettings
 import           Common.Types.ConnectedAccount
 import           Common.Types.ProcMsg
@@ -33,14 +35,23 @@ instance FromJSON a => FromJSON (Scrubbed a) where
 --batchMaybe :: FunctorMaybe f => (a -> Batch b) -> f a -> f b
 --batchMaybe f = fmapMaybe (listToMaybe . f)
 
--- WIP
--- data CrudAction itemT
---   = CrudCreate (Batch (itemT Maybe))
---   | CrudRead (Batch (PrimaryKey itemT))
---   -- | CrudUpdate
---   |
---   | CrudDelete (Batch (PrimaryKey itemT))
---   | CrudList
+--data CrudUpMsg (entityT :: (* -> *) -> Type) where
+--  CrudUp_List :: CrudUpMsg entityT
+--  CrudUp_Create :: Batch (entityT Maybe) -> CrudUpMsg entityT
+--  CrudUp_Update :: Batch (entityT Identity) -> CrudUpMsg entityT
+--  CrudUp_Delete :: Batch (PrimaryKey entityT Identity) -> CrudUpMsg entityT
+--  deriving Generic
+--
+--instance Show (CrudUpMsg eT) where
+--  show CrudUp_List = "list"
+--  show (CrudUp_Create _) = "new"
+--  show (CrudUp_Update _) = "edit"
+--  show (CrudUp_Delete _) = "delete"
+--
+--instance ToJSON (CrudUpMsg f) where
+--    toEncoding = genericToEncoding defaultOptions
+--
+--instance FromJSON (CrudUpMsg f)
 
 data Up
   = Up_ListAccounts
@@ -61,6 +72,11 @@ data Up
   | Up_ListCaches
   | Up_AddCache (Batch (BinaryCacheT Maybe))
   | Up_DelCaches (Batch BinaryCacheId)
+
+  | Up_ListBuilders
+  | Up_CreateBuilders (Batch (BuilderT Maybe))
+  | Up_DelBuilders (Batch BuilderId)
+
   deriving (Show,Generic)
 
 data Down
@@ -73,6 +89,7 @@ data Down
   | Down_CiSettings (Scrubbed CiSettings)
   | Down_CiInfo Text
   | Down_Caches [BinaryCache]
+  | Down_Builders [Builder]
   deriving (Generic)
 
 instance ToJSON Up where

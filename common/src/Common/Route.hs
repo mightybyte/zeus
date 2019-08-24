@@ -74,6 +74,7 @@ data FrontendRoute :: * -> * where
   FR_Jobs :: FrontendRoute (R JobRoute)
   FR_Repos :: FrontendRoute (R CrudRoute)
   FR_Accounts :: FrontendRoute (R CrudRoute)
+  FR_Builders :: FrontendRoute (R CrudRoute)
   FR_Caches :: FrontendRoute (R CrudRoute)
   FR_Settings :: FrontendRoute ()
 
@@ -115,6 +116,7 @@ backendRouteEncoder =
       FR_Jobs -> PathSegment "jobs" jobRouteEncoder
       FR_Repos -> PathSegment "repos" crudRouteEncoder
       FR_Accounts -> PathSegment "accounts" crudRouteEncoder
+      FR_Builders -> PathSegment "builders" crudRouteEncoder
       FR_Caches -> PathSegment "caches" crudRouteEncoder
       FR_Settings -> PathSegment "settings" $ unitEncoder mempty
 
@@ -137,6 +139,7 @@ tabTitle sfr@(Some.Some sec) = case sec of
   FR_Jobs -> text $ frToText sfr
   FR_Repos -> text $ frToText sfr
   FR_Accounts -> text $ frToText sfr
+  FR_Builders -> text $ frToText sfr
   FR_Caches -> text $ frToText sfr
   FR_Settings -> text $ frToText sfr
 
@@ -147,6 +150,7 @@ frToText (Some.Some sec) = case sec of
   FR_Jobs -> "Jobs"
   FR_Repos -> "Repos"
   FR_Accounts -> "Accounts"
+  FR_Builders -> "Builders"
   FR_Caches -> "Caches"
   FR_Settings -> "Settings"
 
@@ -157,5 +161,6 @@ tabHomepage (Some.Some sec) = sec :/ case sec of
   FR_Jobs -> Job_List :/ ()
   FR_Repos -> Crud_List :/ ()
   FR_Accounts -> Crud_List :/ ()
+  FR_Builders -> Crud_List :/ ()
   FR_Caches -> Crud_List :/ ()
   FR_Settings -> ()

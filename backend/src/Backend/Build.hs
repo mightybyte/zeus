@@ -188,11 +188,17 @@ threadWatcher buildThreads start timeout ecMVar wtid jobId = go
                   atomicModifyIORef buildThreads $ \m ->
                     (M.delete jobId m, ())
                   killThread tid
+                  appendFile (buildLogFilePath jobId) . prettyProcMsg
+                    =<< textProcMsg "Build timed out"
                   return JobTimedOut
             else do
 
               threadDelay 5000000 >> go
         Just ec -> return $ exitCodeToStatus ec
+
+appendToJobLog jid msg = do
+  let outputFile = printf "%s/%d.txt" buildOutputDir jid
+  appendFile outputFile msg
 
 microsSince :: UTCTime -> IO Int
 microsSince start = do
@@ -208,6 +214,9 @@ microsToDelay
 microsToDelay timeout start = do
     micros <- microsSince start
     return $ timeout * 1000000 - micros
+
+buildLogFilePath :: Int -> FilePath
+buildLogFilePath jid = printf "%s/%d.txt" buildOutputDir jid
 
 buildOutputDir :: String
 buildOutputDir = "log/builds"
@@ -257,7 +266,7 @@ buildThread se ecMVar rng repo ca job = do
   let repoDir = cloneDir </> toS (_repo_name repo)
   createDirectoryIfMissing True cloneDir
   createDirectoryIfMissing True buildOutputDir
-  let outputFile = printf "%s/%d.txt" buildOutputDir jid
+  let outputFile = buildLogFilePath jid
   printf "Writing build output to %s\n" outputFile
 
   e <- liftIO getEnvironment

@@ -16,43 +16,17 @@
 module Common.Types.Builder where
 
 ------------------------------------------------------------------------------
-import           Control.Monad
-import           Data.Readable
+import           Data.Aeson
 import           Data.Text (Text)
 import           Database.Beam
-import           Database.Beam.Backend.SQL
-import           Database.Beam.Backend.Types
-import           Database.Beam.Migrate
 ------------------------------------------------------------------------------
-
+import           Common.Types.Platform
 ------------------------------------------------------------------------------
-
-data Platform = X86_64_Darwin | X86_64_Linux | I686_Linux
-  deriving (Eq,Ord,Enum,Bounded)
-
-instance Show Platform where
-  show X86_64_Darwin = "x86_64-darwin"
-  show X86_64_Linux = "x86_64-linux"
-  show I686_Linux = "i686-linux"
-
-instance Readable Platform where
-  fromText "x86_64-darwin" = return X86_64_Darwin
-  fromText "x86_64-linux" = return X86_64_Linux
-  fromText "i686-linux" = return I686_Linux
-  fromText _ = mzero
-
-instance BeamMigrateSqlBackend be => HasDefaultSqlDataType be Platform where
-  defaultSqlDataType _ _ _ = varCharType Nothing Nothing
-
-instance HasSqlValueSyntax be String => HasSqlValueSyntax be Platform where
-  sqlValueSyntax = autoSqlValueSyntax
-
-instance (BeamBackend be, FromBackendRow be Text) => FromBackendRow be Platform where
-  fromBackendRow = maybe (error "BeamRowParseError") id . fromText <$> fromBackendRow
 
 data BuilderT f = Builder
   { _builder_id :: C f Int
-  , _builder_ip :: C f Text
+  , _builder_user :: C f Text -- ^ The user to connect as
+  , _builder_host :: C f Text -- ^ Hostname or IP address
   , _builder_platform :: C f Platform
   , _builder_maxBuilds :: C f Int
   , _builder_speedFactor :: C f Int
@@ -61,10 +35,47 @@ data BuilderT f = Builder
 type Builder = BuilderT Identity
 type BuilderId = PrimaryKey BuilderT Identity
 
-deriving instance Eq (PrimaryKey BuilderT Identity)
+Builder
+  (LensFor builder_id)
+  (LensFor builder_user)
+  (LensFor builder_host)
+  (LensFor builder_platform)
+  (LensFor builder_maxBuilds)
+  (LensFor builder_speedFactor)
+  = tableLenses
+
 deriving instance Eq Builder
-deriving instance Show (PrimaryKey BuilderT Identity)
+deriving instance Eq (BuilderT Maybe)
+deriving instance Eq (PrimaryKey BuilderT Identity)
+deriving instance Eq (PrimaryKey BuilderT Maybe)
+deriving instance Ord Builder
+deriving instance Ord (BuilderT Maybe)
+deriving instance Ord (PrimaryKey BuilderT Identity)
+deriving instance Ord (PrimaryKey BuilderT Maybe)
 deriving instance Show Builder
+deriving instance Show (BuilderT Maybe)
+deriving instance Show (PrimaryKey BuilderT Identity)
+deriving instance Show (PrimaryKey BuilderT Maybe)
+
+instance ToJSON (PrimaryKey BuilderT Identity) where
+    toEncoding = genericToEncoding defaultOptions
+
+instance FromJSON (PrimaryKey BuilderT Identity)
+
+instance ToJSON (PrimaryKey BuilderT Maybe) where
+    toEncoding = genericToEncoding defaultOptions
+
+instance FromJSON (PrimaryKey BuilderT Maybe)
+
+instance ToJSON (BuilderT Identity) where
+    toEncoding = genericToEncoding defaultOptions
+
+instance FromJSON (BuilderT Identity)
+
+instance ToJSON (BuilderT Maybe) where
+    toEncoding = genericToEncoding defaultOptions
+
+instance FromJSON (BuilderT Maybe)
 
 instance Beamable BuilderT
 
@@ -72,3 +83,6 @@ instance Table BuilderT where
   data PrimaryKey BuilderT f = BuilderId (Columnar f Int)
     deriving (Generic, Beamable)
   primaryKey = BuilderId . _builder_id
+
+builderKeyToInt :: PrimaryKey BuilderT Identity -> Int
+builderKeyToInt (BuilderId k) = k

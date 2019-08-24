@@ -12,6 +12,7 @@ library
     , beam-core
     , beam-migrate
     , bytestring
+    , containers
     , data-default
     , dependent-sum
     , directory
@@ -33,12 +34,12 @@ library
     Common.Api
     Common.Route
     Common.Types.BinaryCache
+    Common.Types.BuildJob
+    Common.Types.Builder
     Common.Types.CacheJob
     Common.Types.CachedHash
     Common.Types.CiSettings
     Common.Types.ConnectedAccount
-    Common.Types.BuildJob
-    Common.Types.Builder
     Common.Types.JobStatus
     Common.Types.NixCacheKeyPair
     Common.Types.ProcMsg

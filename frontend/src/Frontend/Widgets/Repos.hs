@@ -14,8 +14,11 @@ module Frontend.Widgets.Repos where
 
 ------------------------------------------------------------------------------
 import           Control.Monad.Reader
+import           Data.Bool
 import qualified Data.Map as M
 import           Data.Maybe
+import           Data.Set (Set)
+import qualified Data.Set as S
 import           Data.Text (Text)
 import qualified Data.Text as T
 import           Database.Beam
@@ -24,10 +27,13 @@ import           Obelisk.Route.Frontend
 import           Reflex.Dom.Contrib.CssClass
 import           Reflex.Dom.Contrib.Utils
 import           Reflex.Dom.Core
+import           Reflex.Network
 ------------------------------------------------------------------------------
 import           Common.Route
 import           Common.Types.BinaryCache
+import           Common.Types.Builder
 import           Common.Types.ConnectedAccount
+import           Common.Types.Platform
 import           Common.Types.Repo
 import           Common.Types.S3Cache
 import           Frontend.App
@@ -91,7 +97,7 @@ addRepo = do
       return ()
 
 unfilledRepo :: RepoT Maybe
-unfilledRepo = Repo Nothing (ConnectedAccountId Nothing) Nothing Nothing Nothing (Just mempty) Nothing (BinaryCacheId Nothing) Nothing
+unfilledRepo = Repo Nothing (ConnectedAccountId Nothing) Nothing Nothing Nothing (Just mempty) (Just mempty) Nothing (BinaryCacheId Nothing) Nothing
 
 newRepoForm
   :: MonadApp r t m
@@ -105,9 +111,18 @@ newRepoForm iv sv = do
     drns <- divClass "field" $ do
       el "label" $ do
         text "Repo Namespace "
-        let tip = "Everything after the domain but before the repository name.  In GitHub, this is just the user/org name.  In GitLab, this can be multiple nested subgroups."
-        elAttr "span" ("data-tooltip" =: tip <> "data-position" =: "top left") $
+        let tip = "Everything after the domain but before the repository name.\nIn GitHub, this is just the user/org name.\nIn GitLab, this can be multiple nested subgroups."
+        elAttr "span" ("data-tooltip" =: tip <>
+                       "data-position" =: "top left" <>
+                       "data-variation" =: "wide") $
           elAttr "i" ("class" =: "info circle icon") blank
+        --divClass "ui button" $ elAttr "i" ("class" =: "info circle icon") blank
+        --divClass "ui popup top left transition hidden" $ do
+        --  text "Everything after the domain but before the repository name."
+        --  el "br" blank
+        --  text "In GitHub, this is just the user/org name."
+        --  el "br" blank
+        --  text "In GitLab, this can be multiple nested subgroups."
       textField
         (fromMaybe "" $ _repo_namespace iv)
         (fromMaybe "" . _repo_namespace <$> sv)
@@ -139,7 +154,7 @@ newRepoForm iv sv = do
 
     let attrsTip = "Optional space-separated list of attributes to build"
     let attrsLabel = do
-          text "Attributes to build"
+          text "Attributes to build "
           elAttr "span" ("data-tooltip" =: attrsTip <> "data-position" =: "top left") $
             elAttr "i" ("class" =: "info circle icon") blank
     das <- divClass "field" $ do
@@ -149,9 +164,19 @@ newRepoForm iv sv = do
         & inputElementConfig_setValue .~ (maybe "" (T.unwords . unAttrList) . _repo_attributesToBuild <$> sv)
       return $ fmap (AttrList . T.words) $ value ie
 
+    let attrsTip = "To get more platforms, add more builders"
+    let attrsLabel = do
+          text "Platforms to build with "
+          elAttr "span" ("data-tooltip" =: attrsTip <> "data-position" =: "top left") $
+            elAttr "i" ("class" =: "info circle icon") blank
+    divClass "field" $ do
+      el "label" attrsLabel
+      -- Change this initial value
+    dps <- platformWidget (S.singleton X86_64_Linux) never
+
     dt <- labelledAs "Timeout (in seconds)" $ readableField Nothing
       (maybe (Just 3600) Just $ _repo_timeout iv)
-      (_repo_timeout <$> sv)
+      (_repo_timeout <$> traceEvent "timeout sv" sv)
     return $ do
         rns <- drns
         rn <- drn
@@ -161,12 +186,14 @@ newRepoForm iv sv = do
         mca <- dmca
         c <- dcache
         as <- das
+        ps <- dps
         pure $ case mca of
           Nothing -> unfilledRepo
           Just a -> do
             let aid = _connectedAccount_id a
                 maid = ConnectedAccountId $ Just aid
-             in Repo Nothing maid (Just rn) (Just rns) (Just nf) (Just as) t (cachePrimaryKey c) Nothing
+             in Repo Nothing maid (Just rn) (Just rns) (Just nf) (Just as)
+                     (Just $ PlatformSet ps) t (cachePrimaryKey c) Nothing
 
 cachePrimaryKey :: Maybe BinaryCache -> PrimaryKey BinaryCacheT (Nullable Maybe)
 cachePrimaryKey Nothing = BinaryCacheId Nothing
@@ -204,10 +231,39 @@ cacheDropdown caches iv sv = do
 
   return $ value d
 
+platformWidget
+  :: forall r t m. MonadApp r t m
+  => Set Platform
+  -> Event t (Set Platform)
+  -> m (Dynamic t (Set Platform))
+platformWidget iv sv = do
+  bs <- asks _as_builders
+  let mkPair a = (a,a)
+  let ps = S.fromList . map (_builder_platform) . M.elems <$> bs
+  res <- listWithKey (M.fromList . map mkPair . S.toList <$> ps) $ \plat _ ->
+    singlePlatform plat iv sv
+  return $ fmap (S.fromList . catMaybes) $ join $
+    distributeListOverDyn .
+    map (\(k,db) -> bool Nothing (Just k) <$> db) .
+    M.toList <$> res
+
+singlePlatform
+  :: MonadApp r t m
+  => Platform
+  -> Set Platform
+  -> Event t (Set Platform)
+  -> m (Dynamic t Bool)
+singlePlatform plat iv sv = divClass "inline field" $ do
+  divClass "ui checkbox" $ do
+    v <- checkbox (S.member plat iv) $ def
+      & setValue .~ (S.member plat <$> sv)
+    el "label" $ text $ tshow plat
+    return $ value v
+
 mkFullName :: AccountProvider -> Text -> Text -> Text
 mkFullName GitHub owner name = owner <> "/" <> name
 mkFullName GitLab owner name = owner <> "/" <> name
 
 isValidRepo :: RepoT Maybe -> Bool
-isValidRepo (Repo _ (ConnectedAccountId (Just _)) (Just _) (Just _) (Just _) (Just _) (Just _) (BinaryCacheId (Just _)) _) = True
+isValidRepo (Repo _ (ConnectedAccountId (Just _)) (Just _) (Just _) (Just _) (Just _) (Just _) (Just _) (BinaryCacheId _) _) = True
 isValidRepo _ = False
