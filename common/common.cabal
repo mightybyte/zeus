@@ -43,6 +43,7 @@ library
     Common.Types.JobStatus
     Common.Types.NixCacheKeyPair
     Common.Types.ProcMsg
+    Common.Types.Platform
     Common.Types.Repo
     Common.Types.RepoBuildInfo
     Common.Types.S3Cache
