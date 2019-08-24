@@ -5,6 +5,7 @@ module Backend.Process where
 ------------------------------------------------------------------------------
 import           Control.Error
 import qualified Control.Exception as C
+import           Control.Monad.Except
 import           Control.Monad.Trans
 import           Data.Text (Text)
 import qualified Data.Text as T
@@ -77,6 +78,16 @@ runCP cp action = do
     (Turtle.foldShell (Turtle.streamWithErr cp (return mempty)) (shellHandler action))
   case res of
     Left e -> ExceptT $ return $ Left e
+    Right _ -> return ()
+
+runCPStr
+  :: CreateProcess
+  -> (ProcMsg -> IO ())
+  -> ExceptT String IO ()
+runCPStr cp action = do
+  res <- lift $ runExceptT $ runCP cp action
+  case res of
+    Left ec -> throwError $ "runCPStr failed with exit code " <> show ec
     Right _ -> return ()
 
 cmdSpecToText :: CmdSpec -> Text
