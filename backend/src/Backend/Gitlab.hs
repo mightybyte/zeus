@@ -16,16 +16,21 @@ import           Data.String.Conv
 import           Data.Text (Text)
 import qualified Data.Text as T
 import qualified Data.Text.Encoding as T
+import           Database.Beam
+import           Database.Beam.Sqlite
 import           Network.HTTP.Client
 import qualified Network.HTTP.Client as HC
 import           Network.HTTP.Client.TLS
 import           Snap.Core
 ------------------------------------------------------------------------------
 import           Backend.Common
+import           Backend.Db
 import           Backend.Gitlab.Schema
 import           Backend.Schedule
 import           Backend.Types.ServerEnv
 import           Common.Route
+import           Common.Types.ConnectedAccount
+import           Common.Types.Repo
 import           Common.Types.RepoBuildInfo
 ------------------------------------------------------------------------------
 
@@ -55,7 +60,19 @@ gitlabHandler env = do
               (_push_user_name p)
               (_push_user_avatar p)
 
-        scheduleBuild env rbi
+        ras <- runBeamSqlite (_serverEnv_db env) $
+          runSelectReturningList $ select $ do
+            account <- all_ (_ciDb_connectedAccounts ciDb)
+            repo <- all_ (_ciDb_repos ciDb)
+            guard_ (_repo_name repo ==. val_ (_rbi_repoName rbi) &&.
+                    _repo_namespace repo ==. val_ ns &&.
+                    _connectedAccount_provider account ==. val_ GitLab &&.
+                    _connectedAccount_id account ==. repo ^. repo_accessAccount)
+            return repo
+        case ras of
+          [] -> putStrLn "Error building push request: repo doesn't exist"
+          [r] -> scheduleBuild env rbi r
+          _ -> putStrLn "Error building push request: multiple repos match (this shouldn't happen)"
         --checkOutstandingMergeRequests env p
     _ -> notFound "gitlab event"
 

@@ -13,6 +13,7 @@ import           Database.SQLite.Simple
 import           System.Mem.Weak
 ------------------------------------------------------------------------------
 import           Backend.Types.BackendSettings
+import           Backend.Types.BuilderManager
 import           Backend.Types.ConnRepo
 import           Backend.Types.NixCacheKeyPair
 ------------------------------------------------------------------------------
@@ -35,6 +36,7 @@ data ServerEnv = ServerEnv
   , _serverEnv_buildThreads :: IORef (Map Int (Weak ThreadId))
   , _serverEnv_buildListeners :: IORef (Map Int (Set ConnId))
   , _serverEnv_cacheKey :: NixCacheKeyPair
+  , _serverEnv_builderManager :: BuilderManager
   }
 
 beamQuery :: ServerEnv -> SqliteM a -> IO a

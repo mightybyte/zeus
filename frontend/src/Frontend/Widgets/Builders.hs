@@ -94,7 +94,7 @@ addBuilder = do
       return ()
 
 unfilledBuilder :: BuilderT Maybe
-unfilledBuilder = Builder Nothing Nothing Nothing Nothing Nothing Nothing
+unfilledBuilder = Builder Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing
 
 newBuilderForm
   :: MonadApp r t m
@@ -130,7 +130,7 @@ newBuilderForm iv sv = do
       plat <- dplat
       mmb <- dmmb
       msf <- dmsf
-      pure $ Builder Nothing (Just u) (Just h) (Just plat) mmb msf
+      pure $ Builder Nothing (Just u) (Just h) (Just plat) mmb msf Nothing Nothing
 
 cachePrimaryKey :: Maybe BinaryCache -> PrimaryKey BinaryCacheT (Nullable Maybe)
 cachePrimaryKey Nothing = BinaryCacheId Nothing
@@ -152,5 +152,5 @@ platformDropdown platforms iv sv = do
   return $ value d
 
 isValidBuilder :: BuilderT Maybe -> Bool
-isValidBuilder (Builder _ (Just _) (Just _) (Just _) (Just _) (Just _)) = True
+isValidBuilder (Builder _ (Just _) (Just _) (Just _) (Just _) (Just _) (Just _) (Just _)) = True
 isValidBuilder _ = False

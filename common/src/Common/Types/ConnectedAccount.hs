@@ -43,6 +43,8 @@ instance ToJSON AccountProvider where
 
 instance FromJSON AccountProvider
 
+instance BeamMigrateSqlBackend be => HasSqlEqualityCheck be AccountProvider
+
 instance HasSqlValueSyntax be String => HasSqlValueSyntax be AccountProvider where
   sqlValueSyntax = autoSqlValueSyntax
 

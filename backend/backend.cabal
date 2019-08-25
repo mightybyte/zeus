@@ -66,6 +66,7 @@ library
   exposed-modules:
     Backend
     Backend.Build
+    Backend.Builders
     Backend.Cache
     Backend.CacheServer
     Backend.Common
@@ -76,10 +77,12 @@ library
     Backend.Gitlab
     -- Backend.Gitlab.Request
     Backend.Gitlab.Schema
+    Backend.Logger
     Backend.NixBase32
     Backend.Process
     Backend.Schedule
     Backend.Types.BackendSettings
+    Backend.Types.BuilderManager
     Backend.Types.ConnRepo
     Backend.Types.NixCacheKeyPair
     Backend.Types.ServerEnv

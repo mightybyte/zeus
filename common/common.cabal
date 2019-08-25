@@ -47,4 +47,5 @@ library
     Common.Types.Repo
     Common.Types.RepoBuildInfo
     Common.Types.S3Cache
+    Common.Types.ZeusMsg
     Humanizable

@@ -27,6 +27,8 @@ import           Database.Beam.Migrate.Generics
 import           Database.Beam.Migrate.SQL
 ------------------------------------------------------------------------------
 import           Common.Types.JobStatus
+import           Common.Types.Platform
+import           Common.Types.Repo
 import           Common.Types.RepoBuildInfo
 ------------------------------------------------------------------------------
 
@@ -38,9 +40,8 @@ instance BeamMigrateSqlBackend be => HasDefaultSqlDataType be UTCTime where
 data BuildJobT f = BuildJob
   { _buildJob_id :: C f Int
   , _buildJob_repoBuildInfo :: RepoBuildInfoT f
-  -- ^ Denormalizing this and putting it inline instead of using a foreign key
-  -- to the repos table allows us to delete repos without violating foreign
-  -- key constraints here.
+  , _buildJob_repo :: PrimaryKey RepoT f
+  , _buildJob_platform :: C f Platform
   , _buildJob_receivedAt :: C f UTCTime
   , _buildJob_startedAt :: C f (Maybe UTCTime)
   , _buildJob_endedAt :: C f (Maybe UTCTime)

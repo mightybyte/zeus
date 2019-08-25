@@ -6,7 +6,6 @@ module Backend.Process where
 import           Control.Error
 import qualified Control.Exception as C
 import           Control.Monad.Except
-import           Control.Monad.Trans
 import           Data.Text (Text)
 import qualified Data.Text as T
 import           Data.Time

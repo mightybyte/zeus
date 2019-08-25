@@ -30,6 +30,17 @@ import           Database.Beam.Migrate
 data Platform = X86_64_Darwin | X86_64_Linux | I686_Linux
   deriving (Eq,Ord,Show,Read,Enum,Bounded,Generic)
 
+instance BeamMigrateSqlBackend be => HasSqlEqualityCheck be Platform
+
+instance BeamMigrateSqlBackend be => HasDefaultSqlDataType be Platform where
+  defaultSqlDataType _ _ _ = varCharType Nothing Nothing
+
+instance HasSqlValueSyntax be String => HasSqlValueSyntax be Platform where
+  sqlValueSyntax = autoSqlValueSyntax
+
+instance (BeamBackend be, FromBackendRow be Text) => FromBackendRow be Platform where
+  fromBackendRow = read . T.unpack <$> fromBackendRow
+
 plaformText :: Platform -> Text
 plaformText X86_64_Darwin = "x86_64-darwin"
 plaformText X86_64_Linux = "x86_64-linux"
@@ -46,11 +57,3 @@ instance ToJSON Platform where
 
 instance FromJSON Platform
 
-instance BeamMigrateSqlBackend be => HasDefaultSqlDataType be Platform where
-  defaultSqlDataType _ _ _ = varCharType Nothing Nothing
-
-instance HasSqlValueSyntax be String => HasSqlValueSyntax be Platform where
-  sqlValueSyntax = autoSqlValueSyntax
-
-instance (BeamBackend be, FromBackendRow be Text) => FromBackendRow be Platform where
-  fromBackendRow = read . T.unpack <$> fromBackendRow

@@ -10,12 +10,10 @@ module Backend.Build where
 
 ------------------------------------------------------------------------------
 import           Control.Concurrent
-import           Control.Concurrent.STM
 import           Control.Error
 import qualified Control.Exception as C
 import           Control.Lens
 import           Control.Monad
-import qualified Data.ByteString as B
 import qualified Data.ByteString.Char8 as CB
 import           Data.IORef
 import           Data.Map (Map)
@@ -25,7 +23,6 @@ import           Data.String.Conv
 import           Data.Text (Text)
 import qualified Data.Text as T
 import qualified Data.Text.IO as T
-import qualified Data.Text.Encoding as T
 import           Data.Time
 import           Database.Beam
 import           Database.Beam.Sqlite
@@ -36,12 +33,12 @@ import           System.Exit
 import           System.FilePath
 import           System.IO
 import           System.Mem.Weak
-import           System.Process
 import           Text.Printf
 ------------------------------------------------------------------------------
 import           Backend.Db
 import           Backend.DbLib
 import           Backend.ExecutablePaths
+import           Backend.Logger
 import           Backend.Process
 import           Backend.Types.ServerEnv
 import           Backend.WsCmds
@@ -50,22 +47,35 @@ import           Common.Types.ConnectedAccount
 import           Backend.Types.ConnRepo
 import           Common.Types.BinaryCache
 import           Common.Types.BuildJob
+import           Common.Types.Builder
 import           Common.Types.CacheJob
 import           Common.Types.CiSettings
 import           Common.Types.JobStatus
+import           Common.Types.Platform
 import           Common.Types.ProcMsg
 import           Common.Types.Repo
 import           Common.Types.RepoBuildInfo
+import           Common.Types.ZeusMsg
 ------------------------------------------------------------------------------
 
-getNextJob :: ServerEnv -> IO (Maybe BuildJob)
-getNextJob se = do
+getNextJob :: ServerEnv -> Maybe Platform -> IO (Maybe BuildJob)
+getNextJob se Nothing = do
   beamQueryConn (_serverEnv_db se) $
     runSelectReturningOne $
     select $
     orderBy_ (asc_ . _buildJob_id) $ limit_ 1 $ do
       job <- all_ (_ciDb_buildJobs ciDb)
-      guard_ (job ^. buildJob_status ==. (val_ JobPending))
+      guard_ ( _buildJob_status job ==. val_ JobPending )
+      return job
+getNextJob se (Just plat) = do
+  beamQueryConn (_serverEnv_db se) $
+    runSelectReturningOne $
+    select $
+    orderBy_ (asc_ . _buildJob_id) $ limit_ 1 $ do
+      job <- all_ (_ciDb_buildJobs ciDb)
+      guard_ ( _buildJob_status job ==. val_ JobPending &&.
+               _buildJob_platform job ==. val_ plat
+             )
       return job
 
 setJobStatus :: Connection -> UTCTime -> JobStatus -> BuildJob -> IO ()
@@ -89,24 +99,31 @@ setJobStatus dbConn t status incomingJob = do
              (\job -> _buildJob_id job ==. val_ (_buildJob_id incomingJob))
     return ()
 
-buildManagerThread :: ServerEnv -> IO ()
-buildManagerThread se = do
+getBid :: Maybe Builder -> MBuilderId
+getBid Nothing = BuilderId Nothing
+getBid (Just b) = BuilderId (Just $ _builder_id b)
+
+-- Each remote builder gets its own thread.  Nothing means that there are no
+-- remote builders and the build is running on the Zeus master node.
+buildManagerThread :: ServerEnv -> Maybe Builder -> IO ()
+buildManagerThread se mbuilder = do
+  let plat = _builder_platform <$> mbuilder
   let dbConn = _serverEnv_db se
   rng <- mkRNG
   forever $ do
-    mjob <- getNextJob se
+    mjob <- getNextJob se plat
     case mjob of
       Nothing -> threadDelay 5000000
       Just job -> do
         let rbi = _buildJob_repoBuildInfo job
         case _rbi_repoEvent rbi of
-          RepoPullRequest ->
+          RepoPullRequest -> logStr dbConn Info (getBid mbuilder) $
             printf "Ignoring pull request message on %s/%s commit %s\n"
                    (_rbi_repoNamespace rbi) (_rbi_repoName rbi) (_rbi_commitHash rbi)
           RepoPush -> do
-            printf "Got push message on %s/%s\n"
+            logStr dbConn Info (getBid mbuilder) $ printf "Got push message on %s/%s\n"
                    (_rbi_repoNamespace rbi) (_rbi_repoName rbi)
-            printf "Pushed commit %s to %s\n"
+            logStr dbConn Info (getBid mbuilder) $ printf "Pushed commit %s to %s\n"
                    (_rbi_commitHash rbi) (_rbi_gitRef rbi)
             ras <- runBeamSqlite dbConn $
               runSelectReturningList $ select $ do
@@ -117,23 +134,24 @@ buildManagerThread se = do
                 return (repo, account)
             case ras of
               [] -> do
-                putStrLn "Warning: Got a webhook for a repo that is not in our DB.  Is the DB corrupted?"
+                logStr dbConn Warn (getBid mbuilder) $ "Warning: Got a webhook for a repo that is not in our DB.  Is the DB corrupted?"
                 beamQueryConn (_serverEnv_db se) $
                   runDelete $ delete (_ciDb_buildJobs ciDb)
                     (\j -> j ^. buildJob_id ==. val_ (_buildJob_id job))
                 return ()
-              [(r,a)] -> runBuild se rng r a job
-              _ -> printf "Warning: Got more repos than expected.  Why isn't %s/%s unique?\n"
+              [(r,a)] -> runBuild se mbuilder rng r a job
+              _ -> logStr dbConn Warn (getBid mbuilder) $ printf "Warning: Got more repos than expected.  Why isn't %s/%s unique?\n"
                           (_rbi_repoNamespace rbi) (_rbi_repoName rbi)
 
 runBuild
   :: ServerEnv
+  -> Maybe Builder
   -> RNG
   -> Repo
   -> ConnectedAccount
   -> BuildJob
   -> IO ()
-runBuild se rng repo ca incomingJob = do
+runBuild se mbuilder rng repo ca incomingJob = do
   let dbConn = _serverEnv_db se
       connRepo = _serverEnv_connRepo se
   start <- getCurrentTime
@@ -141,7 +159,7 @@ runBuild se rng repo ca incomingJob = do
   broadcastJobs dbConn connRepo
 
   ecMVar <- newEmptyMVar
-  wtid <- mkWeakThreadId =<< forkIO (buildThread se ecMVar rng repo ca incomingJob)
+  wtid <- mkWeakThreadId =<< forkIO (buildThread se mbuilder ecMVar rng repo ca incomingJob)
   let jobId = fromIntegral $ _buildJob_id incomingJob
   atomicModifyIORef (_serverEnv_buildThreads se) $ \m ->
     (M.insert jobId wtid m, ())
@@ -196,6 +214,7 @@ threadWatcher buildThreads start timeout ecMVar wtid jobId = go
               threadDelay 5000000 >> go
         Just ec -> return $ exitCodeToStatus ec
 
+appendToJobLog :: Int -> String -> IO ()
 appendToJobLog jid msg = do
   let outputFile = printf "%s/%d.txt" buildOutputDir jid
   appendFile outputFile msg
@@ -246,14 +265,16 @@ addCacheJob se cacheId sp = do
 
 buildThread
   :: ServerEnv
+  -> Maybe Builder
   -> MVar ExitCode
   -> RNG
   -> Repo
   -> ConnectedAccount
   -> BuildJob
   -> IO ()
-buildThread se ecMVar rng repo ca job = do
+buildThread se mbuilder ecMVar rng repo ca job = do
   start <- getCurrentTime
+  let dbConn = _serverEnv_db se
   let rbi = _buildJob_repoBuildInfo job
   let jid = _buildJob_id job
   tok <- randomToken 8 rng
@@ -267,10 +288,10 @@ buildThread se ecMVar rng repo ca job = do
   createDirectoryIfMissing True cloneDir
   createDirectoryIfMissing True buildOutputDir
   let outputFile = buildLogFilePath jid
-  printf "Writing build output to %s\n" outputFile
+  logStr dbConn Info (getBid mbuilder) $ printf "Writing build output to %s\n" outputFile
 
   e <- liftIO getEnvironment
-  Just cs <- liftIO $ getCiSettings (_serverEnv_db se)
+  Just cs <- liftIO $ getCiSettings dbConn
   let buildEnv = M.toList $ M.insert "NIX_PATH" (toS $ _ciSettings_nixPath cs) $ M.fromList e
 
   withLogHandle outputFile $ \lh  -> do
@@ -322,14 +343,14 @@ buildThread se ecMVar rng repo ca job = do
 
           msp <- liftIO $ getSymlinkTarget (repoDir </> "result")
           case msp of
-            Nothing -> liftIO $ putStrLn "No build outputs to cache"
+            Nothing -> liftIO $ logStr dbConn Warn (getBid mbuilder) "No build outputs to cache"
             Just sp -> do
               liftIO $ addCacheJob se (_repo_cache repo) $ T.pack sp
-              liftIO $ printf "Subjob '%s' succeeded with result storepath %s\n" (show mattr) (show sp)
+              liftIO $ logStr dbConn Info (getBid mbuilder) $ printf "Subjob '%s' succeeded with result storepath %s\n" (show mattr) (show sp)
 
     case res of
       Left ec -> do
-        liftIO $ printf "Build failed with code %s\n" (show ec)
+        liftIO $ logStr dbConn Error (getBid mbuilder) $ printf "Build failed with code %s\n" (show ec)
         putMVar ecMVar ec
       Right _ -> do
         let attrs = unAttrList $ _repo_attributesToBuild repo
@@ -348,7 +369,6 @@ buildThread se ecMVar rng repo ca job = do
 
 getSymlinkTarget :: FilePath -> IO (Maybe FilePath)
 getSymlinkTarget nm = do
-    putStrLn $ "Getting symlink target for " <> nm
     exists <- doesPathExist nm
     if exists
       then do
@@ -360,58 +380,8 @@ getSymlinkTarget nm = do
 
 data GitMsgType = UsernameMessage String | PasswordMessage String | OtherMessage
 
---runInDirWithEnv :: Handle -> String -> FilePath -> Maybe [(String, String)] -> IO ExitCode
---runInDirWithEnv lh cmd dir e = do
---  let cp = (shell cmd)
---        { cwd = Just dir
---        , env = e
---        , std_out = UseHandle lh
---        , std_err = UseHandle lh
---        }
---  hPutStrLn lh $ printf "Executing command from %s:" (show $ cwd cp)
---  logWithTimestamp lh $ getCommand cp
---  exitCode <- withCreateProcess_ "runInDirWithEnv" cp $ \inh outh errh ph -> do
---    -- TODO Properly handle stdout and stderr
---    ec <- waitForProcess ph
---    -- TODO Terminate process if it runs too long
---    return ec
---
---  hPutStrLn lh $ "Exited with: " ++ show exitCode
---  return exitCode
-
 toBS :: String -> CB.ByteString
 toBS = toS
-
-runCmd
-  :: Int
-  -- ^ Job ID (for debugging)
-  -> IO Int
-  -- ^ Timeout in seconds
-  -> String
-  -> FilePath
-  -> Maybe [(String, String)]
-  -> (Maybe Handle -- File handle for sending to the stdin for the process
-      -> ProcMsg -- message the process printed to stdout or stderr
-      -> IO ())
-  -> ExceptT ExitCode IO ExitCode
-runCmd jid calcDelay cmd dir e action = do
-  start <- liftIO getCurrentTime
-  let cp = (shell cmd)
-        { cwd = Just dir
-        , env = e
-        , std_in = CreatePipe
-        , std_out = CreatePipe
-        , std_err = CreatePipe
-        }
-  liftIO $ action Nothing $ ProcMsg start CiMsg $ "With env " <> T.pack (show e)
-  liftIO $ action Nothing $ ProcMsg start BuildCommandMsg $ T.pack cmd
-  exitCode <- liftIO $ withCreateProcess_ "runCmd" cp (collectOutput jid calcDelay action)
-  case exitCode of
-    ExitFailure _ -> hoistEither $ Left exitCode
-    ExitSuccess -> do
-      t <- liftIO $ getCurrentTime
-      liftIO $ clog $ printf "ExitSuccess in %.2f seconds" (realToFrac (diffUTCTime t start) :: Double)
-      hoistEither $ Right exitCode
 
 data ThreadType = TimerThread | ProcessThread
 
@@ -419,79 +389,6 @@ data ThreadType = TimerThread | ProcessThread
 clog :: String -> IO ()
 clog = CB.putStrLn . toS
 
-
 catchEOF :: String -> C.SomeException -> IO ()
 catchEOF msg e = clog $ printf "Caught exception in %s: %s" msg (show e)
 
-collectOutput
-  :: Int
-  -> (IO Int)
-  -- ^ Function that calculates the number of microseconds to delay
-  -> (Maybe Handle -> ProcMsg -> IO ())
-  -> Maybe Handle
-  -> Maybe Handle
-  -> Maybe Handle
-  -> ProcessHandle
-  -> IO ExitCode
-collectOutput jid calcDelay action (Just hIn) (Just hOut) (Just hErr) ph = do
-    msgQueue <- atomically newTQueue
-    hSetBuffering hOut LineBuffering
-    hSetBuffering hErr LineBuffering
-    let watchForOutput src h = do
-          t <- getCurrentTime
-          clog $ "calling hGetSome " <> show src
-          msg <- B.hGetSome h 4096
-          --msg <- B.hGetLine h
-          --msg <- C.handle (\e -> (catchEOF $ "hGetLine " <> show src) e >> return "") $ B.hGetLine h
-          clog $ printf "hGetSome %s returned %d bytes" (show src) (B.length msg)
-
-          when (not $ B.null msg) $ atomically $ writeTQueue msgQueue $ ProcMsg t src (T.decodeUtf8 msg)
-          watchForOutput src h
-        handleOutput = do
-          clog $ printf "Job %d handling output\n" jid
-          procMsg <- atomically (readTQueue msgQueue)
-          action (Just hIn) procMsg
-          handleOutput
-    otid <- forkIO $ watchForOutput StdoutMsg hOut
-    etid <- forkIO $ watchForOutput StderrMsg hErr
-    atid <- forkIO handleOutput
-
-    ecMVar <- newEmptyMVar
-    ttid <- forkIO $ do
-      d <- calcDelay
-      clog $ printf "Job %d delaying for %d microseconds\n" jid d
-      threadDelay d
-      putMVar ecMVar Nothing
-    ptid <- forkIO $ do
-      ec <- waitForProcess ph
-      putMVar ecMVar $ Just ec
-
-    mec <- takeMVar ecMVar
-    ec <- case mec of
-      Nothing -> do
-        -- Timeout exceeded
-        killThread ptid
-        terminateProcess ph
-        return $ ExitFailure 99
-      Just ec -> do
-        -- Process finished
-        threadDelay 1000000
-        killThread ttid
-        return ec
-
-    killThread otid
-    killThread etid
-    killThread atid
-    threadDelay 100000
-    clog $ printf "Job %d finished and killed all child threads\n" jid
-    return ec
-collectOutput _ _ _ _ _ _ _ = do
-  clog "WARN: collectOutput file descriptors are wonky!"
-  return $ ExitFailure 101
-
-
-getCommand :: CreateProcess -> String
-getCommand cp =
-    case cmdspec cp of
-      ShellCommand cmd -> cmd
-      RawCommand cmd args -> unwords (cmd : args)

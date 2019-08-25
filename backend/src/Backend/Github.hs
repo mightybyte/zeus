@@ -10,6 +10,7 @@ module Backend.Github where
 
 ------------------------------------------------------------------------------
 import           Control.Error
+import           Control.Lens
 import           Control.Monad.Trans
 import           Data.Aeson
 import           Data.ByteString (ByteString)
@@ -19,6 +20,8 @@ import           Data.String.Conv
 import           Data.Text (Text)
 import           Data.Text.Encoding
 import qualified Data.Vector as V
+import           Database.Beam
+import           Database.Beam.Sqlite
 import           GitHub.Data
 import           GitHub.Data.Name
 import qualified GitHub.Data.Webhooks.Events as GW
@@ -28,9 +31,12 @@ import           GitHub.Endpoints.Repos.Webhooks
 import           Snap.Core
 import           Text.Printf
 ------------------------------------------------------------------------------
+import           Backend.Db
 import           Backend.Schedule
 import           Backend.Types.ServerEnv
 import           Common.Route
+import           Common.Types.ConnectedAccount
+import           Common.Types.Repo
 import           Common.Types.RepoBuildInfo
 ------------------------------------------------------------------------------
 
@@ -62,13 +68,25 @@ handleValidatedHook env event body = do
       Just "push" -> mkPushRBI =<< eitherDecodeStrict (toS body)
       _ -> Left "Event not supported"
 
-    lift $ scheduleBuild env rbi
+    ras <- lift $ runBeamSqlite (_serverEnv_db env) $
+      runSelectReturningList $ select $ do
+        account <- all_ (_ciDb_connectedAccounts ciDb)
+        repo <- all_ (_ciDb_repos ciDb)
+        guard_ (_repo_name repo ==. val_ (_rbi_repoName rbi) &&.
+                _repo_namespace repo ==. val_ (_rbi_repoNamespace rbi) &&.
+                _connectedAccount_provider account ==. val_ GitHub &&.
+                _connectedAccount_id account ==. repo ^. repo_accessAccount)
+        return repo
+    liftIO $ case ras of
+      [] -> putStrLn "Error building push request: repo doesn't exist"
+      [r] -> scheduleBuild env rbi r
+      _ -> putStrLn "Error building push request: multiple repos match (this shouldn't happen)"
   case res of
     Left e -> putStrLn e
     Right _ -> return ()
 
 handlePR :: GW.PullRequestEvent -> RepoBuildInfo
-handlePR pre = do
+handlePR prEvent = do
     RepoBuildInfo
       (GW.whRepoName repo)
       (either GW.whSimplUserName GW.whUserLogin $ GW.whRepoOwner repo)
@@ -77,11 +95,11 @@ handlePR pre = do
       (GW.whPullReqTargetRef prHead)
       (GW.whPullReqTargetSha prHead)
       "" -- TODO Haven't found how to get the commit message from github yet
-      (GW.whUserLogin $ GW.evPullReqSender pre)
-      (Just $ GW.getUrl $ GW.whUserAvatarUrl $ GW.evPullReqSender pre)
+      (GW.whUserLogin $ GW.evPullReqSender prEvent)
+      (Just $ GW.getUrl $ GW.whUserAvatarUrl $ GW.evPullReqSender prEvent)
   where
-    pr = GW.evPullReqPayload pre
-    repo = GW.evPullReqRepo pre
+    pr = GW.evPullReqPayload prEvent
+    repo = GW.evPullReqRepo prEvent
     prHead = GW.whPullReqHead pr
 
 

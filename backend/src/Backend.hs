@@ -29,7 +29,7 @@ import           Data.Time
 import           Database.Beam
 import           Database.Beam.Sqlite
 import           Database.Beam.Sqlite.Migrate
-import           Database.Beam.Migrate.Simple
+import           Database.Beam.Migrate.Simple (autoMigrate)
 import           Database.SQLite.Simple
 import           GitHub.Auth
 import           GitHub.Data.Name
@@ -51,6 +51,7 @@ import           System.Process (rawSystem)
 import           Text.Printf
 ------------------------------------------------------------------------------
 import           Backend.Build
+import           Backend.Builders
 import           Backend.Cache
 import           Backend.CacheServer
 import           Backend.Common
@@ -168,9 +169,13 @@ backend = Backend
       let Just appRoute = decodeUtf8 <$> M.lookup "common/route" allConfigs
       listeners <- newIORef mempty
       keyPair <- getAppCacheKey appRoute
-      let env = ServerEnv appRoute settings secretToken dbConn
-                          connRepo buildThreads listeners keyPair
-      _ <- forkIO $ buildManagerThread env
+
+      bMgr <- newEmptyBuilderManager
+      let env = ServerEnv appRoute settings secretToken dbConn connRepo
+                          buildThreads listeners keyPair bMgr
+
+      startBuilders env
+
       _ <- forkIO $ cacheManagerThread env
       putStrLn "Worker threads forked, starting server..."
       serve $ serveBackendRoute env
@@ -498,7 +503,7 @@ createBuilder
   :: ServerEnv
   -> BuilderT Maybe
   -> IO ()
-createBuilder env (Builder _ u h p mb sf) = do
+createBuilder env (Builder _ u h p mb sf s lsu) = do
   beamQuery env $ do
     runInsert $ insert (_ciDb_builders ciDb) $ insertExpressions
            $ maybeToList $ Builder default_
@@ -507,6 +512,8 @@ createBuilder env (Builder _ u h p mb sf) = do
               <*> (val_ <$> p)
               <*> (val_ <$> mb)
               <*> (val_ <$> sf)
+              <*> (val_ <$> s)
+              <*> (val_ <$> lsu)
   bs <- beamQuery env $ do
     runSelectReturningList $ select $ all_ (_ciDb_builders ciDb)
   broadcast (_serverEnv_connRepo env) $ Down_Builders bs
