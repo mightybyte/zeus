@@ -263,6 +263,26 @@ addCacheJob se cacheId sp = do
     runInsert $ insert (_ciDb_cacheJobs ciDb) $ insertExpressions
       [CacheJob default_ (val_ sp) (val_ cacheId) (val_ Nothing) (val_ Nothing) (val_ JobPending)]
 
+
+--getCode
+--  :: (ProcMsg -> IO ())
+--  -> FilePath
+--  -> FilePath
+--  -> Text
+--  -> Text
+--  -> Text
+--  -> Text
+--  -> ExceptT ExitCode IO ()
+--getCode saveAndSend cloneDir repoDir user pass cloneUrl commitHash = do
+--  let url = addCloneCreds user pass cloneUrl
+--  let cloneCmd = printf "%s clone --recurse-submodules %s" gitBinary url
+--  --liftIO $ saveAndSendStr CiMsg $ T.pack $ printf "Cloning %s/%s to %s"
+--  --  (_repo_namespace repo) (_repo_name repo) cloneDir
+--  runCmd2 cloneCmd cloneDir Nothing saveAndSend
+--  let checkout = printf "%s checkout %s" gitBinary commitHash
+--  --liftIO $ saveAndSendStr CiMsg (toS checkout)
+--  runCmd2 checkout repoDir Nothing saveAndSend
+
 buildThread
   :: ServerEnv
   -> Maybe Builder
@@ -273,34 +293,29 @@ buildThread
   -> BuildJob
   -> IO ()
 buildThread se mbuilder ecMVar rng repo ca job = do
-  start <- getCurrentTime
   let dbConn = _serverEnv_db se
-  let rbi = _buildJob_repoBuildInfo job
-  let jid = _buildJob_id job
-  tok <- randomToken 8 rng
-  let user = _connectedAccount_name ca
-  let pass = _connectedAccount_accessToken ca
-  let url = addCloneCreds user pass (_rbi_cloneUrlHttp rbi)
-  let timeStr = formatTime defaultTimeLocale "%Y%m%d%H%M%S" start
-  let buildId = printf "build-%s-%s" timeStr (toS tok :: String) :: String
-  let cloneDir = printf "/tmp/zeus-builds/%s" buildId :: String
-  let repoDir = cloneDir </> toS (_repo_name repo)
-  createDirectoryIfMissing True cloneDir
-  createDirectoryIfMissing True buildOutputDir
-  let outputFile = buildLogFilePath jid
-  logStr dbConn Info (getBid mbuilder) $ printf "Writing build output to %s\n" outputFile
 
+  -- Probably not needed for remote builders because I believe "ob deploy"
+  -- was the reason this was needed on the Zeus server
   e <- liftIO getEnvironment
   Just cs <- liftIO $ getCiSettings dbConn
   let buildEnv = M.toList $ M.insert "NIX_PATH" (toS $ _ciSettings_nixPath cs) $ M.fromList e
 
+  start <- getCurrentTime
+  let rbi = _buildJob_repoBuildInfo job
+  let jid = _buildJob_id job
+
+  tok <- liftIO $ randomToken 8 rng
+  let timeStr = formatTime defaultTimeLocale "%Y%m%d%H%M%S" start
+  let buildId = printf "%s-%s-%s" timeStr (_repo_name repo) (toS tok :: String) :: String
+  let cloneDir = printf "/tmp/zeus-builds/%s" buildId :: String
+
+  let repoDir = cloneDir </> toS (_repo_name repo)
+  let outputFile = cloneDir </> "build.log"
+  printf "Writing build output to %s\n" outputFile
+
   withLogHandle outputFile $ \lh  -> do
-    let cloneCmd = printf "%s clone --recurse-submodules %s" gitBinary url
-        saveAndSendStr msgTy msg = do
-          !t <- getCurrentTime
-          let pm = ProcMsg t msgTy msg
-          saveAndSend pm
-        saveAndSend pm = do
+    let saveAndSend pm = do
           hPutStrLn lh $! prettyProcMsg pm
           sendOutput se jid pm
         cachingSaveAndSend pm = do
@@ -312,21 +327,34 @@ buildThread se mbuilder ecMVar rng repo ca job = do
           sendOutput se jid pm
 
     res <- runExceptT $ do
-      liftIO $ saveAndSendStr CiMsg $ T.pack $ printf "Cloning %s/%s to %s"
-        (_repo_namespace repo) (_repo_name repo) cloneDir
-      _ <- runCmd2 cloneCmd cloneDir Nothing saveAndSend
+      runOnBuilder mbuilder "/dev/null" ("mkdir -p " <> cloneDir) -- Was createDirectoryIfMissing
+                   "." Nothing saveAndSend
+
+
+      let url = addCloneCreds
+                  (_connectedAccount_name ca)
+                  (_connectedAccount_accessToken ca)
+                  (_rbi_cloneUrlHttp rbi)
+      let cloneCmd = printf "%s clone --recurse-submodules %s" gitBinary url
+      --liftIO $ saveAndSendStr CiMsg $ T.pack $ printf "Cloning %s/%s to %s"
+      --  (_repo_namespace repo) (_repo_name repo) cloneDir
+      runOnBuilder mbuilder outputFile cloneCmd cloneDir Nothing saveAndSend
       let checkout = printf "%s checkout %s" gitBinary (_rbi_commitHash rbi)
-      liftIO $ saveAndSendStr CiMsg (toS checkout)
-      _ <- runCmd2 checkout repoDir Nothing saveAndSend
-      liftIO $ saveAndSendStr CiMsg $ "Building with the following environment:"
-      liftIO $ saveAndSendStr CiMsg $ T.pack $ show buildEnv
+      --liftIO $ saveAndSendStr CiMsg (toS checkout)
+      runOnBuilder mbuilder outputFile checkout repoDir Nothing saveAndSend
+      --getCode saveAndSend cloneDir repoDir
+      --        (_connectedAccount_name ca) (_connectedAccount_accessToken ca)
+      --        (_rbi_cloneUrlHttp rbi) (_rbi_commitHash rbi)
 
     let buildSingle mattr = runExceptT $ do
-          liftIO $ saveAndSendStr CiMsg $ "Building subjob for attribute " <> T.pack (show mattr)
+          liftIO $ saveAndSend =<< textProcMsg
+            ("Building subjob for attribute " <> T.pack (show mattr))
           let instantiateArgs =
                 T.unpack (_repo_buildNixFile repo) :
                 maybe [] (\a -> ["-A", T.unpack a]) mattr
-          runProc nixInstantiate instantiateArgs repoDir (Just buildEnv) cachingSaveAndSend
+              instantiateCmd = unwords $ nixInstantiate : instantiateArgs
+          runOnBuilder mbuilder outputFile instantiateCmd repoDir
+                       (Just buildEnv) cachingSaveAndSend
 
           let buildArgs = instantiateArgs ++
                 [ "--show-trace"
@@ -335,10 +363,11 @@ buildThread se mbuilder ecMVar rng repo ca job = do
                 , "true"
                 , "--keep-going"
                 ]
-          runProc nixBuildBinary buildArgs repoDir (Just buildEnv) saveAndSend
+              buildCmd = unwords $ nixBuildBinary : buildArgs
+          runOnBuilder mbuilder outputFile buildCmd repoDir (Just buildEnv) saveAndSend
           end <- liftIO getCurrentTime
           let finishMsg = printf "Build finished in %.3f seconds" (realToFrac (diffUTCTime end start) :: Double)
-          liftIO $ saveAndSendStr CiMsg $ T.pack finishMsg
+          liftIO $ saveAndSend =<< textProcMsg (T.pack finishMsg)
           liftIO $ putStrLn finishMsg
 
           msp <- liftIO $ getSymlinkTarget (repoDir </> "result")
@@ -354,7 +383,8 @@ buildThread se mbuilder ecMVar rng repo ca job = do
         putMVar ecMVar ec
       Right _ -> do
         let attrs = unAttrList $ _repo_attributesToBuild repo
-        liftIO $ saveAndSendStr CiMsg $ "Running build for each of the following attributes: " <> (T.pack $ show attrs)
+        liftIO $ saveAndSend =<< textProcMsg
+          ("Running build for each of the following attributes: " <> (T.pack $ show attrs))
         results <- case attrs of
           [] -> (:[]) <$> buildSingle Nothing
           _ -> forM attrs $ \attr -> buildSingle (Just attr)
@@ -362,8 +392,8 @@ buildThread se mbuilder ecMVar rng repo ca job = do
         if null bad
           then putMVar ecMVar ExitSuccess
           else do
-            liftIO $ saveAndSendStr CiMsg $ "Some jobs failed"
-            mapM_ (liftIO . saveAndSendStr CiMsg . T.pack . show) $ zip attrs results
+            liftIO $ saveAndSend =<< textProcMsg "Some jobs failed"
+            mapM_ (liftIO . saveAndSend <=< textProcMsg . T.pack . show) $ zip attrs results
             putMVar ecMVar (ExitFailure (length bad))
 
 
@@ -391,4 +421,3 @@ clog = CB.putStrLn . toS
 
 catchEOF :: String -> C.SomeException -> IO ()
 catchEOF msg e = clog $ printf "Caught exception in %s: %s" msg (show e)
-

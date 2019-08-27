@@ -12,8 +12,10 @@ import           Data.Time
 import           System.Exit
 import           System.IO
 import           System.Process
+import           Text.Printf
 import qualified Turtle as Turtle
 ------------------------------------------------------------------------------
+import           Common.Types.Builder
 import           Common.Types.JobStatus
 import           Common.Types.ProcMsg
 ------------------------------------------------------------------------------
@@ -38,6 +40,33 @@ withCreateProcess_ fun c action =
               (\(m_in, m_out, m_err, ph) -> action m_in m_out m_err ph)
   where
     cleanup (_, _, _, ph) = terminateProcess ph
+
+runOverSsh
+  :: Builder
+  -> FilePath
+  -> FilePath
+  -> String
+  -> Maybe [(String, String)]
+  -> (ProcMsg -> IO ())
+  -> ExceptT ExitCode IO ()
+runOverSsh bldr outFile cmd dir _ action = do
+  let sshArgs = [ printf "%s@%s" (_builder_user bldr) (_builder_host bldr)
+                , printf "cd %s && %s 2>&1 | tee -a %s" dir cmd outFile
+                ]
+  runCP (proc "ssh" sshArgs) action
+
+runOnBuilder
+  :: Maybe Builder
+  -> FilePath
+  -> FilePath
+  -> String
+  -> Maybe [(String, String)]
+  -> (ProcMsg -> IO ())
+  -> ExceptT ExitCode IO ()
+runOnBuilder Nothing _ cmd dir envVars action =
+  runCmd2 cmd dir envVars action
+runOnBuilder (Just bldr) outFile cmd dir envVars action =
+  runOverSsh bldr outFile cmd dir envVars action
 
 runCmd2
   :: String

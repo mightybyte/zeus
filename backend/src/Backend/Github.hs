@@ -65,7 +65,11 @@ handleValidatedHook env event body = do
                      (_rbi_repoNamespace rbi) (_rbi_repoName rbi)
                      (_rbi_commitHash rbi)
         either decodeErr (mkPrMsg . handlePR) $ eitherDecodeStrict (toS body)
-      Just "push" -> mkPushRBI =<< eitherDecodeStrict (toS body)
+      Just "push" -> do
+        pe <- eitherDecodeStrict (toS body)
+        if GW.evPushDeleted pe
+          then Left "Branch deleted, nothing to build"
+          else mkPushRBI pe
       _ -> Left "Event not supported"
 
     ras <- lift $ runBeamSqlite (_serverEnv_db env) $
