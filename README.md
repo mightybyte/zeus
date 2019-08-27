@@ -241,8 +241,7 @@ your repo.
             "Principal": "*",
             "Action": [
                 "s3:ListBucket",
-                "s3:GetObject",
-                "s3:GetBucketLocation"
+                "s3:GetObject"
             ],
             "Resource": [
                 "arn:aws:s3:::my-nix-cache-bucket-name",
@@ -259,9 +258,22 @@ your repo.
    for your cache, and click "Connect Cache".
 6. Create a new repo in the "Repos" tab and select the S3 cache you just
    created.
-7. To enable this cache on your machine, edit `/etc/nix/nix.conf` and add
-   `s3://my-nix-cache-bucket-name` to the `substituters` line and add the Zeus
-   Cache Public Key (viewable in the Settings tab) to `trusted-public-keys`.
+7. To enable this cache on your machine, edit `/etc/nix/nix.conf` and add the
+   Zeus Cache Public Key (viewable in the Settings tab) to
+   `trusted-public-keys`. Then add one of the following addresses to the
+   `substituters` line:
+
+* `s3://my-nix-cache-bucket-name`
+* `http://my-nix-cache.example.com`
+* `https://my-nix-cache.example.com`
+
+If you want anyone to use the `s3://` prefix, you will have to include the
+`s3:ListBucket` action as shown in the above policy. But if you want to use this
+cache to serve private code, you definitely don't want to allow people to list
+the objects in the bucket because then they will be able to download anything in
+your cache. If you use the `http://` or `https://` prefix, then you can remove
+the `ListBucket` action and it will still work. In that case you have to be sure
+to set up a domain name to point to the S3 bucket.
 
 NOTE: The first time you do a build that pushes to your S3 cache, it will
 probably take several hours to upload the full transitive closure of all the
