@@ -117,11 +117,19 @@ jobsList as = do
     , ("Git Ref", mkField $ dynText . fmap (_rbi_gitRef . _buildJob_repoBuildInfo))
     , ("Commit Hash", \_ v -> el "td" (commitWidget v) >> return never)
     , ("Author", \_ v -> el "td" (authorWidget v) >> return never)
-    -- , ("Time", mkField $ void $ prerender blank dynJobTimeWidget)
+    , ("Time", mkField timeWidget)
     , ("", (\(Down k) v -> elClass "td" "right aligned collapsing" $
              cancelOrRerun k (_buildJob_status <$> v)))
     ]
   return ()
+
+timeWidget
+  :: (MonadApp r t m, Prerender js t m)
+  => Dynamic t BuildJob
+  -> m (Event t ())
+timeWidget dj = do
+  void $ prerender (el "div" $ text "--:--") (dynJobTimeWidget dj)
+  return never
 
 cancelOrRerun :: MonadApp r t m => BuildJobId -> Dynamic t JobStatus -> m (Event t ())
 cancelOrRerun k dj = do
