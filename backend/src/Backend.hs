@@ -166,7 +166,7 @@ backend = Backend
             Nothing -> error ("Error parsing " <> settingsFile)
             Just s -> return s
       putStrLn $ "read settings: " <> show settings
-      let Just appRoute = decodeUtf8 <$> M.lookup "common/route" allConfigs
+      let Just appRoute = T.strip . decodeUtf8 <$> M.lookup "common/route" allConfigs
       listeners <- newIORef mempty
       keyPair <- getAppCacheKey appRoute
 
