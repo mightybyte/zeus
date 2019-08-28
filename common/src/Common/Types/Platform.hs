@@ -16,6 +16,7 @@
 module Common.Types.Platform where
 
 ------------------------------------------------------------------------------
+import           Control.Lens
 import           Control.Monad
 import           Data.Aeson
 import           Data.Readable
@@ -41,10 +42,10 @@ instance HasSqlValueSyntax be String => HasSqlValueSyntax be Platform where
 instance (BeamBackend be, FromBackendRow be Text) => FromBackendRow be Platform where
   fromBackendRow = read . T.unpack <$> fromBackendRow
 
-plaformText :: Platform -> Text
-plaformText X86_64_Darwin = "x86_64-darwin"
-plaformText X86_64_Linux = "x86_64-linux"
-plaformText I686_Linux = "i686-linux"
+platformText :: Platform -> Text
+platformText X86_64_Darwin = "x86_64-darwin"
+platformText X86_64_Linux = "x86_64-linux"
+platformText I686_Linux = "i686-linux"
 
 instance Readable Platform where
   fromText "x86_64-darwin" = return X86_64_Darwin
@@ -52,8 +53,10 @@ instance Readable Platform where
   fromText "i686-linux" = return I686_Linux
   fromText _ = mzero
 
+_Platform :: Prism' Text Platform
+_Platform = prism' platformText fromText
+
 instance ToJSON Platform where
     toEncoding = genericToEncoding defaultOptions
 
 instance FromJSON Platform
-

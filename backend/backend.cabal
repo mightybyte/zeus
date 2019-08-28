@@ -89,6 +89,7 @@ library
     Backend.WsCmds
     Backend.WsUtils
     Nix.Types
+    Nix.Utils
     Which
   ghc-options: -Wall
 

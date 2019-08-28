@@ -1,6 +1,14 @@
+{-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE TypeFamilies #-}
 
-module Backend.Builders where
+module Backend.Builders
+  ( getAllBuilders
+  , getIdleBuilders
+  , setBuilderStatus
+  , newEmptyBuilderManager
+  , startBuilders
+  , startSingleBuilder
+  ) where
 
 ------------------------------------------------------------------------------
 import           Control.Concurrent
@@ -19,9 +27,10 @@ import           Backend.Types.BuilderManager
 import           Backend.Types.ServerEnv
 import           Common.Types.Builder
 import           Common.Types.Platform
+import           Nix.Utils
 ------------------------------------------------------------------------------
---
---
+
+
 getAllBuilders :: Connection -> IO [Builder]
 getAllBuilders dbConn = do
   runBeamSqlite dbConn $ do
@@ -57,12 +66,31 @@ addBuildThread :: BuilderManager -> MBuilderId -> ThreadId -> IO ()
 addBuildThread (BuilderManager ref) bid tid =
     atomicModifyIORef' ref (\m -> (M.insert bid tid m, ()))
 
+startSingleBuilder :: ServerEnv -> Maybe Builder -> IO ()
+startSingleBuilder se b = do
+    tid <- forkIO $ buildManagerThread se b
+    addBuildThread (_serverEnv_builderManager se)
+      (mkeyToNullable $ fmap primaryKey b) tid
+
 startBuilders :: ServerEnv -> IO ()
 startBuilders se = do
-    -- Start up all the builder threads
-    builders <- getAllBuilders (_serverEnv_db se)
-    forM_ (Nothing : map Just builders) $ \b -> do
-      tid <- forkIO $ buildManagerThread se b
-      addBuildThread (_serverEnv_builderManager se)
-        (mkeyToNullable $ fmap primaryKey b) tid
+    mplat <- getNixSystem
+    case mplat of
+      Nothing -> error "Could not get current value of nix system"
+      Just p -> do
+        -- Start up all the builder threads
+        remotes <- getAllBuilders (_serverEnv_db se)
+        forM_ (maybeMasterBuilder p remotes) (startSingleBuilder se)
 
+
+------------------------------------------------------------------------------
+-- | Eventually we may want to let the user configure whether the master node
+-- also does builds.  For now, this is simpler and puts less burden on the
+-- user.
+maybeMasterBuilder :: Platform -> [Builder] -> [Maybe Builder]
+maybeMasterBuilder p bs =
+    if any ((==p) . _builder_platform) bs
+      then mbs
+      else Nothing : mbs
+  where
+    mbs = map Just bs
