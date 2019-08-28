@@ -310,7 +310,7 @@ cacheBuild se cache cj = do
 
   let outDir = "log/cache"
   createDirectoryIfMissing True outDir
-  let outputFile = printf (outDir <> "/%d.txt") (_cacheJob_id cj)
+  let outputFile = printf "%s/%d.txt" outDir (_cacheJob_id cj)
   printf "Writing cache output to %s\n" outputFile
   _ <- withLogHandle outputFile $ \lh  -> runExceptT $ do
     let logProcMsg pm = hPutStrLn lh $! prettyProcMsg pm
@@ -348,7 +348,7 @@ cacheBuild se cache cj = do
       res <- runExceptT $ cacheStorePath se e logProcMsg nixDbConn cache (StorePath $ T.unpack sp)
       case res of
         Left er -> do
-          liftIO $ logStr CiMsg $ T.pack $ printf "Error while caching %s:\n" sp er
+          liftIO $ logStr CiMsg $ T.pack $ printf "Error while caching %s:\n%s" sp (show er)
           return $ Left er
         Right val -> return $ Right val
     let (failures, successes) = partitionEithers results

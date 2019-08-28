@@ -128,7 +128,7 @@ timeWidget
   => Dynamic t BuildJob
   -> m (Event t ())
 timeWidget dj = do
-  void $ prerender (el "div" $ text "--:--") (dynJobTimeWidget dj)
+  void $ dynJobTimeWidget dj
   return never
 
 cancelOrRerun :: MonadApp r t m => BuildJobId -> Dynamic t JobStatus -> m (Event t ())
@@ -194,13 +194,11 @@ commitWidget dj = do
   elDynAttr "a" (mkAttrs <$> drbi) $ dynText (T.take 7 . _rbi_commitHash <$> drbi)
 
 dynJobTimeWidget
-  :: (DomBuilder t m, PostBuild t m, TriggerEvent t m, MonadHold t m, PerformEvent t m, MonadIO m, MonadIO (Performable m), MonadFix m)
+  :: (DomBuilder t m, PostBuild t m, Prerender js t m)
   => Dynamic t BuildJob
   -> m ()
 dynJobTimeWidget dj = do
-  t <- liftIO getCurrentTime
   el "div" $ do
-    dti <- clockLossy 0.5 t
     let showElapsed ti j =
               case jobDuration j of
                 Just d -> formatDiffTime d
@@ -212,13 +210,16 @@ dynJobTimeWidget dj = do
                         s <- _buildJob_startedAt j
                         return $ diffUTCTime (_tickInfo_lastUTC ti) s
     elClass "i" "clock icon" blank
-    dynText $ showElapsed <$> dti <*> dj
+    void $ prerender (el "div" $ text "--:--") $ do
+      t <- liftIO getCurrentTime
+      dti <- clockLossy 0.5 t
+      dynText $ showElapsed <$> dti <*> dj
   let mkAttrs j = ("data-tooltip" =: maybe "" tshow (view buildJob_startedAt j) <>
                    "data-position" =: "bottom left")
   elDynAttr "div" (mkAttrs <$> dj) $ do
     elClass "i" "calendar icon" blank
-    let f = maybe (text "") pastTimeWiget . view buildJob_startedAt
-    void $ dyn $ f <$> dj
+    let f = maybe blank pastTimeWiget . view buildJob_startedAt
+    void $ prerender blank $ void $ dyn $ f <$> dj
 
 formatDiffTime :: NominalDiffTime -> Text
 formatDiffTime t = T.pack $
