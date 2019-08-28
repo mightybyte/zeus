@@ -34,6 +34,7 @@ import           Text.Printf
 import           Common.Route
 import           Common.Types.BuildJob
 import           Common.Types.JobStatus
+import           Common.Types.Platform
 import           Common.Types.ProcMsg
 import           Common.Types.RepoBuildInfo
 import           Frontend.App
@@ -113,6 +114,7 @@ jobsList as = do
   _ <- genericTableG def (M.mapKeys Down <$> as)
     [ ("Status", (\_ v -> el "td" $ dynStatusWidget v))
     , ("ID", mkField $ dynText . fmap (tshow . _buildJob_id))
+    , ("Platform", \_ v -> el "td" (platformWidget v) >> return never)
     , ("Repository", \_ v -> el "td" (repoColumnWidget v) >> return never)
     , ("Git Ref", mkField $ dynText . fmap (_rbi_gitRef . _buildJob_repoBuildInfo))
     , ("Commit Hash", \_ v -> el "td" (commitWidget v) >> return never)
@@ -162,6 +164,17 @@ rerunButton k = do
       elAttr' "i" ("class" =: "redo icon") blank
     triggerBatch trigger_rerunJobs $ [k] <$ domEvent Click e
     return ()
+
+platformWidget
+  :: (DomBuilder t m, PostBuild t m)
+  => Dynamic t BuildJob
+  -> m ()
+platformWidget dj = do
+  let drbi = _buildJob_platform <$> dj
+  let mkAttrs = \case
+        X86_64_Darwin -> "class" =: "linux icon"
+        X86_64_Linux -> "class" =: "apple icon"
+  elDynAttr "i" (mkAttrs <$> drbi) blank
 
 repoColumnWidget
   :: (DomBuilder t m, PostBuild t m)
