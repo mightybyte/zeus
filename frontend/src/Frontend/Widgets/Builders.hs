@@ -17,6 +17,7 @@ import           Control.Monad.Reader
 import qualified Data.Map as M
 import           Data.Maybe
 import           Data.Text (Text)
+import qualified Data.Text as T
 import           Database.Beam
 import           Obelisk.Route
 import           Obelisk.Route.Frontend
@@ -155,5 +156,6 @@ platformDropdown platforms iv sv = do
   return $ value d
 
 isValidBuilder :: BuilderT Maybe -> Bool
-isValidBuilder (Builder _ (Just _) (Just _) (Just _) (Just _) (Just _) (Just _) (Just _) (Just _)) = True
+isValidBuilder (Builder _ (Just u) (Just h) (Just _) (Just _) (Just _) (Just _) _ _) =
+  not (T.null u || T.null h)
 isValidBuilder _ = False

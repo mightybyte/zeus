@@ -50,7 +50,11 @@ runOverSsh
   -> (ProcMsg -> IO ())
   -> ExceptT ExitCode IO ()
 runOverSsh bldr outFile cmd dir _ action = do
-  let sshArgs = [ printf "%s@%s" (_builder_user bldr) (_builder_host bldr)
+  let sshArgs = [ "-p", show (_builder_port bldr)
+                , "-i", "zeus-ssh-key" -- TODO Make sure this exists!
+-- Generate it with: ssh-keygen -b 4096 -f zeus-ssh-key -N '' -q
+                , "-o", "StrictHostKeyChecking false"
+                , printf "%s@%s" (_builder_user bldr) (_builder_host bldr)
                 , printf "cd %s && %s 2>&1 | tee -a %s" dir cmd outFile
                 ]
   runCP (proc "ssh" sshArgs) action

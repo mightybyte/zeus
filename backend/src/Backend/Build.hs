@@ -107,6 +107,7 @@ getBid (Just b) = BuilderId (Just $ _builder_id b)
 -- remote builders and the build is running on the Zeus master node.
 buildManagerThread :: ServerEnv -> Maybe Builder -> IO ()
 buildManagerThread se mbuilder = do
+  clog $ "Started build manager thread for " <> show mbuilder
   let plat = _builder_platform <$> mbuilder
   let dbConn = _serverEnv_db se
   rng <- mkRNG

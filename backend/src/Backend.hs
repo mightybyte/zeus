@@ -503,7 +503,8 @@ createBuilder
   :: ServerEnv
   -> BuilderT Maybe
   -> IO ()
-createBuilder env (Builder _ u h port plat mb sf s lsu) = do
+createBuilder env (Builder _ u h port plat mb sf _ _) = do
+  t <- getCurrentTime
   beamQuery env $ do
     runInsert $ insert (_ciDb_builders ciDb) $ insertExpressions
            $ maybeToList $ Builder default_
@@ -513,8 +514,8 @@ createBuilder env (Builder _ u h port plat mb sf s lsu) = do
               <*> (val_ <$> plat)
               <*> (val_ <$> mb)
               <*> (val_ <$> sf)
-              <*> (val_ <$> s)
-              <*> (val_ <$> lsu)
+              <*> (Just $ val_ BuilderIdle)
+              <*> (Just $ val_ t)
   bs <- beamQuery env $ do
     runSelectReturningList $ select $ all_ (_ciDb_builders ciDb)
   broadcast (_serverEnv_connRepo env) $ Down_Builders bs

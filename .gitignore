@@ -17,3 +17,4 @@ static.assets
 *.pub
 *.sec
 config
+zeus-ssh-key*
