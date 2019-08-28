@@ -57,6 +57,7 @@ data BuilderT f = Builder
   { _builder_id :: C f Int
   , _builder_user :: C f Text -- ^ The user to connect as
   , _builder_host :: C f Text -- ^ Hostname or IP address
+  , _builder_port :: C f Int -- ^ Port to connect to
   , _builder_platform :: C f Platform
   , _builder_maxBuilds :: C f Int
   , _builder_speedFactor :: C f Int
@@ -76,6 +77,7 @@ Builder
   (LensFor builder_id)
   (LensFor builder_user)
   (LensFor builder_host)
+  (LensFor builder_port)
   (LensFor builder_platform)
   (LensFor builder_maxBuilds)
   (LensFor builder_speedFactor)

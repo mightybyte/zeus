@@ -31,9 +31,7 @@ import           Database.Beam.Backend.Types
 import           Database.Beam.Migrate.Generics
 import           Database.Beam.Migrate.SQL
 ------------------------------------------------------------------------------
-import           Common.Types.BinaryCache
 import           Common.Types.Builder
-import           Common.Types.JobStatus
 ------------------------------------------------------------------------------
 
 data LogLevel
@@ -117,4 +115,3 @@ instance Table ZeusMsgT where
   data PrimaryKey ZeusMsgT f = ZeusMsgId (Columnar f Int)
     deriving (Generic, Beamable)
   primaryKey = ZeusMsgId . _zeusMsg_id
-

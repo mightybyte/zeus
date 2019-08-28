@@ -23,7 +23,7 @@ import           Frontend.Widgets.Form
 ------------------------------------------------------------------------------
 
 settingsWidget
-  :: (MonadApp r t m, Prerender js t m, HasConfigs m)
+  :: (MonadApp r t m, HasConfigs m)
   => m ()
 settingsWidget = do
   pb <- getPostBuild
@@ -34,7 +34,7 @@ settingsWidget = do
   return ()
 
 dynSettingsForm
-  :: (MonadApp r t m, Prerender js t m, HasConfigs m)
+  :: (MonadApp r t m, HasConfigs m)
   => m ()
 dynSettingsForm = do
   dcs <- asks _as_ciSettings
@@ -56,7 +56,7 @@ dynSettingsForm = do
   return ()
 
 settingsForm
-  :: (MonadApp r t m, Prerender js t m, HasConfigs m)
+  :: (MonadApp r t m, HasConfigs m)
   => Text
   -> CiSettings
   -> Event t CiSettings
@@ -79,7 +79,7 @@ settingsForm ciInfo iv sv = do
     return (CiSettings 1 <$> dnp <*> serveLocalCache)
 
 dynInfoWidget
-  :: (MonadApp r t m, Prerender js t m, HasConfigs m)
+  :: (MonadApp r t m, HasConfigs m)
   => Text
   -> Dynamic t Bool
   -> m ()
@@ -88,7 +88,7 @@ dynInfoWidget ciInfo serveLocalCache = do
   return ()
 
 infoWidget
-  :: (MonadApp r t m, Prerender js t m, HasConfigs m)
+  :: (MonadApp r t m, HasConfigs m)
   => Text
   -> Bool
   -> m ()
@@ -112,7 +112,7 @@ nixConfExample addr pubkey = T.unlines
   ]
 
 copyableValue
-  :: (MonadApp r t m, Prerender js t m)
+  :: MonadApp r t m
   => Text
   -> Text
   -> m ()

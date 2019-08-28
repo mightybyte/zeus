@@ -503,13 +503,14 @@ createBuilder
   :: ServerEnv
   -> BuilderT Maybe
   -> IO ()
-createBuilder env (Builder _ u h p mb sf s lsu) = do
+createBuilder env (Builder _ u h port plat mb sf s lsu) = do
   beamQuery env $ do
     runInsert $ insert (_ciDb_builders ciDb) $ insertExpressions
            $ maybeToList $ Builder default_
               <$> (val_ <$> u)
               <*> (val_ <$> h)
-              <*> (val_ <$> p)
+              <*> (val_ <$> port)
+              <*> (val_ <$> plat)
               <*> (val_ <$> mb)
               <*> (val_ <$> sf)
               <*> (val_ <$> s)

@@ -112,12 +112,10 @@ readableField
   :: (DomBuilder t m,
       Readable a,
       Show a)
-  => Maybe Text
-  -> Maybe a
+  => Maybe a
   -> Event t (Maybe a)
   -> m (Dynamic t (Maybe a))
-readableField mlabel iv sv = divClass "field" $ do
-  maybe blank (el "label" . text) mlabel
+readableField iv sv = do
   let sv2 = maybe "" tshow <$> sv
       iv2 = maybe "" tshow iv
   t <- inputElement $ def

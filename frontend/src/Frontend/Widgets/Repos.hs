@@ -27,7 +27,6 @@ import           Obelisk.Route.Frontend
 import           Reflex.Dom.Contrib.CssClass
 import           Reflex.Dom.Contrib.Utils
 import           Reflex.Dom.Core
-import           Reflex.Network
 ------------------------------------------------------------------------------
 import           Common.Route
 import           Common.Types.BinaryCache
@@ -164,17 +163,17 @@ newRepoForm iv sv = do
         & inputElementConfig_setValue .~ (maybe "" (T.unwords . unAttrList) . _repo_attributesToBuild <$> sv)
       return $ fmap (AttrList . T.words) $ value ie
 
-    let attrsTip = "To get more platforms, add more builders"
-    let attrsLabel = do
+    let platTip = "To get more platforms, add more builders"
+    let platLabel = do
           text "Platforms to build with "
-          elAttr "span" ("data-tooltip" =: attrsTip <> "data-position" =: "top left") $
+          elAttr "span" ("data-tooltip" =: platTip <> "data-position" =: "top left") $
             elAttr "i" ("class" =: "info circle icon") blank
     divClass "field" $ do
-      el "label" attrsLabel
+      el "label" platLabel
       -- Change this initial value
     dps <- platformWidget (S.singleton X86_64_Linux) never
 
-    dt <- labelledAs "Timeout (in seconds)" $ readableField Nothing
+    dt <- labelledAs "Timeout (in seconds)" $ readableField
       (maybe (Just 3600) Just $ _repo_timeout iv)
       (_repo_timeout <$> traceEvent "timeout sv" sv)
     return $ do

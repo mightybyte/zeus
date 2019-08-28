@@ -17,7 +17,6 @@ import           Control.Monad.Reader
 import qualified Data.Map as M
 import           Data.Maybe
 import           Data.Text (Text)
-import qualified Data.Text as T
 import           Database.Beam
 import           Obelisk.Route
 import           Obelisk.Route.Frontend
@@ -28,9 +27,7 @@ import           Reflex.Dom.Core
 import           Common.Route
 import           Common.Types.BinaryCache
 import           Common.Types.Builder
-import           Common.Types.ConnectedAccount
 import           Common.Types.Platform
-import           Common.Types.S3Cache
 import           Frontend.App
 import           Frontend.AppState
 import           Frontend.Common
@@ -72,6 +69,7 @@ buildersList as = do
     [ ("ID", textDynColumn (tshow . _builder_id))
     , ("User", textDynColumn _builder_user)
     , ("Host", textDynColumn _builder_host)
+    , ("Port", textDynColumn (tshow . _builder_port))
     , ("Platform", textDynColumn $ tshow . _builder_platform)
     , ("Max Builds", textDynColumn (tshow . _builder_maxBuilds))
     , ("Speed Factor", textDynColumn (tshow . _builder_speedFactor))
@@ -94,7 +92,7 @@ addBuilder = do
       return ()
 
 unfilledBuilder :: BuilderT Maybe
-unfilledBuilder = Builder Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing
+unfilledBuilder = Builder Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing
 
 newBuilderForm
   :: MonadApp r t m
@@ -114,23 +112,28 @@ newBuilderForm iv sv = do
       textField
         (fromMaybe "" $ _builder_host iv)
         (fromMaybe "" . _builder_host <$> sv)
+    dport <- divClass "field" $ do
+      el "label" $ do
+        text "Port "
+      readableField (maybe (Just 22) Just $ _builder_port iv) (_builder_port <$> sv)
     -- TODO Placeholder for platform
     dplat <- labelledAs "Platform" $
       platformDropdown [X86_64_Linux, X86_64_Darwin, I686_Linux] X86_64_Linux never
 
-    dmmb <- labelledAs "Max Builds" $ readableField Nothing
+    dmmb <- labelledAs "Max Builds" $ readableField
       (maybe (Just 1) Just $ _builder_maxBuilds iv)
       (_builder_maxBuilds <$> sv)
-    dmsf <- labelledAs "Speed Factor" $ readableField Nothing
+    dmsf <- labelledAs "Speed Factor" $ readableField
       (maybe (Just 1) Just $ _builder_speedFactor iv)
       (_builder_speedFactor <$> sv)
     return $ do
       u <- du
       h <- dh
+      port <- dport
       plat <- dplat
       mmb <- dmmb
       msf <- dmsf
-      pure $ Builder Nothing (Just u) (Just h) (Just plat) mmb msf Nothing Nothing
+      pure $ Builder Nothing (Just u) (Just h) port (Just plat) mmb msf Nothing Nothing
 
 cachePrimaryKey :: Maybe BinaryCache -> PrimaryKey BinaryCacheT (Nullable Maybe)
 cachePrimaryKey Nothing = BinaryCacheId Nothing
@@ -152,5 +155,5 @@ platformDropdown platforms iv sv = do
   return $ value d
 
 isValidBuilder :: BuilderT Maybe -> Bool
-isValidBuilder (Builder _ (Just _) (Just _) (Just _) (Just _) (Just _) (Just _) (Just _)) = True
+isValidBuilder (Builder _ (Just _) (Just _) (Just _) (Just _) (Just _) (Just _) (Just _) (Just _)) = True
 isValidBuilder _ = False
