@@ -164,7 +164,8 @@ backend = Backend
             Nothing -> error ("Error parsing " <> settingsFile)
             Just s -> return s
       putStrLn $ "read settings: " <> show settings
-      let Just appRoute = decodeUtf8 <$> M.lookup "common/route" allConfigs
+      let appRoute = fromMaybe (error  "You must make this server reachable from the outside world, and put that url path in config/common/route")
+                   $ decodeUtf8 <$> M.lookup "common/route" allConfigs
       listeners <- newIORef mempty
       keyPair <- getAppCacheKey appRoute
       let env = ServerEnv appRoute settings secretToken dbConn
