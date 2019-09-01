@@ -87,11 +87,15 @@ https://ci.example.com and you're off to the races.
 ```shell
 git clone https://gitlab.com/mightybyte/zeus.git
 cd zeus
-nix-build -A exe -o result-exe
+nix-build -A exe -o result-exe --option trusted-public-keys ci.mightybyte.net-1:LXywRTa8NaNw7x32JJOncRMxFk2I36K6Tf6ac8VRnho= --option substituters s3://zeus-ci
 ln -s result-exe/frontend.jsexe.assets .
 ln -s result-exe/static.assets .
-result-exe/backend +RTS -N
+mkdir config/common
+echo http://ci.example.com:8000 > config/common/route
+result-exe/backend -p 8000 +RTS -N
 ```
+
+(If you add the s3://zeus-ci cache to your `/etc/nix/nix.conf`, then you can leave off the --option bits in the third line above.)
 
 This runs the Zeus server on port 8000. Point your browser at
 http://localhost:8000 and you should see the Zeus web UI.
