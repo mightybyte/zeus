@@ -26,6 +26,7 @@ import qualified Data.Text as T
 import qualified Data.Text.IO as T
 import           Data.Text.Encoding
 import           Data.Time
+import           Data.Maybe (fromMaybe)
 import           Database.Beam
 import           Database.Beam.Sqlite
 import           Database.Beam.Sqlite.Migrate
