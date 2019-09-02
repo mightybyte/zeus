@@ -46,6 +46,25 @@ Other tasks
 
 ## Installing
 
+### Setting up the Zeus Binary Cache
+
+To set up the Zeus binary cache and avoid building everything, add the following
+to your `/etc/nix/nix.conf`:
+
+```
+substituters = http://ci.mightybyte.net/cache/ https://cache.nixos.org/
+trusted-public-keys = ci.mightybyte.net-1:LXywRTa8NaNw7x32JJOncRMxFk2I36K6Tf6ac8VRnho= cache.nixos.org-1:6NCHdD59X431o0gWypbMrAURkbJ16ZPMQFGspcDShjY=
+```
+
+Alternatively, if you don't want to add it to your `nix.conf`, you can add these
+command line arguments to the `nix-build` lines in the install instructions
+below (this only works if your user is listed in the `trusted-users` section of
+`nix.conf`):
+
+```
+--option trusted-public-keys "ci.mightybyte.net-1:LXywRTa8NaNw7x32JJOncRMxFk2I36K6Tf6ac8VRnho= cache.nixos.org-1:6NCHdD59X431o0gWypbMrAURkbJ16ZPMQFGspcDShjY=" --option substituters "s3://zeus-ci https://cache.nixos.org/"
+```
+
 ### Deploying to a Remote Server with Obelisk
 
 The easiest way to deploy Zeus is with
@@ -87,7 +106,7 @@ https://ci.example.com and you're off to the races.
 ```shell
 git clone https://gitlab.com/mightybyte/zeus.git
 cd zeus
-nix-build -A exe -o result-exe --option trusted-public-keys ci.mightybyte.net-1:LXywRTa8NaNw7x32JJOncRMxFk2I36K6Tf6ac8VRnho= --option substituters s3://zeus-ci
+nix-build -A exe -o result-exe
 mkdir -p config/common
 echo http://localhost:8000 > config/common/route
 result-exe/backend -p 8000 +RTS -N
