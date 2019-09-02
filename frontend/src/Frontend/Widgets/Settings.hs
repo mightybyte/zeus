@@ -103,7 +103,7 @@ infoWidget pubkey True = divClass "ui segment" $ do
       copyableValue "Cache Address" route
       copyableValue "Cache Public Key" pubkey
       el "h4" $ text "To use this cache, put the following in your /etc/nix/nix.conf:"
-      elClass "pre" "ui segment" $ do
+      elAttr "pre" ("class" =: "ui segment" <> "style" =: "overflow: auto;") $ do
         text $ nixConfExample route pubkey
 infoWidget _ False = blank
 
