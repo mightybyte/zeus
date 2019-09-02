@@ -88,26 +88,30 @@ https://ci.example.com and you're off to the races.
 git clone https://gitlab.com/mightybyte/zeus.git
 cd zeus
 nix-build -A exe -o result-exe --option trusted-public-keys ci.mightybyte.net-1:LXywRTa8NaNw7x32JJOncRMxFk2I36K6Tf6ac8VRnho= --option substituters s3://zeus-ci
-ln -s result-exe/frontend.jsexe.assets .
-ln -s result-exe/static.assets .
-mkdir config/common
-echo http://ci.example.com:8000 > config/common/route
+mkdir -p config/common
+echo http://localhost:8000 > config/common/route
 result-exe/backend -p 8000 +RTS -N
 ```
 
-(If you add the s3://zeus-ci cache to your `/etc/nix/nix.conf`, then you can leave off the --option bits in the third line above.)
+NOTE: The nix-build command on line 3 requires that your user be listed in the
+`trusted-users` section in your `/etc/nix/nix.conf`. Alternatively, If you add
+the s3://zeus-ci cache and its public key to your `/etc/nix/nix.conf`, then you
+can leave off the --option bits.
 
 This runs the Zeus server on port 8000. Point your browser at
 http://localhost:8000 and you should see the Zeus web UI.
 
 In order for Zeus to work this way, the server it is running on needs to be
 reachable from GitHub or GitLab and you need to tell the frontend what that
-address is. To do that, put the address in the file `config/common/route` as
-follows:
+address is. To do that, change the address in the file `config/common/route` to
+something like this:
 
 ```
-http://ci.example.com:8000
+http://ci.example.com
 ```
+
+Don't forget to make sure that the port specified in `config/common/route`
+matches the port that you're running the server on.
 
 ### Running Zeus Locally
 
