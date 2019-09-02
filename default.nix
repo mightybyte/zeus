@@ -7,10 +7,12 @@ let
     inherit system iosSdkVersion;
   };
   opkgs = origObelisk.reflex-platform.nixpkgs;
-  extraIgnores =
-    [ "dist-newstyle" "frontend.jsexe.assets" "static.assets" "result-exe"
-      "zeus-access-token" "zeus-cache-key.pub" "zeus-cache-key.sec" "zeus.db"
-      "migrations.md"
+  ignorePaths =
+[
+    [ ".git" "tags" "TAGS" "README.md" "dist" "dist-newstyle"
+      "frontend.jsexe.assets" "static.assets" "result-exe"
+      "zeus-access-token" "zeus-cache-key.pub"
+      "zeus-cache-key.sec" "zeus.db" "migrations.md"
     ];
 
 
@@ -78,7 +80,7 @@ let
   };
 
   newObelisk = origObelisk // {
-    path = builtins.filterSource (path: type: !(builtins.any (x: x == baseNameOf path) ([".git" "tags" "TAGS" "dist"] ++ extraIgnores) ||
+    path = builtins.filterSource (path: type: !(builtins.any (x: x == baseNameOf path) ignorePaths ||
                                                 builtins.match ".swp$" path)) ./.;
     serverModules = myServerModules;
 

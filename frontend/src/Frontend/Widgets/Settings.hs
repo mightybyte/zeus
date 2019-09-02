@@ -110,7 +110,7 @@ infoWidget _ False = blank
 nixConfExample :: Text -> Text -> Text
 nixConfExample addr pubkey = T.unlines
   [ "substituters = " <> addr <> " https://cache.nixos.org/"
-  , "trusted-public-keys = " <> pubkey <> " cache.nixos.org-1:6NCHdD59X431o0gWypbMrAU"
+  , "trusted-public-keys = " <> pubkey <> " cache.nixos.org-1:6NCHdD59X431o0gWypbMrAURkbJ16ZPMQFGspcDShjY="
   ]
 
 copyableValue
