@@ -8,7 +8,6 @@ let
   };
   opkgs = origObelisk.reflex-platform.nixpkgs;
   ignorePaths =
-[
     [ ".git" "tags" "TAGS" "README.md" "dist" "dist-newstyle"
       "frontend.jsexe.assets" "static.assets" "result-exe"
       "zeus-access-token" "zeus-cache-key.pub"
