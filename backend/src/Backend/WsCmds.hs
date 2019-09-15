@@ -11,13 +11,14 @@ import           Common.Api
 import           Common.Types.BuildJob
 ------------------------------------------------------------------------------
 
-getJobsFromDb :: Connection -> IO [BuildJob]
-getJobsFromDb conn = do
+getJobsFromDb :: Connection -> Integer -> Integer -> IO [BuildJob]
+getJobsFromDb conn lim off = do
   beamQueryConn conn $
-    runSelectReturningList $ select $ do
-      all_ (_ciDb_buildJobs ciDb)
+    runSelectReturningList $ select $ limit_ lim $ offset_ off $ do
+      orderBy_ (desc_ . _buildJob_id) $
+        all_ (_ciDb_buildJobs ciDb)
 
 broadcastJobs :: Connection -> ConnRepo -> IO ()
 broadcastJobs conn connRepo = do
-  jobs <- getJobsFromDb conn
+  jobs <- getJobsFromDb conn 0 20
   broadcast connRepo $ Down_Jobs jobs

@@ -371,7 +371,7 @@ listRepos env wsConn = do
 
 listJobs :: ServerEnv -> WS.Connection -> IO ()
 listJobs env conn = do
-  jobs <- getJobsFromDb (_serverEnv_db env)
+  jobs <- getJobsFromDb (_serverEnv_db env) 20 0
   wsSend conn $ Down_Jobs jobs
 
 addRepo
