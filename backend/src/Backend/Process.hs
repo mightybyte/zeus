@@ -7,13 +7,17 @@ import           Control.Error
 import qualified Control.Exception as C
 import           Control.Monad.Except
 import           Control.Monad.Trans
+import           Data.ByteString (ByteString)
 import           Data.Text (Text)
 import qualified Data.Text as T
+import           Data.Text.Encoding
+import           Data.Text.Encoding.Error
 import           Data.Time
 import           System.Exit
 import           System.IO
 import           System.Process
 import qualified Turtle as Turtle
+import qualified Turtle.Bytes as TurtleB
 ------------------------------------------------------------------------------
 import           Common.Types.JobStatus
 import           Common.Types.ProcMsg
@@ -75,7 +79,7 @@ runCP cp action = do
   t <- liftIO getCurrentTime
   liftIO $ action $ ProcMsg t BuildCommandMsg (cmdSpecToText $ cmdspec cp)
   res <- liftIO $ C.try
-    (Turtle.foldShell (Turtle.streamWithErr cp (return mempty)) (shellHandler action))
+    (Turtle.foldShell (TurtleB.streamWithErr cp (return mempty)) (shellHandler action))
   case res of
     Left e -> ExceptT $ return $ Left e
     Right _ -> return ()
@@ -98,12 +102,13 @@ cmdSpecToText (RawCommand cmd args) = T.unwords $ T.pack cmd : map doArg args
 
 shellHandler
   :: (ProcMsg -> IO ())
-  -> Turtle.FoldShell (Either Turtle.Line Turtle.Line) ()
+  -> Turtle.FoldShell (Either ByteString ByteString) ()
 shellHandler action = Turtle.FoldShell step () return
   where
+    decoder = decodeUtf8With lenientDecode
     step _ a = do
       t <- getCurrentTime
       let pm = case a of
-                Left m -> ProcMsg t StderrMsg (Turtle.lineToText m)
-                Right m -> ProcMsg t StdoutMsg (Turtle.lineToText m)
+                 Left m -> ProcMsg t StderrMsg $ decoder m
+                 Right m -> ProcMsg t StdoutMsg $ decoder m
       action pm
