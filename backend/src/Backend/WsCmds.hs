@@ -20,5 +20,5 @@ getJobsFromDb conn lim off = do
 
 broadcastJobs :: Connection -> ConnRepo -> IO ()
 broadcastJobs conn connRepo = do
-  jobs <- getJobsFromDb conn 0 20
+  jobs <- getJobsFromDb conn 20 0
   broadcast connRepo $ Down_Jobs jobs
