@@ -89,17 +89,19 @@ mkPushRBI :: GW.PushEvent -> Either String RepoBuildInfo
 mkPushRBI pe = do
     sha <- note ("PushEvent didn't have git hash:\n" ++ show pe) $
       GW.evPushHeadSha pe
-    pure $ RepoBuildInfo
-      (GW.whRepoName repo)
-      (either GW.whSimplUserName GW.whUserLogin $ GW.whRepoOwner repo)
-      RepoPush
-      (GW.getUrl $ GW.whRepoSshUrl repo)
-      (GW.getUrl $ GW.whRepoCloneUrl repo)
-      (GW.evPushRef pe)
-      sha
-      "" -- TODO Haven't found how to get the commit message from github yet
-      (GW.whUserLogin $ GW.evPushSender pe)
-      (Just $ GW.getUrl $ GW.whUserAvatarUrl $ GW.evPushSender pe)
+    if sha == "0000000000000000000000000000000000000000"
+      then Left "Push deleted a branch, doing nothing"
+      else pure $ RepoBuildInfo
+        (GW.whRepoName repo)
+        (either GW.whSimplUserName GW.whUserLogin $ GW.whRepoOwner repo)
+        RepoPush
+        (GW.getUrl $ GW.whRepoSshUrl repo)
+        (GW.getUrl $ GW.whRepoCloneUrl repo)
+        (GW.evPushRef pe)
+        sha
+        "" -- TODO Haven't found how to get the commit message from github yet
+        (GW.whUserLogin $ GW.evPushSender pe)
+        (Just $ GW.getUrl $ GW.whUserAvatarUrl $ GW.evPushSender pe)
   where
     repo = GW.evPushRepository pe
 
