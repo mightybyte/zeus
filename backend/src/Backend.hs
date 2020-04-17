@@ -220,6 +220,7 @@ serveBackendRoute env = \case
       listJobs env conn
       listAccounts env conn
       listRepos env conn
+      listCaches env conn
       sendCiInfo env conn
       sendCiSettings env conn
       talkClient env cid conn
