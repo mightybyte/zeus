@@ -151,8 +151,8 @@ newObelisk.project ./. ({ pkgs, ... }: {
     github = dontHaddock (doJailbreak (dontCheck (self.callCabal2nix "github" (pkgs.fetchFromGitHub {
         owner = "mightybyte";
         repo = "github";
-        rev = "a337ff7c6b185f2ca275a8ecfdfa4f100f68925d";
-        sha256 = "1npvqh8jjpgbygpsfwwr196mgkl0z1c92fbd51qlnir39lgrkljd";
+        rev = "a149ee362f74935836f1fa55572842905636ea7c";
+        sha256 = "0fx4fmacw0b8gkld4zmc4n611vv41l91l1wchi3zprf9sdi658fy";
     }) {})));
     heist = dontCheck (self.callCabal2nix "heist" (pkgs.fetchFromGitHub {
         owner = "snapframework";
