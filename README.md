@@ -90,7 +90,7 @@ need to put your real email address so you can renew the LetsEncrypt certs when
 they expire.
 
 ```shell
-git clone https://gitlab.com/mightybyte/zeus.git
+git clone https://github.com/mightybyte/zeus.git
 cd zeus
 mkdir ob-deploy-info
 ob deploy init ob-deploy-info --ssh-key path/to/ssh-key.pem  --hostname ci.example.com --route https://ci.example.com --admin-email you@example.com
@@ -104,7 +104,7 @@ https://ci.example.com and you're off to the races.
 ### Running Zeus Without Obelisk
 
 ```shell
-git clone https://gitlab.com/mightybyte/zeus.git
+git clone https://github.com/mightybyte/zeus.git
 cd zeus
 nix-build -A exe -o result-exe
 mkdir -p config/common
