@@ -30,7 +30,7 @@ library
     , filepath
     , foldl
     , frontend
-    , github                  >= 0.21    && < 0.22
+    , github                  >= 0.21    && < 0.27
     , github-webhooks         >= 0.10    && < 0.11
     , http-client             >= 0.5.13  && < 0.6
     , http-client-tls         >= 0.3.5   && < 0.4

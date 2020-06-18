@@ -25,6 +25,7 @@ import qualified GitHub.Data.Webhooks.Events as GW
 import qualified GitHub.Data.Webhooks.Payload as GW
 import           GitHub.Data.Webhooks.Validate
 import           GitHub.Endpoints.Repos.Webhooks
+import           GitHub.Request
 import           Snap.Core
 import           Text.Printf
 ------------------------------------------------------------------------------
@@ -145,7 +146,7 @@ setupGithubWebhook domain auth owner repo secret sslSettings = do
           , WebhookPullRequestEvent
           , WebhookStatusEvent
           ]
-    eh <- webhooksFor' auth (N owner) (N repo)
+    eh <- executeRequest auth $ webhooksForR (N owner) (N repo) FetchAll
     case eh of
       Left e -> return $ Left e
       Right hooks -> do
@@ -153,7 +154,7 @@ setupGithubWebhook domain auth owner repo secret sslSettings = do
         case filter (\h -> hookUrl h == Just url) (V.toList hooks) of
           (h:_) -> return $ Right h
           _ -> do
-            createRepoWebhook' auth (N owner) (N repo) $
+            executeRequest auth $ createRepoWebhookR (N owner) (N repo) $
                  NewRepoWebhook "web" cfg events (Just True)
   where
     ssl = case sslSettings of
