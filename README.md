@@ -35,7 +35,7 @@ providing the following features:
 
 The following features are high priority and planned for the very near future:
 
-* Ability to distribute builds to multiple build multiple build machines
+* Ability to distribute builds to multiple build machines
 * Proper support for merge requests and control of GitHub/GitLab status lights
   with a safe solution to the problem of anyone on the internet having arbitrary
   code execution on non-ephemeral build servers.
