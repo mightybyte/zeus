@@ -103,7 +103,13 @@ in
 
 newObelisk.project ./. ({ pkgs, ... }: {
   overrides = self: super: with pkgs.haskell.lib;
-  let beam-src = pkgs.fetchFromGitHub {
+  let callHackageDirect = {pkg, ver, sha256}@args:
+        let pkgver = "${pkg}-${ver}";
+        in self.callCabal2nix pkg (pkgs.fetchzip {
+             url = "http://hackage.haskell.org/package/${pkgver}/${pkgver}.tar.gz";
+             inherit sha256;
+           }) {};
+      beam-src = pkgs.fetchFromGitHub {
         owner = "tathougies";
         repo = "beam";
         rev = "737b73c6ec1c6aac6386bf9592a02a91f34a9478";
@@ -148,14 +154,15 @@ newObelisk.project ./. ({ pkgs, ... }: {
     beam-migrate = doJailbreak (dontCheck (self.callCabal2nix "beam-migrate" "${beam-src}/beam-migrate" {}));
     beam-sqlite = dontCheck (self.callCabal2nix "beam-sqlite" "${beam-src}/beam-sqlite" {});
 
-    binary-instances = overrideCabal (self.callCabal2nix "binary-instances" (pkgs.fetchFromGitHub {
-        owner = "phadej";
-        repo = "binary-instances";
-        rev = "9040f3892429ff15a48aecfdf7d9715bc27eec48";
-        sha256 = "14594qzrw3b2z721kajry9pf254njshyw2b56kk2wkjnl5awb1vs";
-    }) {}) (drv: {
-        revision = null;
-        editedCabalFile = null;
+    binary-instances = dontCheck (callHackageDirect {
+      pkg = "binary-instances";
+      ver = "1.0.0.1";
+      sha256 = "0ngnzpfjmzijmj635pg6f034dlvbq2pds7k88bcd5mqpd9mp2hzp";
+    });
+    binary-orphans = dontCheck (callHackageDirect {
+      pkg = "binary-orphans";
+      ver = "1.0.1";
+      sha256 = "15p1wbfxwzja69s03qavs0nngymm80445ajfafi6r3x3ch76azm3";
     });
     github = dontHaddock (doJailbreak (dontCheck (self.callCabal2nix "github" (pkgs.fetchFromGitHub {
         owner = "phadej";
@@ -202,6 +209,11 @@ newObelisk.project ./. ({ pkgs, ... }: {
         rev = "ec8cb2f935ee4f3217c6939684103ba1a6bc4ad1";
         sha256 = "1w77v9isv6rmajg4py4ry7475d3xjs7471dfaf6bglbwphm0dj8b";
     }) {});
+    time-compat = doJailbreak (dontCheck (callHackageDirect {
+      pkg = "time-compat";
+      ver = "1.9.3";
+      sha256 = "1r0g0j3zjw2abvaxnn73nrvbzdq0azlw7kgpi5zdvnx7lv873awg";
+    }));
     zeus = addBuildDepends super.zeus [ pkgs.git ];
 
   };
