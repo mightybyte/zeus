@@ -148,11 +148,20 @@ newObelisk.project ./. ({ pkgs, ... }: {
     beam-migrate = doJailbreak (dontCheck (self.callCabal2nix "beam-migrate" "${beam-src}/beam-migrate" {}));
     beam-sqlite = dontCheck (self.callCabal2nix "beam-sqlite" "${beam-src}/beam-sqlite" {});
 
+    binary-instances = overrideCabal (self.callCabal2nix "binary-instances" (pkgs.fetchFromGitHub {
+        owner = "phadej";
+        repo = "binary-instances";
+        rev = "9040f3892429ff15a48aecfdf7d9715bc27eec48";
+        sha256 = "14594qzrw3b2z721kajry9pf254njshyw2b56kk2wkjnl5awb1vs";
+    }) {}) (drv: {
+        revision = null;
+        editedCabalFile = null;
+    });
     github = dontHaddock (doJailbreak (dontCheck (self.callCabal2nix "github" (pkgs.fetchFromGitHub {
-        owner = "mightybyte";
+        owner = "phadej";
         repo = "github";
-        rev = "a149ee362f74935836f1fa55572842905636ea7c";
-        sha256 = "0fx4fmacw0b8gkld4zmc4n611vv41l91l1wchi3zprf9sdi658fy";
+        rev = "f1c34a1c1af01077fe8ca12e865aba7d3c423591";
+        sha256 = "1skk02ir2s1v6qyf1p48ll4hjswbxf581748nb6w2nbdqzkx2q2j";
     }) {})));
     heist = dontCheck (self.callCabal2nix "heist" (pkgs.fetchFromGitHub {
         owner = "snapframework";
