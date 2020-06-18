@@ -148,12 +148,15 @@ newObelisk.project ./. ({ pkgs, ... }: {
     beam-migrate = doJailbreak (dontCheck (self.callCabal2nix "beam-migrate" "${beam-src}/beam-migrate" {}));
     beam-sqlite = dontCheck (self.callCabal2nix "beam-sqlite" "${beam-src}/beam-sqlite" {});
 
-    binary-instances = self.callCabal2nix "binary-instances" (pkgs.fetchFromGitHub {
+    binary-instances = overrideCabal (self.callCabal2nix "binary-instances" (pkgs.fetchFromGitHub {
         owner = "phadej";
         repo = "binary-instances";
         rev = "9040f3892429ff15a48aecfdf7d9715bc27eec48";
         sha256 = "14594qzrw3b2z721kajry9pf254njshyw2b56kk2wkjnl5awb1vs";
-    }) {};
+    }) {}) (drv: {
+        revision = null;
+        editedCabalFile = null;
+    });
     github = dontHaddock (doJailbreak (dontCheck (self.callCabal2nix "github" (pkgs.fetchFromGitHub {
         owner = "phadej";
         repo = "github";
