@@ -37,6 +37,7 @@ import           GitHub.Data.Name
 import           GitHub.Data.Id
 import           GitHub.Data.Webhooks
 import           GitHub.Endpoints.Repos.Webhooks
+import           GitHub.Request
 import qualified Network.WebSockets as WS
 import           Obelisk.Backend
 import           Obelisk.ExecutableConfig.Lookup
@@ -449,8 +450,8 @@ deleteRepo env rid = do
     Just (repo,accessAccount) -> do
       case _connectedAccount_provider accessAccount of
         GitHub -> do
-          _ <- deleteRepoWebhook'
-            (OAuth $ toS $ _connectedAccount_accessToken accessAccount)
+          _ <- executeRequest (OAuth $ toS $ _connectedAccount_accessToken accessAccount) $
+            deleteRepoWebhookR
             (N $ _repo_namespace repo)
             (N $ _repo_name repo)
             (Id $ _repo_hookId repo)
