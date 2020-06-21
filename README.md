@@ -52,8 +52,8 @@ To set up the Zeus binary cache and avoid building everything, add the following
 to your `/etc/nix/nix.conf`:
 
 ```
-substituters = http://ci.mightybyte.net/cache/ https://cache.nixos.org/
-trusted-public-keys = ci.mightybyte.net-1:LXywRTa8NaNw7x32JJOncRMxFk2I36K6Tf6ac8VRnho= cache.nixos.org-1:6NCHdD59X431o0gWypbMrAURkbJ16ZPMQFGspcDShjY=
+substituters = https://zeus.mightybyte.net https://cache.nixos.org/
+trusted-public-keys = zeus.mightybyte.net-1:LXywRTa8NaNw7x32JJOncRMxFk2I36K6Tf6ac8VRnho= cache.nixos.org-1:6NCHdD59X431o0gWypbMrAURkbJ16ZPMQFGspcDShjY=
 ```
 
 Alternatively, if you don't want to add it to your `nix.conf`, you can add these
@@ -62,7 +62,7 @@ below (this only works if your user is listed in the `trusted-users` section of
 `nix.conf`):
 
 ```
---option trusted-public-keys "ci.mightybyte.net-1:LXywRTa8NaNw7x32JJOncRMxFk2I36K6Tf6ac8VRnho= cache.nixos.org-1:6NCHdD59X431o0gWypbMrAURkbJ16ZPMQFGspcDShjY=" --option substituters "s3://zeus-ci https://cache.nixos.org/"
+--option trusted-public-keys "zeus.mightybyte.net-1:LXywRTa8NaNw7x32JJOncRMxFk2I36K6Tf6ac8VRnho= cache.nixos.org-1:6NCHdD59X431o0gWypbMrAURkbJ16ZPMQFGspcDShjY=" --option substituters "https://zeus.mightybyte.net https://cache.nixos.org/"
 ```
 
 ### Deploying to a Remote Server with Obelisk
