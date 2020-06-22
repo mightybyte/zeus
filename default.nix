@@ -214,6 +214,12 @@ newObelisk.project ./. ({ pkgs, ... }: {
       ver = "1.9.3";
       sha256 = "1r0g0j3zjw2abvaxnn73nrvbzdq0azlw7kgpi5zdvnx7lv873awg";
     }));
+    which = dontCheck (self.callCabal2nix "which" (pkgs.fetchFromGitHub {
+        owner = "obsidiansystems";
+        repo = "which";
+        rev = "04da6f309b0fbe256bb8235c7bf030676d1fd822";
+        sha256 = "1i03c63v3wscd8dhn6mxy13166p7klqjr9bmsf5ss2yskhjjh8hz";
+    }) {});
     zeus = addBuildDepends super.zeus [ pkgs.git ];
 
   };
