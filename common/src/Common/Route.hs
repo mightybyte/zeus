@@ -77,8 +77,6 @@ data FrontendRoute :: * -> * where
   FR_Caches :: FrontendRoute (R CrudRoute)
   FR_Settings :: FrontendRoute ()
 
-type FullRoute = Sum BackendRoute (ObeliskRoute FrontendRoute)
-
 hookRouteEncoder
   :: Encoder (Either Text) (Either Text) (R HookRoute) PageName
 hookRouteEncoder = pathComponentEncoder $ \case
@@ -97,18 +95,21 @@ jobRouteEncoder = pathComponentEncoder $ \case
   Job_List -> PathEnd $ unitEncoder mempty
   Job_Output -> PathSegment "output" (singlePathSegmentEncoder . unsafeTshowEncoder)
 
+landingPageRoute :: R FrontendRoute
+landingPageRoute = FR_Home :/ ()
+
 backendRouteEncoder
-  :: Encoder (Either Text) Identity (R FullRoute) PageName
-backendRouteEncoder =
-  handleEncoder (\_ -> InR (ObeliskRoute_App FR_Home) :/ ()) $ pathComponentEncoder $ \case
-    InL backendRoute -> case backendRoute of
+  :: Encoder (Either Text) Identity (R (FullRoute BackendRoute FrontendRoute)) PageName
+backendRouteEncoder = handleEncoder (\_ -> hoistR (FullRoute_Frontend . ObeliskRoute_App) landingPageRoute) $
+  pathComponentEncoder $ \case
+    FullRoute_Backend backendRoute -> case backendRoute of
       BackendRoute_Cache -> PathSegment "cache" pathOnlyEncoder
       BackendRoute_Missing -> PathSegment "missing" $ unitEncoder mempty
       BackendRoute_Hook -> PathSegment "hook" hookRouteEncoder
       BackendRoute_Ping -> PathSegment "ping" $ unitEncoder mempty
       BackendRoute_RawBuildOut -> PathSegment "raw" singlePathSegmentEncoder
       BackendRoute_Websocket -> PathSegment "ws" $ unitEncoder mempty
-    InR obeliskRoute -> obeliskRouteSegment obeliskRoute $ \case
+    FullRoute_Frontend obeliskRoute -> obeliskRouteSegment obeliskRoute $ \case
       -- The encoder given to PathEnd determines how to parse query parameters,
       -- in this example, we have none, so we insist on it.
       FR_Home -> PathEnd $ unitEncoder mempty

@@ -101,7 +101,10 @@ let
 
 in
 
-newObelisk.project ./. ({ pkgs, ... }: {
+newObelisk.project ./. ({ pkgs, hackGet, ... }: {
+  packages = {
+    reflex-dom-contrib = hackGet ./deps/reflex-dom-contrib;
+  };
   overrides = self: super: with pkgs.haskell.lib;
   let callHackageDirect = {pkg, ver, sha256}@args:
         let pkgver = "${pkg}-${ver}";
@@ -112,16 +115,31 @@ newObelisk.project ./. ({ pkgs, ... }: {
       beam-src = pkgs.fetchFromGitHub {
         owner = "tathougies";
         repo = "beam";
-        rev = "737b73c6ec1c6aac6386bf9592a02a91f34a9478";
-        sha256 = "02xc4qgc7kb0rv8g9dq69p3p0d2psp6b4mzq444hsavnsw2wsn9y";
+        rev = "c858846e322ad28fe53fb6c56006bb1a52b20683";
+        sha256 = "1xffrdbfs2d61qwlchqj4pc5yczkipbghhr5566p2bn1163mmyqw";
       };
       semantic-reflex-src = pkgs.fetchFromGitHub {
         owner = "tomsmalley";
         repo = "semantic-reflex";
-        rev = "728e6263d1d4ce209f02bb5b684971fbef864a95";
-        sha256 = "1rh5hf40ay7472czqnjvzlmd4lsspxd2hshiarscadshml3scwfr";
+        rev = "1ba4ee0124135817d92ea2bea8bde720e94a2612";
+        sha256 = "0mcbxxbysbqcffik722h8lxl69cncsvfmmlij9m61djaw9zwvrp1";
       };
   in {
+    amazonka = doJailbreak (dontCheck (callHackageDirect {
+      pkg = "amazonka";
+      ver = "1.6.1";
+      sha256 = "0plph5sv8k7hm6cbvj0i12g06xvjm83qz9f1j5aviz6j4jp2wpj6";
+    }));
+    amazonka-core = doJailbreak (dontCheck (callHackageDirect {
+      pkg = "amazonka-core";
+      ver = "1.6.1";
+      sha256 = "1q5prw7hwgg4v0dr3g97kmr2caq17xn9ixsdz7i5yr2p3ad943dq";
+    }));
+    amazonka-s3 = dontCheck (callHackageDirect {
+      pkg = "amazonka-s3";
+      ver = "1.6.1";
+      sha256 = "1h12xs40zbihz714pq6il8k733xsba4jzkjwrdzvfwms0hpraix4";
+    });
     backend = overrideCabal super.backend (drv: {
       executableSystemDepends = drv.executableSystemDepends or [] ++ [
         pkgs.awscli
@@ -131,58 +149,57 @@ newObelisk.project ./. ({ pkgs, ... }: {
         pkgs.nix
       ];
     });
-    base32-bytestring = (self.callCabal2nix "base32-bytestring" (pkgs.fetchFromGitHub {
-        owner = "FilWisher";
-        repo = "base32-bytestring";
-        rev = "0c4790ba150a35f7d0d56fe7262ccbe8407c2471";
-        sha256 = "1y0qifp8za9s8dzsflw51wyacpjwx4b8p0qpa4xxv46lc2c2gl6i";
-    }) {});
-
-    # aeson = dontCheck (self.callCabal2nix "aeson" (pkgs.fetchFromGitHub {
-    #     owner = "bos";
-    #     repo = "aeson";
-    #     rev = "378ff1483876d794fc33adb70e4b69a089a1b841";
-    #     sha256 = "06wdwlxa6l5nzkpf7w5sqj10rnxbqd85d9v3j6567n5rc1cyy83c";
-    # }) {});
-    barbies = dontCheck (self.callCabal2nix "barbies" (pkgs.fetchFromGitHub {
-        owner = "jcpetruzza";
-        repo = "barbies";
-        rev = "3e50449afcc7c094657df86e82f8b77a2ab0aa95";
-        sha256 = "1yaln3xisqacw0arxmclncay9a4xj2i6fpacjnpdaigxakl9xdwv";
-    }) {});
+#    base32-bytestring = (self.callCabal2nix "base32-bytestring" (pkgs.fetchFromGitHub {
+#        owner = "FilWisher";
+#        repo = "base32-bytestring";
+#        rev = "0c4790ba150a35f7d0d56fe7262ccbe8407c2471";
+#        sha256 = "1y0qifp8za9s8dzsflw51wyacpjwx4b8p0qpa4xxv46lc2c2gl6i";
+#    }) {});
+#
+#    # aeson = dontCheck (self.callCabal2nix "aeson" (pkgs.fetchFromGitHub {
+#    #     owner = "bos";
+#    #     repo = "aeson";
+#    #     rev = "378ff1483876d794fc33adb70e4b69a089a1b841";
+#    #     sha256 = "06wdwlxa6l5nzkpf7w5sqj10rnxbqd85d9v3j6567n5rc1cyy83c";
+#    # }) {});
+#    barbies = dontCheck (self.callCabal2nix "barbies" (pkgs.fetchFromGitHub {
+#        owner = "jcpetruzza";
+#        repo = "barbies";
+#        rev = "3e50449afcc7c094657df86e82f8b77a2ab0aa95";
+#        sha256 = "1yaln3xisqacw0arxmclncay9a4xj2i6fpacjnpdaigxakl9xdwv";
+#    }) {});
     beam-core = dontCheck (self.callCabal2nix "beam-core" "${beam-src}/beam-core" {});
     beam-migrate = doJailbreak (dontCheck (self.callCabal2nix "beam-migrate" "${beam-src}/beam-migrate" {}));
     beam-sqlite = dontCheck (self.callCabal2nix "beam-sqlite" "${beam-src}/beam-sqlite" {});
 
-    binary-instances = dontCheck (callHackageDirect {
-      pkg = "binary-instances";
-      ver = "1.0.0.1";
-      sha256 = "0ngnzpfjmzijmj635pg6f034dlvbq2pds7k88bcd5mqpd9mp2hzp";
+#    binary-instances = dontCheck (callHackageDirect {
+#      pkg = "binary-instances";
+#      ver = "1.0.0.1";
+#      sha256 = "0ngnzpfjmzijmj635pg6f034dlvbq2pds7k88bcd5mqpd9mp2hzp";
+#    });
+#    binary-orphans = dontCheck (callHackageDirect {
+#      pkg = "binary-orphans";
+#      ver = "1.0.1";
+#      sha256 = "15p1wbfxwzja69s03qavs0nngymm80445ajfafi6r3x3ch76azm3";
+#    });
+#    github = dontHaddock (doJailbreak (dontCheck (self.callCabal2nix "github" (pkgs.fetchFromGitHub {
+#        owner = "phadej";
+#        repo = "github";
+#        rev = "f1c34a1c1af01077fe8ca12e865aba7d3c423591";
+#        sha256 = "1skk02ir2s1v6qyf1p48ll4hjswbxf581748nb6w2nbdqzkx2q2j";
+#    }) {})));
+#    heist = dontCheck (self.callCabal2nix "heist" (pkgs.fetchFromGitHub {
+#        owner = "snapframework";
+#        repo = "heist";
+#        rev = "de802b0ed5055bd45cfed733524b4086c7e71660";
+#        sha256 = "0gqvw9jp6pxg4pixrmlg7vlcicmhkw2cb39bb8lfw401yaq6ad4a";
+#    }) {});
+#    lens-aeson = dontCheck super.lens-aeson;
+    rng-utils = dontCheck (callHackageDirect {
+      pkg = "rng-utils";
+      ver = "0.3.0";
+      sha256 = "0h8h47zjp83k9xqjr6yjb7004siwn61njzjc1siwl6gm9ycpnm8w";
     });
-    binary-orphans = dontCheck (callHackageDirect {
-      pkg = "binary-orphans";
-      ver = "1.0.1";
-      sha256 = "15p1wbfxwzja69s03qavs0nngymm80445ajfafi6r3x3ch76azm3";
-    });
-    github = dontHaddock (doJailbreak (dontCheck (self.callCabal2nix "github" (pkgs.fetchFromGitHub {
-        owner = "phadej";
-        repo = "github";
-        rev = "f1c34a1c1af01077fe8ca12e865aba7d3c423591";
-        sha256 = "1skk02ir2s1v6qyf1p48ll4hjswbxf581748nb6w2nbdqzkx2q2j";
-    }) {})));
-    heist = dontCheck (self.callCabal2nix "heist" (pkgs.fetchFromGitHub {
-        owner = "snapframework";
-        repo = "heist";
-        rev = "de802b0ed5055bd45cfed733524b4086c7e71660";
-        sha256 = "0gqvw9jp6pxg4pixrmlg7vlcicmhkw2cb39bb8lfw401yaq6ad4a";
-    }) {});
-    lens-aeson = dontCheck super.lens-aeson;
-    reflex-dom-contrib = dontCheck (self.callCabal2nix "reflex-dom-contrib" (pkgs.fetchFromGitHub {
-        owner = "reflex-frp";
-        repo = "reflex-dom-contrib";
-        rev = "796a3f0fa1ff59cbad97c918983355b46c3b6aa0";
-        sha256 = "0aqj7xm97mwxhhpcrx58bbg3hhn12jrzk13lf4zhpk2rrjw6yvmc";
-    }) {});
     scrub = dontCheck (self.callCabal2nix "scrub" (pkgs.fetchFromGitHub {
         owner = "mightybyte";
         repo = "scrub";
@@ -191,35 +208,36 @@ newObelisk.project ./. ({ pkgs, ... }: {
     }) {});
     semantic-reflex = dontHaddock (dontCheck
       (self.callCabal2nix "semantic-reflex" "${semantic-reflex-src}/semantic-reflex" {}));
-    shelly = dontCheck (self.callCabal2nix "snap-server" (pkgs.fetchFromGitHub {
-        owner = "yesodweb";
-        repo = "Shelly.hs";
-        rev = "cf2f48a298ce7a40da0283702a3d98d53db9027a";
-        sha256 = "14m3zp4f2n14chl4d0mb1n8i8kgx3x504h28zpjcvp27ffrxr1cl";
-    }) {});
-    snap-server = dontCheck (self.callCabal2nix "snap-server" (pkgs.fetchFromGitHub {
-        owner = "snapframework";
-        repo = "snap-server";
-        rev = "dad24ba290126b1b93da32ef6019393329b54ed3";
-        sha256 = "0fzbvysq6qkbjd39bphbirzd2xaalm3jaxrs91g04ya17nqdaz1i";
-    }) {});
-    streaming-lzma = dontCheck (self.callCabal2nix "streaming-lzma" (pkgs.fetchFromGitHub {
-        owner = "haskell-hvr";
-        repo = "streaming-lzma";
-        rev = "ec8cb2f935ee4f3217c6939684103ba1a6bc4ad1";
-        sha256 = "1w77v9isv6rmajg4py4ry7475d3xjs7471dfaf6bglbwphm0dj8b";
-    }) {});
-    time-compat = doJailbreak (dontCheck (callHackageDirect {
-      pkg = "time-compat";
-      ver = "1.9.3";
-      sha256 = "1r0g0j3zjw2abvaxnn73nrvbzdq0azlw7kgpi5zdvnx7lv873awg";
-    }));
-    which = dontCheck (self.callCabal2nix "which" (pkgs.fetchFromGitHub {
-        owner = "obsidiansystems";
-        repo = "which";
-        rev = "04da6f309b0fbe256bb8235c7bf030676d1fd822";
-        sha256 = "1i03c63v3wscd8dhn6mxy13166p7klqjr9bmsf5ss2yskhjjh8hz";
-    }) {});
+#    shelly = dontCheck (self.callCabal2nix "snap-server" (pkgs.fetchFromGitHub {
+#        owner = "yesodweb";
+#        repo = "Shelly.hs";
+#        rev = "cf2f48a298ce7a40da0283702a3d98d53db9027a";
+#        sha256 = "14m3zp4f2n14chl4d0mb1n8i8kgx3x504h28zpjcvp27ffrxr1cl";
+#    }) {});
+#    snap-server = dontCheck (self.callCabal2nix "snap-server" (pkgs.fetchFromGitHub {
+#        owner = "snapframework";
+#        repo = "snap-server";
+#        rev = "dad24ba290126b1b93da32ef6019393329b54ed3";
+#        sha256 = "0fzbvysq6qkbjd39bphbirzd2xaalm3jaxrs91g04ya17nqdaz1i";
+#    }) {});
+#    streaming-lzma = dontCheck (self.callCabal2nix "streaming-lzma" (pkgs.fetchFromGitHub {
+#        owner = "haskell-hvr";
+#        repo = "streaming-lzma";
+#        rev = "ec8cb2f935ee4f3217c6939684103ba1a6bc4ad1";
+#        sha256 = "1w77v9isv6rmajg4py4ry7475d3xjs7471dfaf6bglbwphm0dj8b";
+#    }) {});
+#    time-compat = doJailbreak (dontCheck (callHackageDirect {
+#      pkg = "time-compat";
+#      ver = "1.9.3";
+#      sha256 = "1r0g0j3zjw2abvaxnn73nrvbzdq0azlw7kgpi5zdvnx7lv873awg";
+#    }));
+#    #which = null;
+#    #which = dontCheck (self.callCabal2nix "which" (pkgs.fetchFromGitHub {
+#    #    owner = "obsidiansystems";
+#    #    repo = "which";
+#    #    rev = "04da6f309b0fbe256bb8235c7bf030676d1fd822";
+#    #    sha256 = "1i03c63v3wscd8dhn6mxy13166p7klqjr9bmsf5ss2yskhjjh8hz";
+#    #}) {});
     zeus = addBuildDepends super.zeus [ pkgs.git ];
 
   };
