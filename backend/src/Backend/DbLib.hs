@@ -36,6 +36,6 @@ setCiSettings dbConn (CiSettings _ np slc) = do
              (\ci -> _ciSettings_id ci ==. val_ 1)
 
 initCiSettings :: Connection -> CiSettings -> IO ()
-initCiSettings dbConn (CiSettings _ a slc) = do
+initCiSettings dbConn (CiSettings i a slc) = do
   beamQueryConn dbConn $ runInsert $ insert (_ciDb_ciSettings ciDb) $
-    insertExpressions [CiSettings default_ (val_ a) (val_ slc)]
+    insertExpressions [CiSettings (val_ i) (val_ a) (val_ slc)]
