@@ -17,13 +17,16 @@ import qualified Data.ByteString.Lazy.Char8 as LB
 import qualified Data.Map as M
 import           Data.String.Conv
 import           Data.Text (Text)
+import qualified Data.Text as T
 import           Data.Text.Encoding
 import qualified Data.Vector as V
 import           GitHub.Data
+import           GitHub.Data.Definitions
 import           GitHub.Data.Name
 import qualified GitHub.Data.Webhooks.Events as GW
 import qualified GitHub.Data.Webhooks.Payload as GW
 import           GitHub.Data.Webhooks.Validate
+import           GitHub.Endpoints.Repos.Statuses
 import           GitHub.Endpoints.Repos.Webhooks
 import           GitHub.Request
 import           Snap.Core
@@ -32,6 +35,7 @@ import           Text.Printf
 import           Backend.Schedule
 import           Backend.Types.ServerEnv
 import           Common.Route
+import           Common.Types.GitHash
 import           Common.Types.RepoBuildInfo
 ------------------------------------------------------------------------------
 
@@ -165,3 +169,36 @@ hookUrl :: RepoWebhook -> Maybe Text
 hookUrl hook = M.lookup "url" m
   where
     m = repoWebhookConfig hook
+
+simpleStatus :: StatusState -> NewStatus
+simpleStatus s = NewStatus s Nothing Nothing Nothing
+
+statusPending :: NewStatus
+statusPending = simpleStatus StatusPending
+
+statusError :: NewStatus
+statusError = simpleStatus StatusError
+
+statusSuccess :: NewStatus
+statusSuccess = simpleStatus StatusSuccess
+
+newStatus
+  :: MonadIO m
+  => Auth
+  -> Text -- ^ owner
+  -> Text -- ^ repo
+  -> GitHash
+  -> NewStatus
+  -> m (Either Text Status)
+newStatus auth owner repo hash s = do
+  result <- liftIO $ github auth createStatusR (N owner) (N repo) (N $ unGitHash hash) s
+  case result of
+    Left err -> return $ Left $ mconcat
+      [ "Backend.Github.newStatus: Could not create status for "
+      , owner
+      , "/"
+      , repo
+      , ": "
+      , T.pack (show err)
+      ]
+    Right s -> return $ Right s

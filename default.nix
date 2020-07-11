@@ -103,6 +103,7 @@ in
 
 newObelisk.project ./. ({ pkgs, hackGet, ... }: {
   packages = {
+    github = hackGet ./deps/github;
     reflex-dom-contrib = hackGet ./deps/reflex-dom-contrib;
   };
   overrides = self: super: with pkgs.haskell.lib;
@@ -182,12 +183,7 @@ newObelisk.project ./. ({ pkgs, hackGet, ... }: {
 #      ver = "1.0.1";
 #      sha256 = "15p1wbfxwzja69s03qavs0nngymm80445ajfafi6r3x3ch76azm3";
 #    });
-#    github = dontHaddock (doJailbreak (dontCheck (self.callCabal2nix "github" (pkgs.fetchFromGitHub {
-#        owner = "phadej";
-#        repo = "github";
-#        rev = "f1c34a1c1af01077fe8ca12e865aba7d3c423591";
-#        sha256 = "1skk02ir2s1v6qyf1p48ll4hjswbxf581748nb6w2nbdqzkx2q2j";
-#    }) {})));
+     github = doJailbreak super.github;
 #    heist = dontCheck (self.callCabal2nix "heist" (pkgs.fetchFromGitHub {
 #        owner = "snapframework";
 #        repo = "heist";

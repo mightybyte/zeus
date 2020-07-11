@@ -30,6 +30,9 @@ import           Data.Time
 import           Database.Beam
 import           Database.Beam.Sqlite
 import           Database.SQLite.Simple
+import           GitHub.Auth
+import           GitHub.Data.URL
+import           GitHub.Endpoints.Repos.Statuses (StatusState(..), NewStatus(..))
 import           System.Directory
 import           System.Environment
 import           System.Exit
@@ -42,6 +45,7 @@ import           Text.Printf
 import           Backend.Db
 import           Backend.DbLib
 import           Backend.ExecutablePaths
+import           Backend.Github
 import           Backend.Process
 import           Backend.Types.ServerEnv
 import           Backend.WsCmds
@@ -52,6 +56,7 @@ import           Common.Types.BinaryCache
 import           Common.Types.BuildJob
 import           Common.Types.CacheJob
 import           Common.Types.CiSettings
+import           Common.Types.GitHash
 import           Common.Types.JobStatus
 import           Common.Types.ProcMsg
 import           Common.Types.Repo
@@ -68,8 +73,17 @@ getNextJob se = do
       guard_ (job ^. buildJob_status ==. (val_ JobPending))
       return job
 
-setJobStatus :: Connection -> UTCTime -> JobStatus -> BuildJob -> IO ()
-setJobStatus dbConn t status incomingJob = do
+toGitHubStatus :: JobStatus -> StatusState
+toGitHubStatus JobPending = StatusPending
+toGitHubStatus JobInProgress = StatusPending
+toGitHubStatus JobCanceled = StatusError
+toGitHubStatus JobTimedOut = StatusError
+toGitHubStatus JobVanished = StatusError
+toGitHubStatus JobFailed = StatusFailure
+toGitHubStatus JobSucceeded = StatusSuccess
+
+setJobStatus :: Connection -> Auth -> Text -> UTCTime -> JobStatus -> BuildJob -> IO ()
+setJobStatus dbConn auth url t status incomingJob = do
   runBeamSqlite dbConn $ do
     runUpdate $
       update (_ciDb_buildJobs ciDb)
@@ -87,6 +101,10 @@ setJobStatus dbConn t status incomingJob = do
                   , job ^. buildJob_status <-. val_ status
                   ])
              (\job -> _buildJob_id job ==. val_ (_buildJob_id incomingJob))
+    let rbi = _buildJob_repoBuildInfo incomingJob
+        gs = NewStatus (toGitHubStatus status) (Just $ URL url) Nothing Nothing
+    newStatus auth (_rbi_repoNamespace rbi) (_rbi_repoName rbi)
+              (GitHash $ _rbi_commitHash rbi) gs
     return ()
 
 buildManagerThread :: ServerEnv -> IO ()
@@ -137,7 +155,8 @@ runBuild se rng repo ca incomingJob = do
   let dbConn = _serverEnv_db se
       connRepo = _serverEnv_connRepo se
   start <- getCurrentTime
-  setJobStatus dbConn start JobInProgress incomingJob
+  let auth = OAuth $ toS $ _connectedAccount_accessToken ca
+  setJobStatus dbConn auth (_serverEnv_publicUrl se) start JobInProgress incomingJob
   broadcastJobs dbConn connRepo
 
   ecMVar <- newEmptyMVar
