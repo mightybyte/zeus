@@ -235,8 +235,8 @@ newObelisk.project ./. ({ pkgs, hackGet, ... }: {
     which = dontCheck (self.callCabal2nix "which" (pkgs.fetchFromGitHub {
         owner = "obsidiansystems";
         repo = "which";
-        rev = "f5bce93335efa32ecaf1a14bd449c5ba01f71a4e";
-        sha256 = "0cq48q57nbahn2msrdzal8pj6cv88zx82dd14sv0qzfn2vnkinsd";
+        rev = "04da6f309b0fbe256bb8235c7bf030676d1fd822";
+        sha256 = "1i03c63v3wscd8dhn6mxy13166p7klqjr9bmsf5ss2yskhjjh8hz";
     }) {});
     zeus = addBuildDepends super.zeus [ pkgs.git ];
 

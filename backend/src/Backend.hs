@@ -150,10 +150,8 @@ backend = Backend
       runBeamSqliteDebug putStrLn dbConn $ autoMigrate migrationBackend ciDbChecked
       mcs <- getCiSettings dbConn
       case mcs of
-        Nothing -> do
-          let c = CiSettings 0 "nixpkgs=/nix/var/nix/profiles/per-user/root/channels/nixos" True
-          initCiSettings dbConn c
-        Just _ -> return ()
+        Nothing -> initCiSettings dbConn defCiSettings
+        Just cs -> return ()
       secretToken <- getSecretToken
       connRepo <- newConnRepo
       buildThreads <- newIORef mempty

@@ -12,12 +12,18 @@ import           Backend.Types.ServerEnv
 import           Common.Types.CiSettings
 ------------------------------------------------------------------------------
 
+globalCiSettingsKey :: Int
+globalCiSettingsKey = 0
+
+defCiSettings :: CiSettings
+defCiSettings = CiSettings globalCiSettingsKey "nixpkgs=/nix/var/nix/profiles/per-user/root/channels/nixos" True
+
 getCiSettings :: Connection -> IO (Maybe CiSettings)
 getCiSettings dbConn = do
   beamQueryConn dbConn $
     runSelectReturningOne $ select $ do
       ci <- all_ (_ciDb_ciSettings ciDb)
-      guard_ (ci ^. ciSettings_id ==. (val_ 1))
+      guard_ (ci ^. ciSettings_id ==. (val_ globalCiSettingsKey))
       return ci
 
 setCiSettings :: Connection -> CiSettings -> IO ()
