@@ -20,6 +20,7 @@ import Control.Category
 import           Prelude hiding (id, (.))
 import           Control.Category
 import           Control.Lens
+import           Data.Int
 import           Data.Some (Some)
 import qualified Data.Some as Some
 import           Data.Text (Text)
@@ -56,7 +57,7 @@ deriveRouteComponent ''CrudRoute
 
 data JobRoute :: * -> * where
   Job_List :: JobRoute ()
-  Job_Output :: JobRoute Int
+  Job_Output :: JobRoute Int32
 
 deriveRouteComponent ''JobRoute
 

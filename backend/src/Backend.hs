@@ -19,6 +19,7 @@ import           Control.Monad.Trans
 import qualified Data.Aeson as A
 import           Data.Dependent.Sum (DSum ((:=>)))
 import           Data.IORef
+import           Data.Int
 import           Data.RNG
 import qualified Data.Set as S
 import           Data.String.Conv
@@ -351,7 +352,7 @@ cancelJobAndRemove env (BuildJobId jid) = do
         updateJobStatus env jid JobCanceled
     broadcastJobs (_serverEnv_db env) (_serverEnv_connRepo env)
 
-updateJobStatus :: ServerEnv -> Int -> JobStatus -> IO ()
+updateJobStatus :: ServerEnv -> Int32 -> JobStatus -> IO ()
 updateJobStatus env jid status =
     runBeamSqlite (_serverEnv_db env) $ do
       runUpdate $
@@ -442,7 +443,7 @@ addRepo env wsConn
             Left e -> wsSend wsConn $ Down_Alert $ "Error setting up webhook: " <> (T.pack $ show e)
             Right rw -> do
               let Id hid = repoWebhookId rw
-              insertRepo hid
+              insertRepo $ fromIntegral hid
         GitLab -> do
           mhid <- setupGitlabWebhook
             wbu
@@ -477,14 +478,14 @@ deleteRepo env rid = do
             deleteRepoWebhookR
             (N $ _repo_namespace repo)
             (N $ _repo_name repo)
-            (Id $ _repo_hookId repo)
+            (Id $ fromIntegral $ _repo_hookId repo)
           return ()
         GitLab -> do
           deleteGitlabWebhook
             (_repo_namespace repo)
             (_repo_name repo)
             (_connectedAccount_accessToken accessAccount)
-            (_repo_hookId repo)
+            (fromIntegral $ _repo_hookId repo)
 
       beamQuery env $
         runDelete $ delete (_ciDb_repos ciDb) $

@@ -18,6 +18,7 @@ import           Control.Monad
 import qualified Data.ByteString as B
 import qualified Data.ByteString.Char8 as CB
 import           Data.IORef
+import           Data.Int
 import           Data.Map (Map)
 import qualified Data.Map as M
 import           Data.RNG
@@ -164,13 +165,13 @@ runBuild se rng repo ca incomingJob = do
   return ()
 
 threadWatcher
-  :: IORef (Map Int (Weak ThreadId))
+  :: IORef (Map Int32 (Weak ThreadId))
   -> UTCTime
   -> NominalDiffTime
   -- ^ The build timeout in seconds
   -> MVar ExitCode
   -> Weak ThreadId
-  -> Int
+  -> Int32
   -> IO JobStatus
 threadWatcher buildThreads start timeout ecMVar wtid jobId = go
   where
@@ -212,7 +213,7 @@ microsToDelay timeout start = do
 buildOutputDir :: String
 buildOutputDir = "log/builds"
 
-sendOutput :: ServerEnv -> Int -> ProcMsg -> IO ()
+sendOutput :: ServerEnv -> Int32 -> ProcMsg -> IO ()
 sendOutput se jid msg = do
     listeners <- readIORef (_serverEnv_buildListeners se)
     case M.lookup jid listeners of

@@ -5,6 +5,7 @@ module Backend.Types.ServerEnv where
 ------------------------------------------------------------------------------
 import           Control.Concurrent
 import           Data.IORef
+import           Data.Int
 import           Data.Map (Map)
 import           Data.Set (Set)
 import           Data.Text (Text)
@@ -32,8 +33,8 @@ data ServerEnv = ServerEnv
   , _serverEnv_db :: Connection
   , _serverEnv_connRepo :: ConnRepo
   -- ^ Websocket connection repo that allows job updates to be pushed
-  , _serverEnv_buildThreads :: IORef (Map Int (Weak ThreadId))
-  , _serverEnv_buildListeners :: IORef (Map Int (Set ConnId))
+  , _serverEnv_buildThreads :: IORef (Map Int32 (Weak ThreadId))
+  , _serverEnv_buildListeners :: IORef (Map Int32 (Set ConnId))
   , _serverEnv_cacheKey :: NixCacheKeyPair
   }
 
