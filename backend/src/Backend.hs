@@ -12,6 +12,7 @@ import           Control.Concurrent
 import           Control.Error
 import qualified Control.Exception as E
 import           Control.Lens
+import qualified Control.Monad.Fail as Fail
 import qualified Data.Map as M
 import           Control.Monad
 import           Control.Monad.Trans
@@ -30,7 +31,8 @@ import           Data.Maybe (fromMaybe)
 import           Database.Beam
 import           Database.Beam.Sqlite
 import           Database.Beam.Sqlite.Migrate
-import           Database.Beam.Migrate.Simple
+import           Database.Beam.Migrate.Backend
+import           Database.Beam.Migrate.Simple hiding (migrateScript)
 import           Database.SQLite.Simple
 import           GitHub.Auth
 import           GitHub.Data.Name
@@ -140,6 +142,29 @@ getAppCacheKey appRoute = do
   let appDomain = T.takeWhile (\c -> c /= ':' && c /= '/') $ T.drop 3 $ snd $ T.breakOn "://" appRoute
   getOrCreateSigningKey $ T.unpack $ appDomain <> "-1"
 
+verboseMigrate
+  :: (Database Sqlite db, Fail.MonadFail m)
+  => BeamMigrationBackend Sqlite m
+  -> CheckedDatabaseSettings Sqlite db
+  -> m ()
+verboseMigrate BeamMigrationBackend { backendActionProvider = actions
+                                   , backendGetDbConstraints = getCs }
+            db =
+  do actual <- getCs
+     let expected = collectChecks db
+     case finalSolution (heuristicSolver actions actual expected) of
+       Candidates {} -> Fail.fail "autoMigrate: Could not determine migration"
+       Solved (cmds) ->
+         -- Check if any of the commands are irreversible
+         case foldMap migrationCommandDataLossPossible cmds of
+           MigrationKeepsData -> mapM_ (runNoReturn . migrationCommand) cmds
+           _ -> do
+             let msg = unlines $
+                   "autoMigrate: Not performing automatic migration due to data loss" :
+                   "Here is a migration script that may or may not be helpful:" : "" :
+                   map (toS . sqliteRenderSyntaxScript . fromSqliteCommand . migrationCommand) cmds
+             Fail.fail msg
+
 backend :: Backend BackendRoute FrontendRoute
 backend = Backend
   { _backend_run = \serve -> do
@@ -147,11 +172,11 @@ backend = Backend
       -- expect a large volume of requests for awhile so this is probably a
       -- very low priority.
       dbConn <- open dbConnectInfo
-      runBeamSqliteDebug putStrLn dbConn $ autoMigrate migrationBackend ciDbChecked
+      runBeamSqliteDebug putStrLn dbConn $ verboseMigrate migrationBackend ciDbChecked
       mcs <- getCiSettings dbConn
       case mcs of
         Nothing -> initCiSettings dbConn defCiSettings
-        Just cs -> return ()
+        Just _ -> return ()
       secretToken <- getSecretToken
       connRepo <- newConnRepo
       buildThreads <- newIORef mempty
