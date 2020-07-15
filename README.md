@@ -30,15 +30,18 @@ providing the following features:
 * Support for pushing build outputs to a Nix cache hosted on S3.
 * Organizations with closed source software can limit server and cache access to
   specific IP addresses / subnets.
+* Sends build status to GitHub allowing Zeus to control the merging of pull
+  requests.
 
 ### Roadmap
 
 The following features are high priority and planned for the very near future:
 
 * Ability to distribute builds to multiple build machines
-* Proper support for merge requests and control of GitHub/GitLab status lights
-  with a safe solution to the problem of anyone on the internet having arbitrary
-  code execution on non-ephemeral build servers.
+* Proper support for merge requests with a safe solution to the problem of
+  anyone on the internet having arbitrary code execution on non-ephemeral
+  build servers.
+* User authentication and authorization
 
 Other tasks
 
