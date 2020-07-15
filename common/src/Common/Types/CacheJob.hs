@@ -19,6 +19,7 @@ module Common.Types.CacheJob where
 ------------------------------------------------------------------------------
 import           Control.Lens
 import           Data.Aeson
+import           Data.Int
 import           Data.Text (Text)
 import           Data.Time
 import           Database.Beam
@@ -29,7 +30,7 @@ import           Common.Types.JobStatus
 
 ------------------------------------------------------------------------------
 data CacheJobT f = CacheJob
-  { _cacheJob_id :: C f Int
+  { _cacheJob_id :: C f Int32
   , _cacheJob_storePath :: C f Text
   , _cacheJob_cache :: PrimaryKey BinaryCacheT (Nullable f)
   , _cacheJob_startedAt :: C f (Maybe UTCTime)
@@ -67,6 +68,6 @@ instance FromJSON CacheJob
 instance Beamable CacheJobT
 
 instance Table CacheJobT where
-  data PrimaryKey CacheJobT f = CacheJobId (Columnar f Int)
+  data PrimaryKey CacheJobT f = CacheJobId (Columnar f Int32)
     deriving (Generic, Beamable)
   primaryKey = CacheJobId . _cacheJob_id

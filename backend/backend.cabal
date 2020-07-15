@@ -63,6 +63,7 @@ library
     , vector                  >= 0.12.0  && < 0.13
     , websockets
     , websockets-snap
+    , which
   exposed-modules:
     Backend
     Backend.Build
@@ -86,7 +87,6 @@ library
     Backend.WsCmds
     Backend.WsUtils
     Nix.Types
-    Which
   ghc-options: -Wall
 
 executable backend

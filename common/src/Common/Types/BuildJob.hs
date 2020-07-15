@@ -20,6 +20,7 @@ module Common.Types.BuildJob where
 ------------------------------------------------------------------------------
 import           Control.Lens
 import           Data.Aeson
+import           Data.Int
 import           Data.Time
 import           Database.Beam
 import           Database.Beam.Backend.SQL
@@ -36,7 +37,7 @@ instance BeamMigrateSqlBackend be => HasDefaultSqlDataType be UTCTime where
 
 ------------------------------------------------------------------------------
 data BuildJobT f = BuildJob
-  { _buildJob_id :: C f Int
+  { _buildJob_id :: C f Int32
   , _buildJob_repoBuildInfo :: RepoBuildInfoT f
   -- ^ Denormalizing this and putting it inline instead of using a foreign key
   -- to the repos table allows us to delete repos without violating foreign
@@ -67,7 +68,7 @@ instance ToJSON (BuildJobT Identity) where
     toEncoding = genericToEncoding defaultOptions
 instance FromJSON (BuildJobT Identity)
 
-bjKeyToInt :: PrimaryKey BuildJobT Identity -> Int
+bjKeyToInt :: PrimaryKey BuildJobT Identity -> Int32
 bjKeyToInt (BuildJobId k) = k
 
 bjKeyIdToMaybe :: PrimaryKey BuildJobT Identity -> PrimaryKey BuildJobT Maybe
@@ -80,6 +81,6 @@ bjKeyMaybeToId (BuildJobId Nothing) = Nothing
 instance Beamable BuildJobT
 
 instance Table BuildJobT where
-  data PrimaryKey BuildJobT f = BuildJobId (Columnar f Int)
+  data PrimaryKey BuildJobT f = BuildJobId (Columnar f Int32)
     deriving (Generic, Beamable)
   primaryKey = BuildJobId . _buildJob_id

@@ -17,6 +17,7 @@ module Common.Types.Builder where
 
 ------------------------------------------------------------------------------
 import           Control.Monad
+import           Data.Int
 import           Data.Readable
 import           Data.Text (Text)
 import           Database.Beam
@@ -51,11 +52,11 @@ instance (BeamBackend be, FromBackendRow be Text) => FromBackendRow be Platform 
   fromBackendRow = maybe (error "BeamRowParseError") id . fromText <$> fromBackendRow
 
 data BuilderT f = Builder
-  { _builder_id :: C f Int
+  { _builder_id :: C f Int32
   , _builder_ip :: C f Text
   , _builder_platform :: C f Platform
-  , _builder_maxBuilds :: C f Int
-  , _builder_speedFactor :: C f Int
+  , _builder_maxBuilds :: C f Int32
+  , _builder_speedFactor :: C f Int32
   } deriving Generic
 
 type Builder = BuilderT Identity
@@ -69,6 +70,6 @@ deriving instance Show Builder
 instance Beamable BuilderT
 
 instance Table BuilderT where
-  data PrimaryKey BuilderT f = BuilderId (Columnar f Int)
+  data PrimaryKey BuilderT f = BuilderId (Columnar f Int32)
     deriving (Generic, Beamable)
   primaryKey = BuilderId . _builder_id

@@ -2,7 +2,7 @@
 
 module Backend.ExecutablePaths where
 
-import Which
+import System.Which
 
 gitBinary :: String
 gitBinary = $(staticWhich "git")

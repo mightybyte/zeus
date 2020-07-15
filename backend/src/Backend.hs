@@ -12,12 +12,14 @@ import           Control.Concurrent
 import           Control.Error
 import qualified Control.Exception as E
 import           Control.Lens
+import qualified Control.Monad.Fail as Fail
 import qualified Data.Map as M
 import           Control.Monad
 import           Control.Monad.Trans
 import qualified Data.Aeson as A
 import           Data.Dependent.Sum (DSum ((:=>)))
 import           Data.IORef
+import           Data.Int
 import           Data.RNG
 import qualified Data.Set as S
 import           Data.String.Conv
@@ -30,7 +32,8 @@ import           Data.Maybe (fromMaybe)
 import           Database.Beam
 import           Database.Beam.Sqlite
 import           Database.Beam.Sqlite.Migrate
-import           Database.Beam.Migrate.Simple
+import           Database.Beam.Migrate.Backend
+import           Database.Beam.Migrate.Simple hiding (migrateScript)
 import           Database.SQLite.Simple
 import           GitHub.Auth
 import           GitHub.Data.Name
@@ -140,6 +143,29 @@ getAppCacheKey appRoute = do
   let appDomain = T.takeWhile (\c -> c /= ':' && c /= '/') $ T.drop 3 $ snd $ T.breakOn "://" appRoute
   getOrCreateSigningKey $ T.unpack $ appDomain <> "-1"
 
+verboseMigrate
+  :: (Database Sqlite db, Fail.MonadFail m)
+  => BeamMigrationBackend Sqlite m
+  -> CheckedDatabaseSettings Sqlite db
+  -> m ()
+verboseMigrate BeamMigrationBackend { backendActionProvider = actions
+                                   , backendGetDbConstraints = getCs }
+            db =
+  do actual <- getCs
+     let expected = collectChecks db
+     case finalSolution (heuristicSolver actions actual expected) of
+       Candidates {} -> Fail.fail "autoMigrate: Could not determine migration"
+       Solved (cmds) ->
+         -- Check if any of the commands are irreversible
+         case foldMap migrationCommandDataLossPossible cmds of
+           MigrationKeepsData -> mapM_ (runNoReturn . migrationCommand) cmds
+           _ -> do
+             let msg = unlines $
+                   "autoMigrate: Not performing automatic migration due to data loss" :
+                   "Here is a migration script that may or may not be helpful:" : "" :
+                   map (toS . sqliteRenderSyntaxScript . fromSqliteCommand . migrationCommand) cmds
+             Fail.fail msg
+
 backend :: Backend BackendRoute FrontendRoute
 backend = Backend
   { _backend_run = \serve -> do
@@ -147,12 +173,10 @@ backend = Backend
       -- expect a large volume of requests for awhile so this is probably a
       -- very low priority.
       dbConn <- open dbConnectInfo
-      runBeamSqliteDebug putStrLn dbConn $ autoMigrate migrationBackend ciDbChecked
+      runBeamSqliteDebug putStrLn dbConn $ verboseMigrate migrationBackend ciDbChecked
       mcs <- getCiSettings dbConn
       case mcs of
-        Nothing -> do
-          let c = CiSettings 0 "nixpkgs=/nix/var/nix/profiles/per-user/root/channels/nixos" True
-          initCiSettings dbConn c
+        Nothing -> initCiSettings dbConn defCiSettings
         Just _ -> return ()
       secretToken <- getSecretToken
       connRepo <- newConnRepo
@@ -328,7 +352,7 @@ cancelJobAndRemove env (BuildJobId jid) = do
         updateJobStatus env jid JobCanceled
     broadcastJobs (_serverEnv_db env) (_serverEnv_connRepo env)
 
-updateJobStatus :: ServerEnv -> Int -> JobStatus -> IO ()
+updateJobStatus :: ServerEnv -> Int32 -> JobStatus -> IO ()
 updateJobStatus env jid status =
     runBeamSqlite (_serverEnv_db env) $ do
       runUpdate $
@@ -419,7 +443,7 @@ addRepo env wsConn
             Left e -> wsSend wsConn $ Down_Alert $ "Error setting up webhook: " <> (T.pack $ show e)
             Right rw -> do
               let Id hid = repoWebhookId rw
-              insertRepo hid
+              insertRepo $ fromIntegral hid
         GitLab -> do
           mhid <- setupGitlabWebhook
             wbu
@@ -454,14 +478,14 @@ deleteRepo env rid = do
             deleteRepoWebhookR
             (N $ _repo_namespace repo)
             (N $ _repo_name repo)
-            (Id $ _repo_hookId repo)
+            (Id $ fromIntegral $ _repo_hookId repo)
           return ()
         GitLab -> do
           deleteGitlabWebhook
             (_repo_namespace repo)
             (_repo_name repo)
             (_connectedAccount_accessToken accessAccount)
-            (_repo_hookId repo)
+            (fromIntegral $ _repo_hookId repo)
 
       beamQuery env $
         runDelete $ delete (_ciDb_repos ciDb) $

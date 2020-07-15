@@ -18,6 +18,7 @@ module Common.Types.BinaryCache where
 
 ------------------------------------------------------------------------------
 import           Data.Aeson
+import           Data.Int
 --import           Data.Text (Text)
 import           Database.Beam
 ------------------------------------------------------------------------------
@@ -27,7 +28,7 @@ import           Common.Types.S3Cache
 
 ------------------------------------------------------------------------------
 data BinaryCacheT f = BinaryCache
-  { _binaryCache_id :: C f Int
+  { _binaryCache_id :: C f Int32
 --  , _binaryCache_url :: C f Text
 --  , _binaryCache_storeDir :: C f Text
   , _binaryCache_s3Cache :: C f S3Cache
@@ -97,9 +98,9 @@ instance FromJSON (BinaryCacheT Maybe)
 instance Beamable BinaryCacheT
 
 instance Table BinaryCacheT where
-  data PrimaryKey BinaryCacheT f = BinaryCacheId (Columnar f Int)
+  data PrimaryKey BinaryCacheT f = BinaryCacheId (Columnar f Int32)
     deriving (Generic, Beamable)
   primaryKey = BinaryCacheId . _binaryCache_id
 
-binaryCacheKeyToInt :: PrimaryKey BinaryCacheT Identity -> Int
+binaryCacheKeyToInt :: PrimaryKey BinaryCacheT Identity -> Int32
 binaryCacheKeyToInt (BinaryCacheId k) = k
