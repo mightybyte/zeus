@@ -407,14 +407,14 @@ addRepo
 addRepo env wsConn
         (Repo _ (ConnectedAccountId (Just o)) (Just n) (Just ns)
               (Just nf) (Just attrs) (Just t) (BinaryCacheId c) _) = do
-  mca <- beamQuery env $ do
+  mca <- runBeamSqlite (_serverEnv_db env) $ do
     runSelectReturningOne $ select $ do
       account <- all_ (ciDb ^. ciDb_connectedAccounts)
       guard_ (account ^. connectedAccount_id ==. (val_ o))
       return account
   let insertRepo hid = do
         putStrLn "Repository hook setup successful"
-        beamQuery env $ do
+        runBeamSqlite (_serverEnv_db env) $ do
           runInsert $ insert (_ciDb_repos ciDb) $ insertExpressions
             [Repo default_
                   (ConnectedAccountId $ val_ o)

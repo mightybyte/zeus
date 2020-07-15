@@ -115,8 +115,8 @@ newObelisk.project ./. ({ pkgs, hackGet, ... }: {
       beam-src = pkgs.fetchFromGitHub {
         owner = "tathougies";
         repo = "beam";
-        rev = "c858846e322ad28fe53fb6c56006bb1a52b20683";
-        sha256 = "1xffrdbfs2d61qwlchqj4pc5yczkipbghhr5566p2bn1163mmyqw";
+        rev = "737b73c6ec1c6aac6386bf9592a02a91f34a9478";
+        sha256 = "02xc4qgc7kb0rv8g9dq69p3p0d2psp6b4mzq444hsavnsw2wsn9y";
       };
       semantic-reflex-src = pkgs.fetchFromGitHub {
         owner = "tomsmalley";
