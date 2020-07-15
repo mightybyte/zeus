@@ -1,6 +1,6 @@
 # Zeus Changelog
 
-## 2020-06-27 Beam upgrade requires DB migration / reset
+## 2020-07-15 Change DB keys to Int32
 
 An upgrade to the Beam DB library resulted in columns with type INTEGER changing
-to BIGINT. See [migrations.md](migrations.md) for more information.
+to BIGINT. We avoid a migration by changing these types to Int32.

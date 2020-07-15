@@ -5,6 +5,12 @@ that happens will put migration code here.
 
 ### 2020-06-27 Columns of type INTEGER change to BIGINT
 
+------------------------------------------------------------------------------
+NOTE: This migration is not needed after pull request 36 was merged.  Leaving
+it here for now as a useful migration trick that we may want to use in the
+future.
+------------------------------------------------------------------------------
+
 Sqlite does not support changing column data types, but you can migrate with the
 following script. Note that this script hasn't been exhaustively tested, so use
 with care.
