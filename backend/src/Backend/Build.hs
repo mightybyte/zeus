@@ -129,6 +129,7 @@ statusDescription dt JobSucceeded = "Job succeeded in " <> diffTimeToRelativeEng
 
 setJobStatus :: Connection -> Auth -> Text -> UTCTime -> JobStatus -> BuildJob -> IO ()
 setJobStatus dbConn auth url t status incomingJob = do
+  let jobId = _buildJob_id incomingJob
   runBeamSqlite dbConn $ do
     runUpdate $
       update (_ciDb_buildJobs ciDb)
@@ -145,15 +146,21 @@ setJobStatus dbConn auth url t status incomingJob = do
                   [ job ^. buildJob_endedAt <-. val_ (Just t)
                   , job ^. buildJob_status <-. val_ status
                   ])
-             (\job -> _buildJob_id job ==. val_ (_buildJob_id incomingJob))
+             (\job -> _buildJob_id job ==. val_ jobId)
     return ()
   now <- getCurrentTime
   let rbi = _buildJob_repoBuildInfo incomingJob
       desc = statusDescription (diffUTCTime now t) status
       context = case drop 1 (T.splitOn "://" url) of
                   [] -> "Zeus CI"
-                  (rest:_) -> T.dropWhile (\c -> c /= '/' && c /= ':') rest <> "/zeus"
-      gs = NewStatus (toGitHubStatus status) (Just $ URL url) (Just desc) (Just context)
+                  --Switch to something like this or a user-specified name later
+                  --(rest:_) -> T.takeWhile (\c -> c /= '/' && c /= ':') rest <> "/zeus"
+                  _ -> "Zeus CI"
+      statusUrl = case status of
+                    JobSucceeded -> URL $ url <> "/raw/" <> T.pack (show jobId) <> ".txt"
+                    JobFailed -> URL $ url <> "/raw/" <> T.pack (show jobId) <> ".txt"
+                    _ -> URL url
+      gs = NewStatus (toGitHubStatus status) (Just statusUrl) (Just desc) (Just context)
   _ <- newStatus auth (_rbi_repoNamespace rbi) (_rbi_repoName rbi)
             (GitHash $ _rbi_commitHash rbi) gs
   return ()
