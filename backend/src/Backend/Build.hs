@@ -1,5 +1,6 @@
 {-# LANGUAGE BangPatterns #-}
 {-# LANGUAGE FlexibleContexts #-}
+{-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE MultiWayIf #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE ScopedTypeVariables #-}
@@ -82,6 +83,50 @@ toGitHubStatus JobVanished = StatusError
 toGitHubStatus JobFailed = StatusFailure
 toGitHubStatus JobSucceeded = StatusSuccess
 
+diffTimeToRelativeEnglish :: NominalDiffTime -> Text
+diffTimeToRelativeEnglish delta = T.pack (show amt) <> shortPeriodText period
+  where
+    (amt, period) = diffTimeToRoundedQuantity delta
+
+diffTimeToRoundedQuantity :: NominalDiffTime -> (Int, TimePeriod)
+diffTimeToRoundedQuantity delta
+  | delta < oneMinute = (roundInt delta, Seconds)
+  | delta < oneHour = (roundInt $ delta / oneMinute, Minutes)
+  | delta < oneDay = (roundInt $ delta / oneHour, Hours)
+  | otherwise = (roundInt $ delta / oneDay, Days)
+
+data TimePeriod
+  = Seconds
+  | Minutes
+  | Hours
+  | Days
+
+shortPeriodText :: TimePeriod -> Text
+shortPeriodText = \case
+  Seconds -> "s"
+  Minutes -> "m"
+  Hours -> "h"
+  Days -> "d"
+
+roundInt :: NominalDiffTime -> Int
+roundInt = round
+
+oneMinute :: NominalDiffTime
+oneMinute = 60
+oneHour :: NominalDiffTime
+oneHour = oneMinute * 60
+oneDay :: NominalDiffTime
+oneDay = oneHour * 24
+
+statusDescription :: NominalDiffTime -> JobStatus -> Text
+statusDescription _ JobPending = "Job pending"
+statusDescription _ JobInProgress = "Job in progress"
+statusDescription dt JobCanceled = "Job canceled " <> diffTimeToRelativeEnglish dt
+statusDescription dt JobTimedOut = "Job timed out " <> diffTimeToRelativeEnglish dt
+statusDescription dt JobVanished = "Job vanished " <> diffTimeToRelativeEnglish dt
+statusDescription dt JobFailed = "Job failed in " <> diffTimeToRelativeEnglish dt
+statusDescription dt JobSucceeded = "Job succeeded in " <> diffTimeToRelativeEnglish dt
+
 setJobStatus :: Connection -> Auth -> Text -> UTCTime -> JobStatus -> BuildJob -> IO ()
 setJobStatus dbConn auth url t status incomingJob = do
   runBeamSqlite dbConn $ do
@@ -102,10 +147,14 @@ setJobStatus dbConn auth url t status incomingJob = do
                   ])
              (\job -> _buildJob_id job ==. val_ (_buildJob_id incomingJob))
     return ()
+  now <- getCurrentTime
   let rbi = _buildJob_repoBuildInfo incomingJob
-      gs = NewStatus (toGitHubStatus status) (Just $ URL url) Nothing Nothing
-  printf "Sending status %s to GitHub for job %d\n" (show status) (_buildJob_id incomingJob)
-  newStatus auth (_rbi_repoNamespace rbi) (_rbi_repoName rbi)
+      desc = statusDescription (diffUTCTime now t) status
+      context = case drop 1 (T.splitOn "://" url) of
+                  [] -> "Zeus CI"
+                  (rest:_) -> T.dropWhile (\c -> c /= '/' && c /= ':') rest <> "/zeus"
+      gs = NewStatus (toGitHubStatus status) (Just $ URL url) (Just desc) (Just context)
+  _ <- newStatus auth (_rbi_repoNamespace rbi) (_rbi_repoName rbi)
             (GitHash $ _rbi_commitHash rbi) gs
   return ()
 
