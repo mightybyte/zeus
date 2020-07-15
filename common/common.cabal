@@ -39,6 +39,7 @@ library
     Common.Types.ConnectedAccount
     Common.Types.BuildJob
     Common.Types.Builder
+    Common.Types.GitHash
     Common.Types.JobStatus
     Common.Types.NixCacheKeyPair
     Common.Types.ProcMsg

@@ -1,5 +1,6 @@
 {-# LANGUAGE BangPatterns #-}
 {-# LANGUAGE FlexibleContexts #-}
+{-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE MultiWayIf #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE ScopedTypeVariables #-}
@@ -31,6 +32,9 @@ import           Data.Time
 import           Database.Beam
 import           Database.Beam.Sqlite
 import           Database.SQLite.Simple
+import           GitHub.Auth
+import           GitHub.Data.URL
+import           GitHub.Endpoints.Repos.Statuses (StatusState(..), NewStatus(..))
 import           System.Directory
 import           System.Environment
 import           System.Exit
@@ -43,6 +47,7 @@ import           Text.Printf
 import           Backend.Db
 import           Backend.DbLib
 import           Backend.ExecutablePaths
+import           Backend.Github
 import           Backend.Process
 import           Backend.Types.ServerEnv
 import           Backend.WsCmds
@@ -53,6 +58,7 @@ import           Common.Types.BinaryCache
 import           Common.Types.BuildJob
 import           Common.Types.CacheJob
 import           Common.Types.CiSettings
+import           Common.Types.GitHash
 import           Common.Types.JobStatus
 import           Common.Types.ProcMsg
 import           Common.Types.Repo
@@ -69,8 +75,62 @@ getNextJob se = do
       guard_ (job ^. buildJob_status ==. (val_ JobPending))
       return job
 
-setJobStatus :: Connection -> UTCTime -> JobStatus -> BuildJob -> IO ()
-setJobStatus dbConn t status incomingJob = do
+toGitHubStatus :: JobStatus -> StatusState
+toGitHubStatus JobPending = StatusPending
+toGitHubStatus JobInProgress = StatusPending
+toGitHubStatus JobCanceled = StatusError
+toGitHubStatus JobTimedOut = StatusError
+toGitHubStatus JobVanished = StatusError
+toGitHubStatus JobFailed = StatusFailure
+toGitHubStatus JobSucceeded = StatusSuccess
+
+diffTimeToRelativeEnglish :: NominalDiffTime -> Text
+diffTimeToRelativeEnglish delta = T.pack (show amt) <> shortPeriodText period
+  where
+    (amt, period) = diffTimeToRoundedQuantity delta
+
+diffTimeToRoundedQuantity :: NominalDiffTime -> (Int, TimePeriod)
+diffTimeToRoundedQuantity delta
+  | delta < oneMinute = (roundInt delta, Seconds)
+  | delta < oneHour = (roundInt $ delta / oneMinute, Minutes)
+  | delta < oneDay = (roundInt $ delta / oneHour, Hours)
+  | otherwise = (roundInt $ delta / oneDay, Days)
+
+data TimePeriod
+  = Seconds
+  | Minutes
+  | Hours
+  | Days
+
+shortPeriodText :: TimePeriod -> Text
+shortPeriodText = \case
+  Seconds -> "s"
+  Minutes -> "m"
+  Hours -> "h"
+  Days -> "d"
+
+roundInt :: NominalDiffTime -> Int
+roundInt = round
+
+oneMinute :: NominalDiffTime
+oneMinute = 60
+oneHour :: NominalDiffTime
+oneHour = oneMinute * 60
+oneDay :: NominalDiffTime
+oneDay = oneHour * 24
+
+statusDescription :: NominalDiffTime -> JobStatus -> Text
+statusDescription _ JobPending = "Job pending"
+statusDescription _ JobInProgress = "Job in progress"
+statusDescription dt JobCanceled = "Job canceled " <> diffTimeToRelativeEnglish dt
+statusDescription dt JobTimedOut = "Job timed out " <> diffTimeToRelativeEnglish dt
+statusDescription dt JobVanished = "Job vanished " <> diffTimeToRelativeEnglish dt
+statusDescription dt JobFailed = "Job failed in " <> diffTimeToRelativeEnglish dt
+statusDescription dt JobSucceeded = "Job succeeded in " <> diffTimeToRelativeEnglish dt
+
+setJobStatus :: Connection -> Auth -> Text -> UTCTime -> JobStatus -> BuildJob -> IO ()
+setJobStatus dbConn auth url t status incomingJob = do
+  let jobId = _buildJob_id incomingJob
   runBeamSqlite dbConn $ do
     runUpdate $
       update (_ciDb_buildJobs ciDb)
@@ -87,8 +147,24 @@ setJobStatus dbConn t status incomingJob = do
                   [ job ^. buildJob_endedAt <-. val_ (Just t)
                   , job ^. buildJob_status <-. val_ status
                   ])
-             (\job -> _buildJob_id job ==. val_ (_buildJob_id incomingJob))
+             (\job -> _buildJob_id job ==. val_ jobId)
     return ()
+  now <- getCurrentTime
+  let rbi = _buildJob_repoBuildInfo incomingJob
+      desc = statusDescription (diffUTCTime now t) status
+      context = case drop 1 (T.splitOn "://" url) of
+                  [] -> "Zeus CI"
+                  --Switch to something like this or a user-specified name later
+                  --(rest:_) -> T.takeWhile (\c -> c /= '/' && c /= ':') rest <> "/zeus"
+                  _ -> "Zeus CI"
+      statusUrl = case status of
+                    JobSucceeded -> URL $ url <> "/raw/" <> T.pack (show jobId) <> ".txt"
+                    JobFailed -> URL $ url <> "/raw/" <> T.pack (show jobId) <> ".txt"
+                    _ -> URL url
+      gs = NewStatus (toGitHubStatus status) (Just statusUrl) (Just desc) (Just context)
+  _ <- newStatus auth (_rbi_repoNamespace rbi) (_rbi_repoName rbi)
+            (GitHash $ _rbi_commitHash rbi) gs
+  return ()
 
 buildManagerThread :: ServerEnv -> IO ()
 buildManagerThread se = do
@@ -138,7 +214,8 @@ runBuild se rng repo ca incomingJob = do
   let dbConn = _serverEnv_db se
       connRepo = _serverEnv_connRepo se
   start <- getCurrentTime
-  setJobStatus dbConn start JobInProgress incomingJob
+  let auth = OAuth $ toS $ _connectedAccount_accessToken ca
+  setJobStatus dbConn auth (_serverEnv_publicUrl se) start JobInProgress incomingJob
   broadcastJobs dbConn connRepo
 
   ecMVar <- newEmptyMVar
@@ -153,6 +230,7 @@ runBuild se rng repo ca incomingJob = do
     ecMVar wtid jobId
 
   end <- getCurrentTime
+  setJobStatus dbConn auth (_serverEnv_publicUrl se) start jobStatus incomingJob
   runBeamSqlite dbConn $ do
     runUpdate $
       update (_ciDb_buildJobs ciDb)
