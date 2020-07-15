@@ -443,7 +443,7 @@ addRepo env wsConn
             Left e -> wsSend wsConn $ Down_Alert $ "Error setting up webhook: " <> (T.pack $ show e)
             Right rw -> do
               let Id hid = repoWebhookId rw
-              insertRepo hid
+              insertRepo $ fromIntegral hid
         GitLab -> do
           mhid <- setupGitlabWebhook
             wbu
@@ -478,14 +478,14 @@ deleteRepo env rid = do
             deleteRepoWebhookR
             (N $ _repo_namespace repo)
             (N $ _repo_name repo)
-            (Id $ _repo_hookId repo)
+            (Id $ fromIntegral $ _repo_hookId repo)
           return ()
         GitLab -> do
           deleteGitlabWebhook
             (_repo_namespace repo)
             (_repo_name repo)
             (_connectedAccount_accessToken accessAccount)
-            (_repo_hookId repo)
+            (fromIntegral $ _repo_hookId repo)
 
       beamQuery env $
         runDelete $ delete (_ciDb_repos ciDb) $
