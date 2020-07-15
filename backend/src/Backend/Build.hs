@@ -101,11 +101,13 @@ setJobStatus dbConn auth url t status incomingJob = do
                   , job ^. buildJob_status <-. val_ status
                   ])
              (\job -> _buildJob_id job ==. val_ (_buildJob_id incomingJob))
-    let rbi = _buildJob_repoBuildInfo incomingJob
-        gs = NewStatus (toGitHubStatus status) (Just $ URL url) Nothing Nothing
-    newStatus auth (_rbi_repoNamespace rbi) (_rbi_repoName rbi)
-              (GitHash $ _rbi_commitHash rbi) gs
     return ()
+  let rbi = _buildJob_repoBuildInfo incomingJob
+      gs = NewStatus (toGitHubStatus status) (Just $ URL url) Nothing Nothing
+  printf "Sending status %s to GitHub for job %d\n" (show status) (_buildJob_id incomingJob)
+  newStatus auth (_rbi_repoNamespace rbi) (_rbi_repoName rbi)
+            (GitHash $ _rbi_commitHash rbi) gs
+  return ()
 
 buildManagerThread :: ServerEnv -> IO ()
 buildManagerThread se = do
@@ -171,6 +173,7 @@ runBuild se rng repo ca incomingJob = do
     ecMVar wtid jobId
 
   end <- getCurrentTime
+  setJobStatus dbConn auth (_serverEnv_publicUrl se) start jobStatus incomingJob
   runBeamSqlite dbConn $ do
     runUpdate $
       update (_ciDb_buildJobs ciDb)
