@@ -18,6 +18,7 @@ module Common.Types.Repo where
 
 ------------------------------------------------------------------------------
 import           Data.Aeson
+import           Data.Int
 import           Data.Text (Text)
 import qualified Data.Text as T
 import           Database.Beam
@@ -57,7 +58,7 @@ instance BeamMigrateSqlBackend be => HasDefaultSqlDataType be AttrList where
 
 ------------------------------------------------------------------------------
 data RepoT f = Repo
-  { _repo_id :: C f Int
+  { _repo_id :: C f Int32
   -- ^ For GitHub this is "owner/name".
   , _repo_accessAccount :: PrimaryKey ConnectedAccountT f
   , _repo_name :: C f Text
@@ -66,10 +67,10 @@ data RepoT f = Repo
   -- can be a deeper nested path of groups /foo/bar/baz/repo
   , _repo_buildNixFile :: C f Text
   , _repo_attributesToBuild :: C f AttrList
-  , _repo_timeout :: C f Int
+  , _repo_timeout :: C f Int32
   -- ^ Build timeout in seconds
   , _repo_cache :: PrimaryKey BinaryCacheT (Nullable f)
-  , _repo_hookId :: C f Int
+  , _repo_hookId :: C f Int32
   -- ^ Allows us to delete the webhook
   } deriving Generic
 
@@ -130,9 +131,9 @@ instance FromJSON (RepoT Maybe)
 instance Beamable RepoT
 
 instance Table RepoT where
-  data PrimaryKey RepoT f = RepoId (Columnar f Int)
+  data PrimaryKey RepoT f = RepoId (Columnar f Int32)
     deriving (Generic, Beamable)
   primaryKey = RepoId . _repo_id
 
-repoKeyToInt :: PrimaryKey RepoT Identity -> Int
+repoKeyToInt :: PrimaryKey RepoT Identity -> Int32
 repoKeyToInt (RepoId k) = k

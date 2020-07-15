@@ -17,6 +17,7 @@ import           Control.Lens
 import           Control.Monad
 import           Control.Monad.Reader
 import           Data.Foldable
+import           Data.Int
 import           Data.Ord
 import qualified Data.Map as M
 import           Data.Text (Text)
@@ -58,14 +59,14 @@ jobsWidget = mdo
     Job_Output -> jobOutput
 
 jobOutput
-  :: MonadApp Int t m
-  => RoutedT t Int m ()
+  :: MonadApp Int32 t m
+  => RoutedT t Int32 m ()
 jobOutput = do
   jobId <- askRoute
   _ <- networkView (outputWidget <$> jobId)
   return ()
 
-outputWidget :: MonadApp r t m => Int -> m ()
+outputWidget :: MonadApp r t m => Int32 -> m ()
 outputWidget jobId = do
   let bjid = BuildJobId jobId
   elClass "table" "ui inverted table build-output" $ do

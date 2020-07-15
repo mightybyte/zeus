@@ -21,6 +21,7 @@ module Common.Types.ConnectedAccount where
 ------------------------------------------------------------------------------
 import           Data.Aeson
 import           Data.Default
+import           Data.Int
 import           Data.Text (Text)
 import qualified Data.Text as T
 import           Database.Beam
@@ -55,14 +56,14 @@ instance BeamMigrateSqlBackend be => HasDefaultSqlDataType be AccountProvider wh
 --data WebhookInfo f = WebhookInfo
 --  { _webhookInfo_url :: C f Text
 --  , _webhookInfo_testUrl :: C f Text
---  , _webhookInfo_id :: C f Int
+--  , _webhookInfo_id :: C f Int32
 --  , _webhookInfo_name :: C f Text
 --  , _webhookInfo_active :: C f Bool
 --  } deriving Generic
 
 ------------------------------------------------------------------------------
 data ConnectedAccountT f = ConnectedAccount
-  { _connectedAccount_id :: C f Int
+  { _connectedAccount_id :: C f Int32
   , _connectedAccount_name :: C f Text
   -- ^ Name of the account (or organization) that owns the repositories that
   -- you are connecting to.  This should NOT be the username of the account
@@ -127,14 +128,14 @@ instance FromJSON (ConnectedAccountT Maybe)
 instance Beamable ConnectedAccountT
 
 instance Table ConnectedAccountT where
-  data PrimaryKey ConnectedAccountT f = ConnectedAccountId (Columnar f Int)
+  data PrimaryKey ConnectedAccountT f = ConnectedAccountId (Columnar f Int32)
     deriving (Generic, Beamable)
   primaryKey = ConnectedAccountId . _connectedAccount_id
 
-caKeyToInt :: PrimaryKey ConnectedAccountT Identity -> Int
+caKeyToInt :: PrimaryKey ConnectedAccountT Identity -> Int32
 caKeyToInt (ConnectedAccountId k) = k
 
-intToCaKey :: Int -> PrimaryKey ConnectedAccountT Identity
+intToCaKey :: Int32 -> PrimaryKey ConnectedAccountT Identity
 intToCaKey k = ConnectedAccountId k
 
 caKeyIdToMaybe :: PrimaryKey ConnectedAccountT Identity -> PrimaryKey ConnectedAccountT Maybe

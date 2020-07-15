@@ -20,13 +20,14 @@ module Common.Types.CiSettings where
 ------------------------------------------------------------------------------
 import           Control.Lens
 import           Data.Aeson
+import           Data.Int
 import           Data.Text (Text)
 import           Database.Beam
 ------------------------------------------------------------------------------
 
 ------------------------------------------------------------------------------
 data CiSettingsT f = CiSettings
-  { _ciSettings_id :: C f Int
+  { _ciSettings_id :: C f Int32
   , _ciSettings_nixPath :: C f Text
   , _ciSettings_serveLocalCache :: C f Bool
   } deriving (Generic)
@@ -58,6 +59,6 @@ instance FromJSON CiSettings
 instance Beamable CiSettingsT
 
 instance Table CiSettingsT where
-  data PrimaryKey CiSettingsT f = CiSettingsId (Columnar f Int)
+  data PrimaryKey CiSettingsT f = CiSettingsId (Columnar f Int32)
     deriving (Generic, Beamable)
   primaryKey = CiSettingsId . _ciSettings_id

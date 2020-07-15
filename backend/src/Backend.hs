@@ -19,6 +19,7 @@ import           Control.Monad.Trans
 import qualified Data.Aeson as A
 import           Data.Dependent.Sum (DSum ((:=>)))
 import           Data.IORef
+import           Data.Int
 import           Data.RNG
 import qualified Data.Set as S
 import           Data.String.Conv
@@ -351,7 +352,7 @@ cancelJobAndRemove env (BuildJobId jid) = do
         updateJobStatus env jid JobCanceled
     broadcastJobs (_serverEnv_db env) (_serverEnv_connRepo env)
 
-updateJobStatus :: ServerEnv -> Int -> JobStatus -> IO ()
+updateJobStatus :: ServerEnv -> Int32 -> JobStatus -> IO ()
 updateJobStatus env jid status =
     runBeamSqlite (_serverEnv_db env) $ do
       runUpdate $

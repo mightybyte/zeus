@@ -4,6 +4,7 @@ module Backend.DbLib where
 
 ------------------------------------------------------------------------------
 import           Control.Lens
+import           Data.Int
 import           Database.Beam
 import           Database.SQLite.Simple
 ------------------------------------------------------------------------------
@@ -12,7 +13,7 @@ import           Backend.Types.ServerEnv
 import           Common.Types.CiSettings
 ------------------------------------------------------------------------------
 
-globalCiSettingsKey :: Int
+globalCiSettingsKey :: Int32
 globalCiSettingsKey = 0
 
 defCiSettings :: CiSettings
