@@ -406,7 +406,7 @@ buildThread se ecMVar rng repo ca job = C.handle onException $ do
         liftIO $ saveAndSendStr CiMsg $ "Running build for each of the following attributes: " <> (T.pack $ show attrs)
         results <- case attrs of
           [] -> (:[]) <$> buildSingle Nothing
-          _ -> forM attrs $ \attr -> buildSingle (Just attr)
+          _ -> forM attrs $ \attr -> C.handle (onSubjobException attr) $ buildSingle (Just attr)
         let bad = lefts results
         if null bad
           then putMVar ecMVar ExitSuccess
@@ -415,6 +415,11 @@ buildThread se ecMVar rng repo ca job = C.handle onException $ do
             mapM_ (liftIO . saveAndSendStr CiMsg . T.pack . show) $ zip attrs results
             putMVar ecMVar (ExitFailure (length bad))
   where
+    onSubjobException :: Text -> C.SomeException -> IO (Either ExitCode ())
+    onSubjobException attr e = do
+      putStrLn $ "ERROR Caught exception in subjob " <> T.unpack attr <> ": " <> show e
+      pure $ Right ()
+
     onException :: C.SomeException -> IO ()
     onException e = do
       putStrLn $ "ERROR Caught exception in build thread: " <> show e
