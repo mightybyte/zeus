@@ -350,14 +350,14 @@ buildThread se ecMVar rng repo ca job = C.handle onException $ do
           let pm = ProcMsg t msgTy msg
           saveAndSend pm
         saveAndSend pm = do
-          hPutStrLn lh $! prettyProcMsg pm
+          B.hPutStr lh $! T.encodeUtf8 $ prettyProcMsg pm <> "\n"
           sendOutput se jid pm
         cachingSaveAndSend pm = do
           let msg = _procMsg_msg pm
           if isStorePath msg && _procMsg_source pm == StdoutMsg
             then addCacheJob se (_repo_cache repo) msg
             else return ()
-          hPutStrLn lh $! prettyProcMsg pm
+          B.hPutStr lh $! T.encodeUtf8 $ prettyProcMsg pm <> "\n"
           sendOutput se jid pm
 
     res <- runExceptT $ do

@@ -16,6 +16,7 @@ import           Control.Exception
 import           Control.Lens
 import           Control.Monad
 import           Control.Monad.Except
+import qualified Data.ByteString as B
 import           Data.List (sort)
 import           Data.Text (Text)
 import qualified Data.Text as T
@@ -30,7 +31,6 @@ import qualified Network.AWS.S3 as AWS
 import           System.Directory
 import           System.Exit
 import           System.FilePath
-import           System.IO
 import           System.Process
 import           Text.Printf
 ------------------------------------------------------------------------------
@@ -315,7 +315,7 @@ cacheBuild se cache cj = do
   let outputFile = printf "%s/%d.txt" outDir (_cacheJob_id cj)
   printf "Writing cache output to %s\n" outputFile
   _ <- withLogHandle outputFile $ \lh  -> runExceptT $ do
-    let logProcMsg pm = hPutStrLn lh $! prettyProcMsg pm
+    let logProcMsg pm = B.hPutStr lh $! encodeUtf8 $ prettyProcMsg pm <> "\n"
         logStr msgTy msg = do
           !t <- getCurrentTime
           let pm = ProcMsg t msgTy msg

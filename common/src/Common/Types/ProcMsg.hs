@@ -30,7 +30,7 @@ instance Readable ProcMsgSource where
   fromText "ERR" = return StderrMsg
   fromText _ = mzero
 
-prettyProcMsgSource :: ProcMsgSource -> String
+prettyProcMsgSource :: ProcMsgSource -> Text
 prettyProcMsgSource CiMsg = "CI"
 prettyProcMsgSource BuildCommandMsg = "CMD"
 prettyProcMsgSource StdoutMsg = "OUT"
@@ -42,9 +42,9 @@ data ProcMsg = ProcMsg
   , _procMsg_msg :: Text
   } deriving (Eq,Ord,Show,Read,Generic)
 
-prettyProcMsg :: ProcMsg -> String
+prettyProcMsg :: ProcMsg -> Text
 prettyProcMsg (ProcMsg t s m) =
-  printf "%s [%s] %s" (prettyProcMsgSource s) (show t) m
+  prettyProcMsgSource s <> " [" <> T.pack (show t) <> "] " <> m
 
 parseProcMsg :: Text -> Either String ProcMsg
 parseProcMsg msg = do
