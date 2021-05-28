@@ -49,6 +49,7 @@ import           Backend.DbLib
 import           Backend.ExecutablePaths
 import           Backend.Github
 import           Backend.Process
+import           Backend.Types.BackendSettings
 import           Backend.Types.ServerEnv
 import           Backend.WsCmds
 import           Common.Api
@@ -215,7 +216,8 @@ runBuild se rng repo ca incomingJob = do
       connRepo = _serverEnv_connRepo se
   start <- getCurrentTime
   let auth = OAuth $ toS $ _connectedAccount_accessToken ca
-  setJobStatus dbConn auth (_serverEnv_publicUrl se) start JobInProgress incomingJob
+  when ( fromMaybe True $ _beSettings_setStatus $ _serverEnv_settings se) $
+    setJobStatus dbConn auth (_serverEnv_publicUrl se) start JobInProgress incomingJob
   broadcastJobs dbConn connRepo
 
   ecMVar <- newEmptyMVar
@@ -230,7 +232,8 @@ runBuild se rng repo ca incomingJob = do
     ecMVar wtid jobId
 
   end <- getCurrentTime
-  setJobStatus dbConn auth (_serverEnv_publicUrl se) start jobStatus incomingJob
+  when ( fromMaybe True $ _beSettings_setStatus $ _serverEnv_settings se) $
+    setJobStatus dbConn auth (_serverEnv_publicUrl se) start jobStatus incomingJob
   runBeamSqlite dbConn $ do
     runUpdate $
       update (_ciDb_buildJobs ciDb)

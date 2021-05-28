@@ -184,7 +184,7 @@ backend = Backend
       let settingsFile = "backend/settings.json" :: String
       allConfigs <- getConfigs
       settings <- case M.lookup (toS settingsFile) allConfigs of
-        Nothing -> return $ BackendSettings Nothing []
+        Nothing -> return $ BackendSettings Nothing [] Nothing
         Just bs -> do
           case A.decode $ toS bs of
             Nothing -> error ("Error parsing " <> settingsFile)

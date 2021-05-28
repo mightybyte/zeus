@@ -95,6 +95,8 @@ instance FromJSON Cidr where
 data BackendSettings = BackendSettings
   { _beSettings_webhookBaseUrl :: Maybe Text
   , _beSettings_ipWhitelist :: [Cidr]
+  , _beSettings_setStatus :: Maybe Bool
+  -- ^ Whether to set CI status lights (defaults to True)
   } deriving (Eq,Ord,Show,Read,Generic)
 
 instance ToJSON BackendSettings where

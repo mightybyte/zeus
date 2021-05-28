@@ -230,10 +230,11 @@ formatDiffTime t = T.pack $
   where
     h :: Int
     h = truncate $ t / oneHour
+    justMin = t - fromIntegral h * oneHour
     m :: Int
-    m = truncate $ t / oneMinute
+    m = truncate $ justMin / oneMinute
     s :: NominalDiffTime
-    s = t - (fromIntegral h * oneHour) - (fromIntegral m * oneMinute)
+    s = justMin - fromIntegral m * oneMinute
 
 pastTimeWiget
   :: (DomBuilder t m, PostBuild t m, MonadHold t m, PerformEvent t m, TriggerEvent t m, MonadFix m, MonadIO m, MonadIO (Performable m))
