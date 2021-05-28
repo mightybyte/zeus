@@ -322,7 +322,7 @@ buildThread
   -> ConnectedAccount
   -> BuildJob
   -> IO ()
-buildThread se ecMVar rng repo ca job = do
+buildThread se ecMVar rng repo ca job = C.handle onException $ do
   start <- getCurrentTime
   let rbi = _buildJob_repoBuildInfo job
   let jid = _buildJob_id job
@@ -414,6 +414,11 @@ buildThread se ecMVar rng repo ca job = do
             liftIO $ saveAndSendStr CiMsg $ "Some jobs failed"
             mapM_ (liftIO . saveAndSendStr CiMsg . T.pack . show) $ zip attrs results
             putMVar ecMVar (ExitFailure (length bad))
+  where
+    onException :: C.SomeException -> IO ()
+    onException e = do
+      putStrLn $ "ERROR Caught exception in build thread: " <> show e
+      putMVar ecMVar (ExitFailure 1)
 
 
 getSymlinkTarget :: FilePath -> IO (Maybe FilePath)
