@@ -6,6 +6,7 @@
 module Backend.CacheServer where
 
 ------------------------------------------------------------------------------
+import           Control.Exception
 import           Control.Monad
 import           Control.Monad.Trans
 import qualified Data.ByteString as B
@@ -79,48 +80,48 @@ stripPath = T.takeWhileEnd (/= '/')
 storePathHash :: Text -> Text
 storePathHash = T.takeWhile (/= '-') . T.takeWhileEnd (/= '/')
 
-otherHandler :: MonadSnap m => ServerEnv -> Text -> m ()
+otherHandler :: ServerEnv -> Text -> Snap ()
 otherHandler se file = do
   case T.breakOn ".narinfo" file of
     (hash, ".narinfo") -> do
       sd <- read <$> liftIO (getNixConfigAttr "nixStoreDir")
-      conn <- liftIO $ open nixSqliteDb
-      let prefix = sd <> "/" <> hash
-      vpRes <- liftIO $ query conn "select * from ValidPaths where path >= ? limit 1" (Only prefix)
-      case vpRes of
-        [vp] -> do
-          refs <- fmap (sort . fmap fromOnly) $ liftIO $ query conn
-            "select path from Refs join ValidPaths on reference = id where referrer = ?"
-            (Only $ _validPath_id vp)
-          case fingerprintVP vp refs of
-            Left e -> do
-              liftIO $ putStrLn $ "otherHandler in Left: " <> e
-              modifyResponse $ setResponseStatus 500 "Error constructing fingerprint"
-              writeText $ T.pack e
-              getResponse >>= finishWith
-            Right fingerprint -> do
-              modifyResponse (setContentType "text/x-nix-narinfo")
-              writeText $ T.pack $ printf "StorePath: %s\n" (_validPath_path vp)
-              writeText $ T.pack $ printf "URL: nar/%s.nar\n" hash
-              writeText $ T.pack $ printf "Compression: none\n"
-              (hashType, base32hash) <- case mkBase32 (_validPath_hash vp) of
-                Left e -> error $ "Bad hash in nix sqlite DB: " <> e
-                Right h -> return h
-              writeText $ T.pack $ printf "NarHash: %s:%s\n" hashType base32hash
-              writeText $ T.pack $ printf "NarSize: %s\n" (maybe "NULL" show $ _validPath_narSize vp)
-              when (length refs > 0) $
-                writeText $ T.pack $ printf "References: %s\n"
-                  (T.unwords $ map stripPath refs)
-              case _validPath_deriver vp of
-                Nothing -> return ()
-                Just deriver ->
-                  writeText $ T.pack $ printf "Deriver: %s\n" (stripPath deriver)
+      bracketSnap (open nixSqliteDb) close $ \conn -> do
+        let prefix = sd <> "/" <> hash
+        vpRes <- liftIO $ query conn "select * from ValidPaths where path >= ? limit 1" (Only prefix)
+        case vpRes of
+          [vp] -> do
+            refs <- fmap (sort . fmap fromOnly) $ liftIO $ query conn
+              "select path from Refs join ValidPaths on reference = id where referrer = ?"
+              (Only $ _validPath_id vp)
+            case fingerprintVP vp refs of
+              Left e -> do
+                liftIO $ putStrLn $ "otherHandler in Left: " <> e
+                modifyResponse $ setResponseStatus 500 "Error constructing fingerprint"
+                writeText $ T.pack e
+                getResponse >>= finishWith
+              Right fingerprint -> do
+                modifyResponse (setContentType "text/x-nix-narinfo")
+                writeText $ T.pack $ printf "StorePath: %s\n" (_validPath_path vp)
+                writeText $ T.pack $ printf "URL: nar/%s.nar\n" hash
+                writeText $ T.pack $ printf "Compression: none\n"
+                (hashType, base32hash) <- case mkBase32 (_validPath_hash vp) of
+                  Left e -> error $ "Bad hash in nix sqlite DB: " <> e
+                  Right h -> return h
+                writeText $ T.pack $ printf "NarHash: %s:%s\n" hashType base32hash
+                writeText $ T.pack $ printf "NarSize: %s\n" (maybe "NULL" show $ _validPath_narSize vp)
+                when (length refs > 0) $
+                  writeText $ T.pack $ printf "References: %s\n"
+                    (T.unwords $ map stripPath refs)
+                case _validPath_deriver vp of
+                  Nothing -> return ()
+                  Just deriver ->
+                    writeText $ T.pack $ printf "Deriver: %s\n" (stripPath deriver)
 
-              let secret = _nixCacheKey_secret $ _serverEnv_cacheKey se
-              liftIO $ T.putStrLn $ "fingerprint: " <> fingerprint
-              let sig = mkNixSig secret (T.encodeUtf8 fingerprint)
-              writeText $ "Sig: " <> sig <> "\n"
-        _ -> notFound "No such path."
+                let secret = _nixCacheKey_secret $ _serverEnv_cacheKey se
+                liftIO $ T.putStrLn $ "fingerprint: " <> fingerprint
+                let sig = mkNixSig secret (T.encodeUtf8 fingerprint)
+                writeText $ "Sig: " <> sig <> "\n"
+          _ -> notFound "No such path."
     _ -> notFound "Cache server"
 
 getNixConfigAttr :: String -> IO String
@@ -153,8 +154,7 @@ cacheInfo storeDir = T.unlines
 
 
 storePathForHash :: Text -> Text -> IO (Maybe Text)
-storePathForHash storeDir hash = do
-  conn <- open nixSqliteDb
+storePathForHash storeDir hash = bracket (open nixSqliteDb) close $ \conn -> do
   let prefix = storeDir <> "/" <> hash
   res <- query conn "select path from ValidPaths where path >= ? limit 1" (Only prefix)
   case res of

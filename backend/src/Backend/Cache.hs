@@ -326,8 +326,6 @@ cacheBuild se cache cj = do
     let s3cache = _binaryCache_s3Cache cache
     liftIO $ logStr CiMsg $ T.pack $ printf "Caching %d store paths to s3://%s"
       (length toCache) (_s3Cache_bucket s3cache)
-    nixDbConn <- liftIO $ open nixSqliteDb
-
     e <- AWS.newEnv $ AWS.FromKeys
       (AWS.AccessKey $ encodeUtf8 $ _s3Cache_accessKey s3cache)
       (AWS.SecretKey $ encodeUtf8 $ _s3Cache_secretKey s3cache)
@@ -347,13 +345,14 @@ cacheBuild se cache cj = do
           liftIO $ putStrLn "Error uploading nix-cache-info\n"
           throwError (ExitFailure status)
 
-    results <- liftIO $ forM toCache $ \sp -> do
-      res <- cacheStorePath se e logProcMsg nixDbConn cache (StorePath $ T.unpack sp)
-      case res of
-        Left er -> do
-          liftIO $ logStr CiMsg $ T.pack $ printf "Error while caching %s:\n%s" sp (show er)
-        Right _ -> return ()
-      return res
+    results <- liftIO $ bracket (open nixSqliteDb) close $ \nixDbConn -> 
+      forM toCache $ \sp -> do
+        res <- cacheStorePath se e logProcMsg nixDbConn cache (StorePath $ T.unpack sp)
+        case res of
+          Left er -> do
+            liftIO $ logStr CiMsg $ T.pack $ printf "Error while caching %s:\n%s" sp (show er)
+          Right _ -> return ()
+        return res
     let (failures, successes) = partitionEithers results
         uploads = length $ filter (== CachedSuccessfully) successes
     liftIO $ logStr CiMsg $ T.pack $ printf "Cached %d store paths successfully (%d failures)\n" uploads (length failures)
