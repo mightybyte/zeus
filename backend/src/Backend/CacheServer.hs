@@ -6,7 +6,6 @@
 module Backend.CacheServer where
 
 ------------------------------------------------------------------------------
-import           Control.Exception
 import           Control.Monad
 import           Control.Monad.Trans
 import qualified Data.ByteString as B
@@ -154,7 +153,7 @@ cacheInfo storeDir = T.unlines
 
 
 storePathForHash :: Text -> Text -> IO (Maybe Text)
-storePathForHash storeDir hash = bracket (open nixSqliteDb) close $ \conn -> do
+storePathForHash storeDir hash = withConnection nixSqliteDb $ \conn -> do
   let prefix = storeDir <> "/" <> hash
   res <- query conn "select path from ValidPaths where path >= ? limit 1" (Only prefix)
   case res of

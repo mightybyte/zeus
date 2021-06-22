@@ -345,7 +345,7 @@ cacheBuild se cache cj = do
           liftIO $ putStrLn "Error uploading nix-cache-info\n"
           throwError (ExitFailure status)
 
-    results <- liftIO $ bracket (open nixSqliteDb) close $ \nixDbConn -> 
+    results <- liftIO $ withConnection nixSqliteDb $ \nixDbConn -> 
       forM toCache $ \sp -> do
         res <- cacheStorePath se e logProcMsg nixDbConn cache (StorePath $ T.unpack sp)
         case res of
