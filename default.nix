@@ -13,6 +13,8 @@ let
       "zeus-access-token" "zeus-cache-key.pub"
       "zeus-cache-key.sec" "zeus.db" "migrations.md"
     ];
+  nix-thunk = import ./deps/nix-thunk {};
+  beam-src = nix-thunk.thunkSource ./deps/beam;
 
 
   myMkObeliskApp =
@@ -113,19 +115,15 @@ newObelisk.project ./. ({ pkgs, hackGet, ... }: {
              url = "http://hackage.haskell.org/package/${pkgver}/${pkgver}.tar.gz";
              inherit sha256;
            }) {};
-      beam-src = pkgs.fetchFromGitHub {
-        owner = "tathougies";
-        repo = "beam";
-        rev = "c858846e322ad28fe53fb6c56006bb1a52b20683";
-        sha256 = "1xffrdbfs2d61qwlchqj4pc5yczkipbghhr5566p2bn1163mmyqw";
-      };
       semantic-reflex-src = pkgs.fetchFromGitHub {
         owner = "tomsmalley";
         repo = "semantic-reflex";
         rev = "1ba4ee0124135817d92ea2bea8bde720e94a2612";
         sha256 = "0mcbxxbysbqcffik722h8lxl69cncsvfmmlij9m61djaw9zwvrp1";
       };
+      gargoylePkgs = import ./deps/gargoyle { haskellPackages = self; };
   in {
+    inherit (gargoylePkgs) gargoyle gargoyle-postgresql gargoyle-postgresql-nix gargoyle-postgresql-connect;
     amazonka = doJailbreak (dontCheck (callHackageDirect {
       pkg = "amazonka";
       ver = "1.6.1";
@@ -170,8 +168,16 @@ newObelisk.project ./. ({ pkgs, hackGet, ... }: {
 #        rev = "3e50449afcc7c094657df86e82f8b77a2ab0aa95";
 #        sha256 = "1yaln3xisqacw0arxmclncay9a4xj2i6fpacjnpdaigxakl9xdwv";
 #    }) {});
+
+    beam-automigrate = self.callHackageDirect {
+      pkg = "beam-automigrate";
+      ver = "0.1.2.0";
+      sha256 = "1a70da15hb4nlpxhnsy1g89frbpf3kg3mwb4g9carj5izw1w1r1k";
+    } {};
+
     beam-core = dontCheck (self.callCabal2nix "beam-core" "${beam-src}/beam-core" {});
     beam-migrate = doJailbreak (dontCheck (self.callCabal2nix "beam-migrate" "${beam-src}/beam-migrate" {}));
+    beam-postgres = dontCheck (self.callCabal2nix "beam-postgres" "${beam-src}/beam-postgres" {});
     beam-sqlite = dontCheck (self.callCabal2nix "beam-sqlite" "${beam-src}/beam-sqlite" {});
 
 #    binary-instances = dontCheck (callHackageDirect {
@@ -228,12 +234,11 @@ newObelisk.project ./. ({ pkgs, hackGet, ... }: {
 #      ver = "1.9.3";
 #      sha256 = "1r0g0j3zjw2abvaxnn73nrvbzdq0azlw7kgpi5zdvnx7lv873awg";
 #    }));
-    which = dontCheck (self.callCabal2nix "which" (pkgs.fetchFromGitHub {
-        owner = "obsidiansystems";
-        repo = "which";
-        rev = "04da6f309b0fbe256bb8235c7bf030676d1fd822";
-        sha256 = "1i03c63v3wscd8dhn6mxy13166p7klqjr9bmsf5ss2yskhjjh8hz";
-    }) {});
+    which = self.callHackageDirect {
+      pkg = "which";
+      ver = "0.2";
+      sha256 = "1g795yq36n7c6ycs7c0799c3cw78ad0cya6lj4x08m0xnfx98znn";
+    } {};
     zeus = addBuildDepends super.zeus [ pkgs.git ];
 
   };

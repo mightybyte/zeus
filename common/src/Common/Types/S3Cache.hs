@@ -25,6 +25,7 @@ import           Data.String.Conv
 import           Data.Text (Text)
 import           Data.Text.Encoding
 import           Database.Beam
+import qualified Database.Beam.AutoMigrate as BA
 import           Database.Beam.Backend.SQL
 import           Database.Beam.Backend.Types
 import           Database.Beam.Migrate.Generics
@@ -123,3 +124,6 @@ instance (BeamBackend be, FromBackendRow be Text) => FromBackendRow be S3Cache w
 
 instance BeamMigrateSqlBackend be => HasDefaultSqlDataType be S3Cache where
   defaultSqlDataType _ _ _ = varCharType Nothing Nothing
+
+instance BA.HasColumnType S3Cache where
+  defaultColumnType _ = BA.SqlStdType $ varCharType Nothing Nothing

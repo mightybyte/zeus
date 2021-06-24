@@ -22,6 +22,7 @@ import           Data.Aeson
 import           Data.Text (Text)
 import qualified Data.Text as T
 import           Database.Beam
+import qualified Database.Beam.AutoMigrate as BA
 import           Database.Beam.Backend.SQL
 import           Database.Beam.Backend.Types
 import           Database.Beam.Migrate.Generics
@@ -49,7 +50,10 @@ instance (BeamBackend be, FromBackendRow be Text) => FromBackendRow be JobStatus
 instance BeamMigrateSqlBackend be => HasDefaultSqlDataType be JobStatus where
   defaultSqlDataType _ _ _ = varCharType Nothing Nothing
 
+instance BA.HasColumnType JobStatus where
+  defaultColumnType _ = BA.SqlStdType $ varCharType Nothing Nothing
+
 instance ToJSON JobStatus where
-    toEncoding = genericToEncoding defaultOptions
+  toEncoding = genericToEncoding defaultOptions
 
 instance FromJSON JobStatus

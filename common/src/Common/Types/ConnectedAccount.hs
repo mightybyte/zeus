@@ -25,6 +25,7 @@ import           Data.Int
 import           Data.Text (Text)
 import qualified Data.Text as T
 import           Database.Beam
+import qualified Database.Beam.AutoMigrate as BA
 import           Database.Beam.Backend.SQL
 import           Database.Beam.Backend.Types
 import           Database.Beam.Migrate.Generics
@@ -52,6 +53,9 @@ instance (BeamBackend be, FromBackendRow be Text) => FromBackendRow be AccountPr
 
 instance BeamMigrateSqlBackend be => HasDefaultSqlDataType be AccountProvider where
   defaultSqlDataType _ _ _ = varCharType Nothing Nothing
+
+instance BA.HasColumnType AccountProvider where
+  defaultColumnType _ = BA.SqlStdType $ varCharType Nothing Nothing
 
 --data WebhookInfo f = WebhookInfo
 --  { _webhookInfo_url :: C f Text

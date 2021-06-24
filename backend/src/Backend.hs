@@ -30,6 +30,7 @@ import           Data.Text.Encoding
 import           Data.Time
 import           Data.Maybe (fromMaybe)
 import           Database.Beam
+import qualified Database.Beam.AutoMigrate as BA
 import           Database.Beam.Sqlite
 import           Database.Beam.Sqlite.Migrate
 import           Database.Beam.Migrate.Backend
@@ -166,6 +167,15 @@ verboseMigrate BeamMigrationBackend { backendActionProvider = actions
                    map (toS . sqliteRenderSyntaxScript . fromSqliteCommand . migrationCommand) cmds
              Fail.fail msg
 
+showMigration :: Connection -> IO ()
+showMigration conn =
+  runBeamSqlite conn $
+    BA.printMigration $ BA.migrate conn hsSchema
+
+tryAutoMigration :: Connection -> IO ()
+tryAutoMigration conn =
+    BA.tryRunMigrationsWithEditUpdate annotatedDb conn
+
 backend :: Backend BackendRoute FrontendRoute
 backend = Backend
   { _backend_run = \serve -> do
@@ -173,7 +183,10 @@ backend = Backend
       -- expect a large volume of requests for awhile so this is probably a
       -- very low priority.
       dbConn <- open dbConnectInfo
+      putStrLn "------Old migration"
       runBeamSqliteDebug putStrLn dbConn $ verboseMigrate migrationBackend ciDbChecked
+      putStrLn "------New migration"
+      showMigration dbConn
       mcs <- getCiSettings dbConn
       case mcs of
         Nothing -> initCiSettings dbConn defCiSettings

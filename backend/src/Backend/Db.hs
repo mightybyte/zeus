@@ -1,4 +1,5 @@
 {-# LANGUAGE AllowAmbiguousTypes #-}
+{-# LANGUAGE DataKinds #-}
 {-# LANGUAGE DeriveAnyClass #-}
 {-# LANGUAGE DeriveGeneric #-}
 {-# LANGUAGE FlexibleContexts #-}
@@ -21,11 +22,15 @@
 module Backend.Db where
 
 ------------------------------------------------------------------------------
+import           Data.Proxy
 import           Data.Time
 import           Database.Beam
+import qualified Database.Beam.AutoMigrate as BA
+import qualified Database.Beam.AutoMigrate.Annotated as BA
 import           Database.Beam.Migrate.Generics
 import           Database.Beam.Migrate.Simple
 import           Database.Beam.Sqlite.Connection
+import           Database.Beam.Postgres
 import           Database.SQLite.Simple
 ------------------------------------------------------------------------------
 import           Common.Types.BinaryCache
@@ -58,10 +63,12 @@ ciDbChecked :: CheckedDatabaseSettings Sqlite CiDb
 ciDbChecked = defaultMigratableDbSettings
 
 --ciDb :: DatabaseSettings be CiDb
-ciDb :: DatabaseSettings Sqlite CiDb
-ciDb = unCheckDatabase ciDbChecked
+--ciDb :: DatabaseSettings be CiDb
+--ciDb = unCheckDatabase ciDbChecked
 --       `withDbModification`
 --       renamingFields (snakify . T.takeWhileEnd (/= '_') . defaultFieldName)
+ciDb :: DatabaseSettings be CiDb
+ciDb = defaultDbSettings
 
 CiDb (TableLens ciDb_connectedAccounts)
      (TableLens ciDb_repos)
@@ -73,17 +80,24 @@ CiDb (TableLens ciDb_connectedAccounts)
      (TableLens ciDb_cachedHash)
      = dbLenses
 
-populateDb :: Connection -> IO ()
-populateDb conn = do
-  now <- getCurrentTime
---  let accounts =
---        [ ConnectedAccount default_ (val_ "mightybyte") (val_ "0000000000000000000000000000000000000000") ]
-  let rbi = RepoBuildInfo
-              "dummy" "mightybyte/dummy" RepoPush "ssh://..." "https://..." "1234"
-              "a8cd23" "Dummy commit" "Alice Coder"
-              (Just "https://secure.gravatar.com/avatar/0cece5abd2f9ad9056f5ac3830ac0bfe?s=80&d=identicon")
-      start = addUTCTime (-82) now
-  runBeamSqlite conn $ do
-    runInsert $ insert (_ciDb_buildJobs ciDb) $ insertExpressions
-      [ BuildJob default_ (val_ rbi) (val_ start) (val_ $ Just start) (val_ $ Just now) (val_ JobSucceeded)
-      ]
+--populateDb :: Connection -> IO ()
+--populateDb conn = do
+--  now <- getCurrentTime
+----  let accounts =
+----        [ ConnectedAccount default_ (val_ "mightybyte") (val_ "0000000000000000000000000000000000000000") ]
+--  let rbi = RepoBuildInfo
+--              "dummy" "mightybyte/dummy" RepoPush "ssh://..." "https://..." "1234"
+--              "a8cd23" "Dummy commit" "Alice Coder"
+--              (Just "https://secure.gravatar.com/avatar/0cece5abd2f9ad9056f5ac3830ac0bfe?s=80&d=identicon")
+--      start = addUTCTime (-82) now
+--  runBeamSqlite conn $ do
+--    runInsert $ insert (_ciDb_buildJobs ciDb) $ insertExpressions
+--      [ BuildJob default_ (val_ rbi) (val_ start) (val_ $ Just start) (val_ $ Just now) (val_ JobSucceeded)
+--      ]
+
+annotatedDb :: BA.AnnotatedDatabaseSettings Sqlite CiDb
+annotatedDb = BA.defaultAnnotatedDbSettings ciDb
+
+hsSchema :: BA.Schema
+hsSchema = BA.fromAnnotatedDbSettings annotatedDb (Proxy @'[])
+

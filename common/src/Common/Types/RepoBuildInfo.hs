@@ -22,6 +22,7 @@ import           Data.Aeson
 import           Data.Text (Text)
 import qualified Data.Text as T
 import           Database.Beam
+import qualified Database.Beam.AutoMigrate as BA
 import           Database.Beam.Backend.SQL
 import           Database.Beam.Backend.Types
 import           Database.Beam.Migrate.Generics
@@ -39,6 +40,9 @@ instance (BeamBackend be, FromBackendRow be Text) => FromBackendRow be RepoEvent
 
 instance BeamMigrateSqlBackend be => HasDefaultSqlDataType be RepoEvent where
   defaultSqlDataType _ _ _ = varCharType Nothing Nothing
+
+instance BA.HasColumnType RepoEvent where
+  defaultColumnType _ = BA.SqlStdType $ varCharType Nothing Nothing
 
 instance ToJSON RepoEvent where
     toEncoding = genericToEncoding defaultOptions

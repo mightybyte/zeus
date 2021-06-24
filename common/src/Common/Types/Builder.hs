@@ -21,6 +21,7 @@ import           Data.Int
 import           Data.Readable
 import           Data.Text (Text)
 import           Database.Beam
+import qualified Database.Beam.AutoMigrate as BA
 import           Database.Beam.Backend.SQL
 import           Database.Beam.Backend.Types
 import           Database.Beam.Migrate
@@ -44,6 +45,9 @@ instance Readable Platform where
 
 instance BeamMigrateSqlBackend be => HasDefaultSqlDataType be Platform where
   defaultSqlDataType _ _ _ = varCharType Nothing Nothing
+
+instance BA.HasColumnType Platform where
+  defaultColumnType _ = BA.SqlStdType $ varCharType Nothing Nothing
 
 instance HasSqlValueSyntax be String => HasSqlValueSyntax be Platform where
   sqlValueSyntax = autoSqlValueSyntax

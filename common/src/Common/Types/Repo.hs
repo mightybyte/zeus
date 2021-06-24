@@ -22,6 +22,7 @@ import           Data.Int
 import           Data.Text (Text)
 import qualified Data.Text as T
 import           Database.Beam
+import qualified Database.Beam.AutoMigrate as BA
 import           Database.Beam.Backend.SQL
 import           Database.Beam.Backend.Types
 import           Database.Beam.Migrate.Generics
@@ -54,6 +55,9 @@ instance (BeamBackend be, FromBackendRow be Text) => FromBackendRow be AttrList 
 
 instance BeamMigrateSqlBackend be => HasDefaultSqlDataType be AttrList where
   defaultSqlDataType _ _ _ = varCharType Nothing Nothing
+
+instance BA.HasColumnType AttrList where
+  defaultColumnType _ = BA.SqlStdType $ varCharType Nothing Nothing
 
 
 ------------------------------------------------------------------------------
