@@ -197,6 +197,15 @@ newObelisk.project ./. ({ pkgs, hackGet, ... }: {
       ver = "0.3.0";
       sha256 = "0h8h47zjp83k9xqjr6yjb7004siwn61njzjc1siwl6gm9ycpnm8w";
     });
+
+    reflex-dom-core = dontCheck super.reflex-dom-core;
+
+    hspec-webdriver = callHackageDirect {
+      pkg = "hspec-webdriver";
+      ver = "1.2.0";
+      sha256 = "1liadvzq0hnqqlrrypadkf21qzficrn72151f98hchkgjijqpqf5";
+    };    
+
     scrub = dontCheck (self.callCabal2nix "scrub" (pkgs.fetchFromGitHub {
         owner = "mightybyte";
         repo = "scrub";
